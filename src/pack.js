@@ -20,6 +20,7 @@ import { createParticles } from "./particles.js";
 import * as sfx from "./sfx.js";
 
 const VB = { w: 300, h: 420 };
+const PACK_IMG = "assets/pack.png"; // drop a foil-pack image here to replace the rainbow temp
 const GAP_TEAR = 40; // gap width while mid-tear
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
@@ -46,12 +47,17 @@ export function createPack({ mountEl }) {
           <stop offset=".82" stop-color="#6ea8fe"/><stop offset="1" stop-color="#b072e6"/>
         </linearGradient>
         <g id="art">
-          <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="url(#foil)"/>
-          <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#0b0d12" opacity=".30"/>
-          <rect x="0" y="0" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
-          <rect x="0" y="${VB.h - 22}" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
-          <text x="${VB.w / 2}" y="196" text-anchor="middle" class="pack-logo">OPENPACK</text>
-          <text x="${VB.w / 2}" y="224" text-anchor="middle" class="pack-sub">TEAR TO OPEN</text>
+          <!-- rainbow temp pack (fallback when no assets/pack.png is supplied) -->
+          <g class="foil-fallback">
+            <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="url(#foil)"/>
+            <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#0b0d12" opacity=".30"/>
+            <rect x="0" y="0" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
+            <rect x="0" y="${VB.h - 22}" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
+            <text x="${VB.w / 2}" y="196" text-anchor="middle" class="pack-logo">OPENPACK</text>
+            <text x="${VB.w / 2}" y="224" text-anchor="middle" class="pack-sub">TEAR TO OPEN</text>
+          </g>
+          <!-- real pack art, swapped in by JS if assets/pack.png loads -->
+          <image class="pack-img" x="0" y="0" width="${VB.w}" height="${VB.h}" preserveAspectRatio="xMidYMid slice" style="display:none"/>
         </g>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -88,6 +94,18 @@ export function createPack({ mountEl }) {
   const edgeA = mountEl.querySelector(".edge-a");
   const edgeB = mountEl.querySelector(".edge-b");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
+
+  // Use a real foil-pack image if assets/pack.png is present; otherwise keep the
+  // rainbow temp. Probe with a plain Image so a missing file falls back cleanly
+  // (a 404 just leaves the rainbow showing — no broken-image icon).
+  const probe = new Image();
+  probe.onload = () => {
+    const img = mountEl.querySelector(".pack-img");
+    img.setAttribute("href", PACK_IMG);
+    img.style.display = "";
+    mountEl.querySelector(".foil-fallback").style.display = "none";
+  };
+  probe.src = PACK_IMG;
 
   let path = [];
   let tearPath = null;
