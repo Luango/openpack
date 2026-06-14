@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenPack · Pokémon TCG Gallery</title>
+    <link rel="stylesheet" href="src/base.css" />
+    <link rel="stylesheet" href="src/card.css" />
+  </head>
+  <body class="holo-on">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <h1 class="brand-name">Gallery</h1>
+      </div>
+
+      <div class="set-picker">
+        <label class="field-label" for="set-select">Set</label>
+        <select id="set-select" class="select"></select>
+        <span id="card-count" class="card-count"></span>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="Filters">
+      <div class="toolbar-row">
+        <div id="mode-switch" class="switch" role="tablist" aria-label="Filter mode">
+          <button class="switch-opt active" data-mode="all" role="tab">All</button>
+          <button class="switch-opt" data-mode="only" role="tab">Only</button>
+        </div>
+
+        <div id="view-options" class="view-options" aria-label="Display options"></div>
+      </div>
+
+      <div id="rarity-chips" class="chips" aria-label="Rarities"></div>
+    </section>
+
+    <p id="status-hint" class="status-hint hidden">Loading cards…</p>
+
+    <main id="card-grid" class="card-grid" aria-label="Cards"></main>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <div
+      id="lightbox"
+      class="lightbox hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+    >
+      <button id="lightbox-close" class="lightbox-close" aria-label="Close">&times;</button>
+      <div id="lightbox-host"></div>
+      <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

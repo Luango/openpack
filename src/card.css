@@ -1,0 +1,324 @@
+/* card.css — the shared Card component (see card.js).
+ *
+ * One element, two variants:
+ *   .card--grid    flat clickable thumbnail with a meta overlay
+ *   .card--detail  flat double-sided card for the lightbox (tilt/glare by JS)
+ *
+ * Every card carries .tier-N + data-tier (rarity tier) and a .card__vfx layer
+ * stamped with data-vfx (the tier's effect id). The holo/foil effects key off
+ * those, so a card inherits its look purely from its rarity — no per-card wiring.
+ *
+ * Interactive lightbox vars set by lightbox.js on the .card element:
+ *   --mx/--my     glare focus       (%)
+ *   --posx/--posy foil shift        (%)
+ *   --hyp         pointer intensity (0–1)  */
+
+:root {
+  /* card aspect ratio — standard TCG card is 63mm × 88mm */
+  --card-aspect: 63 / 88;
+}
+
+.card {
+  --tier-color: var(--tier-0);
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: var(--card-aspect);
+}
+
+/* bind each tier to its accent color so glow/VFX can read one variable */
+.card.tier-0 { --tier-color: var(--tier-0); }
+.card.tier-1 { --tier-color: var(--tier-1); }
+.card.tier-2 { --tier-color: var(--tier-2); }
+.card.tier-3 { --tier-color: var(--tier-3); }
+.card.tier-4 { --tier-color: var(--tier-4); }
+.card.tier-5 { --tier-color: var(--tier-5); }
+.card.tier-6 { --tier-color: var(--tier-6); }
+.card.tier-7 { --tier-color: var(--tier-7); }
+.card.tier-8 { --tier-color: var(--tier-8); }
+.card.tier-9 { --tier-color: var(--tier-9); }
+
+.card__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  background: var(--bg-elev);
+}
+
+/* ---- grid tile ---------------------------------------------------------- */
+
+.card--grid {
+  cursor: pointer;
+  background: var(--bg-elev);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  /* a faint rarity ring; brighter tiers glow more */
+  outline: 1px solid color-mix(in srgb, var(--tier-color) 35%, transparent);
+  outline-offset: -1px;
+}
+
+.card--grid:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.5),
+    0 0 22px color-mix(in srgb, var(--tier-color) 55%, transparent);
+  z-index: 2;
+}
+
+/* higher tiers get a persistent ambient glow even at rest */
+.card--grid.tier-5,
+.card--grid.tier-6,
+.card--grid.tier-7,
+.card--grid.tier-8,
+.card--grid.tier-9 {
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.4),
+    0 0 16px color-mix(in srgb, var(--tier-color) 30%, transparent);
+}
+
+.card__meta {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 22px 10px 9px;
+  background: linear-gradient(to top, rgba(8, 9, 13, 0.92), transparent);
+  pointer-events: none;
+}
+
+.card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card__rarity {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tier-color);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tier-color) 60%, transparent);
+}
+
+/* ---- detail (lightbox) card -------------------------------------------- */
+
+.card--detail {
+  /* Mobile-first, but left smaller than the viewport on purpose: on hover the
+     tilt pushes the near corner outward, so the resting size needs headroom to
+     lean into without clipping or hitting the caption. */
+  --w: min(76vw, 44vh, 380px);
+  width: var(--w);
+  height: auto;
+  aspect-ratio: var(--card-aspect);
+  transform-style: preserve-3d;
+  will-change: transform;
+  /* radius scales with the card's own width so corners stay proportional from
+     phone up to the 380px desktop cap (~21px) */
+  border-radius: calc(var(--w) * 0.055);
+  overflow: visible; /* preserve-3d needs it — overflow:hidden would flatten the flip */
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6);
+}
+
+/* flat front face — holds art + holo so mix-blend works against the art */
+.card__face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  backface-visibility: hidden;
+  transform-style: flat;
+}
+
+.card__face .card__art {
+  border-radius: inherit;
+}
+
+/* card back — user-supplied artwork (assets/card-back.jpg), shown when the card
+   is turned to its back (the front face hides via backface-visibility). The card
+   rounds + clips the corners, so the image can be full-bleed with square edges.
+   Path is relative to this file (src/). */
+.card__back {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backface-visibility: hidden;
+  overflow: hidden;
+  background: #1f3a8a url("../assets/card-back.jpg") center / cover no-repeat;
+}
+
+/* ---- glare (detail) ----------------------------------------------------- */
+
+.card__glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0.08) 38%,
+    transparent 60%
+  );
+  mix-blend-mode: overlay;
+  opacity: calc(0.25 + var(--hyp, 0) * 0.55);
+}
+
+/* a tight specular hotspot that tracks the pointer */
+.card__sparkle {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.9),
+    transparent 14%
+  );
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--hyp, 0) * 0.5);
+}
+
+/* ======================================================================== *
+ *  HOLO / FOIL VFX — one definition per tier, keyed on data-vfx.
+ *  Gated behind body.holo-on so the Holo toggle can switch it off.
+ * ======================================================================== */
+
+.card__vfx {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background-blend-mode: color-dodge;
+  mix-blend-mode: color-dodge;
+  transition: opacity 0.2s;
+}
+
+body:not(.holo-on) .card__vfx {
+  display: none;
+}
+
+/* --- grid: a quiet static sheen so rarity reads at a glance ------------- */
+
+body.holo-on .card--grid .card__vfx {
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    color-mix(in srgb, var(--tier-color) 50%, transparent) 48%,
+    rgba(255, 255, 255, 0.55) 50%,
+    color-mix(in srgb, var(--tier-color) 50%, transparent) 52%,
+    transparent 70%
+  );
+  background-size: 250% 250%;
+  mix-blend-mode: soft-light;
+  opacity: 0;
+}
+
+/* commons/uncommons stay matte; tier 3+ gets the sheen on hover */
+body.holo-on .card--grid.tier-3:hover .card__vfx,
+body.holo-on .card--grid.tier-4:hover .card__vfx,
+body.holo-on .card--grid.tier-5:hover .card__vfx,
+body.holo-on .card--grid.tier-6:hover .card__vfx,
+body.holo-on .card--grid.tier-7:hover .card__vfx,
+body.holo-on .card--grid.tier-8:hover .card__vfx,
+body.holo-on .card--grid.tier-9:hover .card__vfx {
+  opacity: 0.85;
+  animation: sheen 0.9s ease;
+}
+
+@keyframes sheen {
+  from { background-position: 0% 0%; }
+  to { background-position: 100% 100%; }
+}
+
+/* --- detail: interactive foil driven by --posx/--posy/--hyp ------------- */
+
+/* base foil layer shared by all holo tiers in the lightbox */
+body.holo-on .card--detail .card__vfx {
+  opacity: calc(var(--hyp, 0) * 0.9);
+}
+
+/* tiers 0–1 are non-foil: nothing to show in detail either */
+body.holo-on .card--detail .card__vfx[data-vfx="common"],
+body.holo-on .card--detail .card__vfx[data-vfx="uncommon"] {
+  background: none;
+  opacity: 0;
+}
+
+/* tier 2 rare — subtle silver shimmer */
+body.holo-on .card--detail .card__vfx[data-vfx="rare"] {
+  background: linear-gradient(
+    115deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  background-size: 200% 200%;
+  background-position: var(--posx, 50%) var(--posy, 50%);
+  opacity: calc(var(--hyp, 0) * 0.5);
+}
+
+/* tiers 3–4 holo / double — single-hue cosmos holo in the tier color */
+body.holo-on .card--detail .card__vfx[data-vfx="holo"],
+body.holo-on .card--detail .card__vfx[data-vfx="double"] {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      transparent 0,
+      color-mix(in srgb, var(--tier-color) 70%, transparent) 6%,
+      rgba(255, 255, 255, 0.6) 9%,
+      transparent 14%
+    );
+  background-size: 220% 220%;
+  background-position: var(--posx, 50%) var(--posy, 50%);
+}
+
+/* tiers 5–7 ultra / illustration / special — rainbow linear foil */
+body.holo-on .card--detail .card__vfx[data-vfx="ultra"],
+body.holo-on .card--detail .card__vfx[data-vfx="illustration"],
+body.holo-on .card--detail .card__vfx[data-vfx="special"] {
+  background:
+    repeating-linear-gradient(
+      110deg,
+      #ff5d8f 0%,
+      #ffd24a 12%,
+      #5fcf8e 24%,
+      #3fd6c8 36%,
+      #6ea8fe 48%,
+      #b072e6 60%,
+      #ff5d8f 72%
+    );
+  background-size: 300% 300%;
+  background-position: var(--posx, 50%) var(--posy, 50%);
+  opacity: calc(0.35 + var(--hyp, 0) * 0.6);
+}
+
+/* tiers 8–9 secret / hyper — denser cross-hatched rainbow + scanlines */
+body.holo-on .card--detail .card__vfx[data-vfx="secret"],
+body.holo-on .card--detail .card__vfx[data-vfx="hyper"] {
+  background:
+    repeating-linear-gradient(
+      110deg,
+      #ff5d8f 0%,
+      #ffd24a 9%,
+      #5fcf8e 18%,
+      #3fd6c8 27%,
+      #6ea8fe 36%,
+      #b072e6 45%,
+      #ff5d8f 54%
+    ),
+    repeating-linear-gradient(
+      -70deg,
+      rgba(255, 255, 255, 0.18) 0 2px,
+      transparent 2px 5px
+    );
+  background-size: 280% 280%, 100% 100%;
+  background-position: var(--posx, 50%) var(--posy, 50%), 0 0;
+  background-blend-mode: color-dodge, overlay;
+  opacity: calc(0.45 + var(--hyp, 0) * 0.55);
+}

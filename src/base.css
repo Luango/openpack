@@ -1,0 +1,422 @@
+/* base.css — design tokens, layout, and the toolbar/chips/toggles chrome.
+ *
+ * Tier accent colors (--tier-0 … --tier-9) are the single source of truth for
+ * rarity color: the filter chips, gallery glows, and card VFX all read them.
+ * The tier ladder is defined in rarity.js; the colors below line up with it. */
+
+:root {
+  /* surfaces */
+  --bg: #0b0d12;
+  --bg-elev: #141821;
+  --bg-elev-2: #1c212c;
+  --line: #2a313f;
+  --line-soft: #20262f;
+
+  /* text */
+  --text: #eef1f6;
+  --text-dim: #9aa3b2;
+  --text-faint: #5e6675;
+
+  /* brand */
+  --accent: #6ea8fe;
+  --accent-strong: #9b8cff;
+
+  /* tier accents — low → high rarity */
+  --tier-0: #aab3c2; /* common      */
+  --tier-1: #5fcf8e; /* uncommon    */
+  --tier-2: #57a6ee; /* rare        */
+  --tier-3: #3fd6c8; /* holo        */
+  --tier-4: #f2c84b; /* double rare */
+  --tier-5: #b072e6; /* ultra rare  */
+  --tier-6: #f59247; /* illustration*/
+  --tier-7: #ef5e92; /* special     */
+  --tier-8: #ff6fd8; /* secret      */
+  --tier-9: #ffd24a; /* hyper       */
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --gap: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background:
+    radial-gradient(1100px 700px at 75% -10%, rgba(110, 168, 254, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 10% 0%, rgba(155, 140, 255, 0.1), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font: 15px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- header ------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  padding: 22px clamp(16px, 4vw, 40px) 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: conic-gradient(
+    from 210deg,
+    #ff6fd8,
+    #ffd24a,
+    #3fd6c8,
+    #6ea8fe,
+    #b072e6,
+    #ff6fd8
+  );
+  box-shadow: 0 0 18px rgba(155, 140, 255, 0.55);
+}
+
+.brand-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.set-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-label {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.select {
+  appearance: none;
+  background: var(--bg-elev) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239aa3b2' d='M1 1l5 5 5-5'/%3E%3C/svg%3E")
+    no-repeat right 12px center;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 9px 34px 9px 12px;
+  font-size: 14px;
+  max-width: 280px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.select:hover {
+  border-color: var(--accent);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.25);
+}
+
+.card-count {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- toolbar ------------------------------------------------------------ */
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px clamp(16px, 4vw, 40px);
+  background: rgba(11, 13, 18, 0.72);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+/* mode switch — segmented control */
+.switch {
+  display: inline-flex;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.switch-opt {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.switch-opt:hover {
+  color: var(--text);
+}
+
+.switch-opt.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #0b0d12;
+}
+
+/* display-option toggles */
+.view-options {
+  display: flex;
+  gap: 10px;
+}
+
+.toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px 6px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.toggle.on {
+  color: var(--text);
+}
+
+.toggle-track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.18s;
+  flex: none;
+}
+
+.toggle.on .toggle-track {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s;
+}
+
+.toggle.on .toggle-thumb {
+  transform: translateX(14px);
+}
+
+/* rarity chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.chip:hover {
+  color: var(--text);
+}
+
+.chip.active {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-elev-2);
+  border-color: var(--line);
+}
+
+.chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.chip-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.active .chip-count {
+  color: var(--text-dim);
+}
+
+/* ---- gallery grid ------------------------------------------------------- */
+
+.status-hint {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 60px 16px;
+  font-size: 15px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: clamp(12px, 1.6vw, 22px);
+  padding: clamp(16px, 3vw, 36px);
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+/* ---- toast -------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 11px 18px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  z-index: 200;
+  font-size: 14px;
+}
+
+/* ---- lightbox ----------------------------------------------------------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: rgba(6, 7, 11, 0.86);
+  backdrop-filter: blur(8px);
+  /* let touch drags drive the card tilt instead of scrolling/panning the page */
+  touch-action: none;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.lightbox-close:hover {
+  background: var(--bg-elev-2);
+  transform: scale(1.05);
+}
+
+/* Perspective sits on the card's DIRECT parent so the card foreshortens — the
+   corner under the pointer enlarges while the opposite shrinks. It must be the
+   direct parent: an element in between with the default transform-style:flat
+   flattens the rotation to an orthographic skew. Smaller = more dramatic
+   perspective; larger = flatter. */
+#lightbox-host {
+  perspective: 1200px;
+  perspective-origin: 50% 50%;
+}
+
+.lightbox-caption {
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+  max-width: 80vw;
+}
+
+.lightbox-caption .cap-rarity {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    align-items: flex-start;
+  }
+  .select {
+    max-width: 200px;
+  }
+}
