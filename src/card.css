@@ -158,6 +158,15 @@
   background: #1f3a8a url("../assets/card-back.jpg") center / cover no-repeat;
 }
 
+/* thin paper edge — flat matte color, deliberately no holo/glare/reflection
+   (positioned in z by card.js to fill the 1px gap between front and back) */
+.card__edge {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #d7d4cc;
+}
+
 /* ---- glare (detail) ----------------------------------------------------- */
 
 .card__glare {

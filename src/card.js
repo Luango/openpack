@@ -28,21 +28,30 @@ export function renderCard(card, { variant = "grid", index } = {}) {
   const art = `<img class="card__art" loading="lazy" src="${src}" alt="${escapeAttr(card.name)}" />`;
   const vfx = `<div class="card__vfx" data-vfx="${vfxFor(card)}" aria-hidden="true"></div>`;
 
-  // Detail (lightbox): a flat double-sided card — front (art + holo) and back
-  // (card back) coplanar at z=0, no thickness. backface-visibility hides
-  // whichever face is turned away. The front lives in a flat .card__face so
-  // mix-blend works. .card--detail is the preserve-3d parent (tilted/flipped
-  // by lightbox.js).
+  // Detail (lightbox): a double-sided card with a thin 1px paper edge. Front
+  // (art + holo) sits at +HALF, back (card back) at −HALF, and a few flat-colored
+  // plates fill the gap as a matte side wall — no holo/glare/reflection on it.
+  // The front lives in a flat .card__face so mix-blend works. .card--detail is
+  // the preserve-3d parent (tilted/flipped by lightbox.js).
   if (variant === "detail") {
+    const DEPTH = 1; // px of paper thickness
+    const HALF = DEPTH / 2;
+    const LAYERS = 4; // plates filling the 1px wall so it has no gaps
+    let edges = "";
+    for (let i = 0; i <= LAYERS; i++) {
+      const z = (HALF - (i / LAYERS) * DEPTH).toFixed(3); // +HALF … −HALF
+      edges += `<div class="card__edge" style="transform: translateZ(${z}px)"></div>`;
+    }
     return `
       <article ${attrs}>
-        <div class="card__face">
+        ${edges}
+        <div class="card__face" style="transform: translateZ(${HALF}px)">
           ${art}
           ${vfx}
           <div class="card__sparkle" aria-hidden="true"></div>
           <div class="card__glare" aria-hidden="true"></div>
         </div>
-        <div class="card__back" style="transform: rotateY(180deg)" aria-hidden="true"></div>
+        <div class="card__back" style="transform: rotateY(180deg) translateZ(${HALF}px)" aria-hidden="true"></div>
       </article>`;
   }
 
