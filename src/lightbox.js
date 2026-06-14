@@ -203,6 +203,8 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   overlayEl.addEventListener("pointerleave", () => {
     if (!dragging) scheduleRest(); // pointer left the overlay entirely
   });
+  // a hold drives the tilt — block the long-press "save image" context menu
+  overlayEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !overlayEl.classList.contains("hidden")) close();

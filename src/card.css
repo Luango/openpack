@@ -45,6 +45,12 @@
   object-fit: cover;
   border-radius: inherit;
   background: var(--bg-elev);
+  /* a touch-and-hold on the card drives the tilt — suppress the browser's
+     long-press image callout / drag-ghost / selection that would hijack it */
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ---- grid tile ---------------------------------------------------------- */
