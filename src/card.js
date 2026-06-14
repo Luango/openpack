@@ -34,7 +34,7 @@ export function renderCard(card, { variant = "grid", index } = {}) {
   // The front lives in a flat .card__face so mix-blend works. .card--detail is
   // the preserve-3d parent (tilted/flipped by lightbox.js).
   if (variant === "detail") {
-    const DEPTH = 4; // px of paper thickness
+    const DEPTH = 3; // px of paper thickness
     const HALF = DEPTH / 2;
     const LAYERS = 8; // plates filling the wall so it has no gaps
     let edges = "";
