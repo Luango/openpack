@@ -19,7 +19,7 @@ import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import * as sfx from "./sfx.js";
 
-const VB = { w: 300, h: 420 };
+const VB = { w: 300, h: 554 }; // aspect matches the foil pack image (≈ 286:528)
 const PACK_IMG = "assets/pack.png"; // drop a foil-pack image here to replace the rainbow temp
 const GAP_TEAR = 40; // gap width while mid-tear
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
@@ -53,8 +53,8 @@ export function createPack({ mountEl }) {
             <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#0b0d12" opacity=".30"/>
             <rect x="0" y="0" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
             <rect x="0" y="${VB.h - 22}" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
-            <text x="${VB.w / 2}" y="196" text-anchor="middle" class="pack-logo">OPENPACK</text>
-            <text x="${VB.w / 2}" y="224" text-anchor="middle" class="pack-sub">TEAR TO OPEN</text>
+            <text x="${VB.w / 2}" y="${VB.h * 0.47}" text-anchor="middle" class="pack-logo">OPENPACK</text>
+            <text x="${VB.w / 2}" y="${VB.h * 0.47 + 28}" text-anchor="middle" class="pack-sub">TEAR TO OPEN</text>
           </g>
           <!-- real pack art, swapped in by JS if assets/pack.png loads -->
           <image class="pack-img" x="0" y="0" width="${VB.w}" height="${VB.h}" preserveAspectRatio="xMidYMid slice" style="display:none"/>
