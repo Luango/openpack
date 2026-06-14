@@ -26,6 +26,10 @@ const DAMP = 0.82;
 const MAX_SCALE = 1.25;
 const SCALE_STIFF = 0.05; // slower than the tilt so the grow is deliberate
 
+// Pointer travel (px) past which a press counts as a drag, not a tap. A tap on
+// the back flips it to the front; a drag spins it.
+const TAP_SLOP = 6;
+
 // Full-size card viewer. The card opens face-up (showing the holo front); hold
 // and swipe it to spin it over and reveal the back — like turning a real card
 // in your hand. Mouse hover tilts the card ±14° (Simey-style); pressing and
@@ -40,6 +44,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   let raf = null;
   let dragging = false; // a pointer is held down on the card and driving the spin
   let lastX = null; // previous pointer X, for the horizontal-swipe delta
+  let downX = 0, downY = 0, moved = false; // tap-vs-drag for the current press
 
   // Animated quantities. `flip` is the accumulated face rotation (starts at 0°
   // so the card opens face-up showing the front, settles to a multiple of 180°);
@@ -101,6 +106,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     const clamp = (v) => Math.max(-1, Math.min(1, v));
 
     if (dragging && lastX != null) tgt.flip += (e.clientX - lastX) * (180 / r.width);
+    if (dragging && Math.hypot(e.clientX - downX, e.clientY - downY) > TAP_SLOP) moved = true;
     lastX = e.clientX;
 
     const cx = clamp((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
@@ -127,6 +133,14 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     tgt.hyp = 0;
     spring();
   }
+
+  // a tap on the back: spin springily to the nearest front-facing angle
+  function flipToFront() {
+    tgt.flip = Math.round(cur.flip / 360) * 360;
+    spring();
+  }
+  // currently showing the back? (flip is an odd multiple of 180°)
+  const showingBack = () => Math.round(cur.flip / 180) % 2 !== 0;
 
   function open(card) {
     if (!card) return;
@@ -174,8 +188,11 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
 
   closeEl.addEventListener("click", close);
   overlayEl.addEventListener("click", (e) => {
-    // a click off the card dismisses
-    if (!cardEl || !cardEl.contains(e.target)) close();
+    if (!cardEl || !cardEl.contains(e.target)) {
+      close(); // a click off the card dismisses
+    } else if (!moved && showingBack()) {
+      flipToFront(); // a tap (not a swipe) on the back flips it to the front
+    }
   });
 
   // Hold and swipe to spin the card; mouse also tilts on hover. Pointer Events
@@ -185,6 +202,9 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     if (!cardEl || !cardEl.contains(e.target)) return; // ignore backdrop presses
     dragging = true;
     lastX = e.clientX;
+    downX = e.clientX;
+    downY = e.clientY;
+    moved = false;
     tgt.scale = MAX_SCALE; // hold to grow toward the max
     overlayEl.setPointerCapture?.(e.pointerId); // keep moves coming if it strays off
     onPointerMove(e); // tilt from the contact point at once
