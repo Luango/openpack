@@ -21,8 +21,8 @@ import * as sfx from "./sfx.js";
 
 const VB = { w: 300, h: 420 };
 const GAP_TEAR = 40; // gap width while mid-tear
-const SEP_MAX = 86; // how far each piece pulls apart once split
-const ROT = 16; // degrees each piece tilts/flings as it parts — dynamic motion
+const SEP_MAX = 130; // how far the top piece flies off once split (bottom stays put)
+const ROT = 18; // degrees the top piece tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
@@ -96,7 +96,10 @@ export function createPack({ mountEl }) {
   let opened = false;
   let dirA = { x: 1, y: 0 };
   let dirB = { x: -1, y: 0 };
-  let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the pieces tilt around
+  let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the top piece tilts around
+  let moverEl = null; // the TOP piece (flies off); the bottom piece stays put
+  let stayEl = null;
+  let moverDir = { x: 0, y: -1 };
   let lastClient = null;
   let lastT = 0;
   let peakSpeed = 0;
@@ -108,10 +111,11 @@ export function createPack({ mountEl }) {
     damping: 0.7,
     onTick: (c) => {
       if (split) {
+        // only the top piece moves — it tilts/flings as it tears away; the
+        // bottom piece is left untransformed (anchored in place)
         const d = c.sep * SEP_MAX;
-        const a = c.sep * ROT; // each piece tilts/flings as it pulls away — dynamic, not a flat slide
-        pieceA.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(dirA.x * d).toFixed(2)} ${(dirA.y * d).toFixed(2)})`);
-        pieceB.setAttribute("transform", `rotate(${(-a).toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(dirB.x * d).toFixed(2)} ${(dirB.y * d).toFixed(2)})`);
+        const a = c.sep * ROT;
+        moverEl?.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
       } else if (tearPath) {
         const poly = ribbon(tearPath, c.w);
         const pts = poly ? poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") : "";
@@ -164,6 +168,13 @@ export function createPack({ mountEl }) {
     const side = cA.x * nrm.x + cA.y * nrm.y >= 0 ? 1 : -1;
     dirA = { x: nrm.x * side, y: nrm.y * side };
     dirB = { x: -dirA.x, y: -dirA.y };
+
+    // the higher piece is the "top" that tears off; the lower one stays put
+    const aIsTop = centroid(A).y < centroid(B).y;
+    moverEl = aIsTop ? pieceA : pieceB;
+    stayEl = aIsTop ? pieceB : pieceA;
+    moverDir = aIsTop ? dirA : dirB;
+    stayEl.removeAttribute("transform");
 
     split = true;
     sealed.style.display = "none";
