@@ -125,12 +125,14 @@ export function createPack({ mountEl }) {
     },
   });
 
+  // pointer → pack coords, clamped onto the pack rect so a tear can START just
+  // outside the edge and still anchor cleanly where it crosses in
   function toSvg(e) {
     const p = svg.createSVGPoint();
     p.x = e.clientX;
     p.y = e.clientY;
     const q = p.matrixTransform(svg.getScreenCTM().inverse());
-    return { x: q.x, y: q.y };
+    return { x: Math.max(0, Math.min(VB.w, q.x)), y: Math.max(0, Math.min(VB.h, q.y)) };
   }
 
   // While tearing: build the open gap path (anchor edge → finger), pinched at tip.
@@ -194,7 +196,7 @@ export function createPack({ mountEl }) {
     lastClient = { x: e.clientX, y: e.clientY };
     lastT = performance.now();
     peakSpeed = 0;
-    svg.setPointerCapture?.(e.pointerId);
+    mountEl.setPointerCapture?.(e.pointerId);
   }
 
   function onMove(e) {
@@ -287,11 +289,13 @@ export function createPack({ mountEl }) {
     tearEdge.setAttribute("points", "");
   }
 
-  svg.addEventListener("pointerdown", onDown);
-  svg.addEventListener("pointermove", onMove);
-  svg.addEventListener("pointerup", onUp);
-  svg.addEventListener("pointercancel", onUp);
-  svg.addEventListener("contextmenu", (e) => e.preventDefault());
+  // listen on the whole stage (not just the pack) so a tear can start from
+  // outside the pack edge and drag across
+  mountEl.addEventListener("pointerdown", onDown);
+  mountEl.addEventListener("pointermove", onMove);
+  mountEl.addEventListener("pointerup", onUp);
+  mountEl.addEventListener("pointercancel", onUp);
+  mountEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
   return { reset };
 }
