@@ -107,6 +107,12 @@ function noiseBuffer(c, seconds = 2) {
   return buf; // long buffer so the loop point is inaudible
 }
 
+// start the tear sound only if one isn't already playing (the peel calls this
+// every pointer-move, so it must not restart mid-tear)
+export function tearStartIfIdle() {
+  if (!tear) tearStart();
+}
+
 export function tearStart() {
   let c;
   try {
