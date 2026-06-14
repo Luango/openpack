@@ -107,6 +107,39 @@ function noiseBuffer(c, seconds = 2) {
   return buf; // long buffer so the loop point is inaudible
 }
 
+// A light, bright foil-surface scratch — played when you drag across the middle
+// of the pack instead of tearing from an edge. Quiet and brief; throttled.
+export function scratch(intensity = 0.4) {
+  const now = performance.now();
+  if (now - last < 38) return;
+  last = now;
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  if (c.state !== "running") return;
+  const i = Math.max(0, Math.min(1, intensity));
+  const t = c.currentTime;
+  const dur = 0.05;
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let n = 0; n < d.length; n++) d[n] = (Math.random() * 2 - 1) * (1 - n / d.length);
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 2600; // bright surface scrape, not a tear
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.012 + i * 0.045, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(hp).connect(gain).connect(c.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
 // start the tear sound only if one isn't already playing (the peel calls this
 // every pointer-move, so it must not restart mid-tear)
 export function tearStartIfIdle() {

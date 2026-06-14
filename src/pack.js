@@ -25,6 +25,7 @@ const SEP_MAX = 130; // how far the smaller half flies off once split (the body 
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
 const START_MARGIN = 46; // a press must begin within this margin of the pack to start a tear
+const EDGE_BAND = 60; // …and within this band of an edge to TEAR; deeper inside only scratches
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
@@ -100,6 +101,7 @@ export function createPack({ mountEl }) {
   let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the flying half tilts around
   let moverEl = null; // the SMALLER half (flies off); the larger body stays put
   let stayEl = null;
+  let scratchOnly = false; // started in the middle (not near an edge) → just scuff the foil
   let moverDir = { x: 0, y: -1 };
   let lastClient = null;
   let lastT = 0;
@@ -193,6 +195,16 @@ export function createPack({ mountEl }) {
     const r = svg.getBoundingClientRect();
     const M = START_MARGIN;
     if (e.clientX < r.left - M || e.clientX > r.right + M || e.clientY < r.top - M || e.clientY > r.bottom + M) return;
+
+    // a tear must START at/near an edge; pressing in the middle of the pack only
+    // scuffs the foil (the unclamped pack-space point tells us how deep inside it is)
+    const q = svg.createSVGPoint();
+    q.x = e.clientX;
+    q.y = e.clientY;
+    const s = q.matrixTransform(svg.getScreenCTM().inverse());
+    const inside = s.x >= 0 && s.x <= VB.w && s.y >= 0 && s.y <= VB.h;
+    scratchOnly = inside && Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
+
     dragging = true;
     tearing = false;
     crossed = false;
@@ -206,6 +218,19 @@ export function createPack({ mountEl }) {
 
   function onMove(e) {
     if (!dragging) return;
+
+    // started in the middle → just scuff the foil (scratch sfx + a little dust), no tear
+    if (scratchOnly) {
+      const now = performance.now();
+      const speed = Math.hypot(e.clientX - lastClient.x, e.clientY - lastClient.y) / Math.max(1, now - lastT);
+      lastClient = { x: e.clientX, y: e.clientY };
+      lastT = now;
+      const inten = Math.min(1, speed / 2.5);
+      sfx.scratch(inten);
+      if (inten > 0.4) particles.emit(e.clientX, e.clientY, { count: 1, speed: 1 + inten * 2, colors: FOIL, life: 22, size: 1.5 });
+      return;
+    }
+
     const p = toSvg(e);
     if (dist(p, path[path.length - 1]) < 3) return;
     path.push(p);
@@ -245,6 +270,10 @@ export function createPack({ mountEl }) {
   function onUp() {
     if (!dragging) return;
     dragging = false;
+    if (scratchOnly) {
+      scratchOnly = false; // just a scuff — nothing to open
+      return;
+    }
     if (split) {
       opened = true;
       spring.set({ sep: 1 }); // pieces pull fully apart
