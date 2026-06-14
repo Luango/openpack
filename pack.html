@@ -3,74 +3,88 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>OpenPack · peel prototype</title>
+    <title>OpenPack · slash prototype</title>
     <style>
       :root {
         color-scheme: dark;
-        --foil: linear-gradient(135deg, #ff5d8f, #ffd24a 22%, #5fcf8e 45%, #3fd6c8 64%, #6ea8fe 82%, #b072e6);
       }
       html, body {
-        margin: 0; height: 100%;
-        background: radial-gradient(900px 600px at 50% -10%, rgba(155,140,255,.12), transparent 60%), #0b0d12;
+        margin: 0;
+        height: 100%;
+        background:
+          radial-gradient(900px 600px at 50% -10%, rgba(155, 140, 255, 0.12), transparent 60%),
+          #0b0d12;
         overflow: hidden;
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         color: #eef1f6;
       }
+
       #pack-stage {
-        position: fixed; inset: 0;
-        display: flex; align-items: center; justify-content: center;
-        perspective: 1100px;          /* gives the flap's 3D curl real foreshortening */
-        touch-action: none;
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        touch-action: none; /* the slash drives the tear, never scrolls */
       }
-      .pack3d {
-        position: relative;
-        width: min(72vw, 50vh, 340px);
-        aspect-ratio: 63 / 88;
-        transform-style: preserve-3d;
-        cursor: grab;
-        user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-        filter: drop-shadow(0 28px 56px rgba(0,0,0,.6));
+
+      .pack {
+        width: min(64vw, 46vh, 320px);
+        height: auto;
+        overflow: visible;
+        cursor: crosshair;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.6));
+        animation: float 5s ease-in-out infinite;
       }
-      .pk-interior {
-        position: absolute; inset: 0; border-radius: 16px;
-        background: #05070b;
+
+      @keyframes float {
+        0%, 100% { transform: translateY(-6px) rotate(-0.4deg); }
+        50% { transform: translateY(6px) rotate(0.4deg); }
       }
-      .pk-body, .pk-seg {
-        position: absolute; left: 0; width: 100%;
-        background-image: var(--foil);
-        background-repeat: no-repeat;
+
+      .pack-fx {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* never block the slash */
       }
-      .pk-body { border-radius: 0 0 16px 16px; }
-      .pk-label {
-        position: absolute; left: 0; width: 100%; text-align: center;
-        font-weight: 800; font-style: italic; color: #fff; pointer-events: none;
-        text-shadow: 0 2px 0 rgba(11,13,18,.35);
+
+      .pack-logo {
+        font-size: 30px;
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: 0.5px;
+        fill: #fff;
+        paint-order: stroke;
+        stroke: rgba(11, 13, 18, 0.35);
+        stroke-width: 3px;
       }
-      .pk-logo { font-size: 30px; letter-spacing: .5px; }
-      .pk-sub { font-size: 12px; font-weight: 700; letter-spacing: .28em; opacity: .85; margin-top: 4px; }
-      /* the curl chain: each segment rotates by --a about its bottom edge; nesting
-         makes the rotation cumulative, so the flap rolls up like peeling paper */
-      .pk-flap { position: absolute; left: 0; top: 0; width: 100%; transform-style: preserve-3d; }
-      .pk-seg {
-        transform-origin: center bottom;
-        transform: rotateX(var(--a, 0deg));
-        transform-style: preserve-3d;
-        backface-visibility: hidden;
+      .pack-sub {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.28em;
+        fill: rgba(255, 255, 255, 0.82);
       }
-      .pk-seg::after { /* matte paper back, seen as it curls over */
-        content: ""; position: absolute; inset: 0;
-        background: #d7d4cc; transform: rotateX(180deg); backface-visibility: hidden;
-      }
-      .pack-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
       .hint {
-        position: fixed; left: 0; right: 0; bottom: 26px; text-align: center;
-        font-size: 13px; color: #9aa3b2; pointer-events: none;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 26px;
+        text-align: center;
+        font-size: 13px;
+        color: #9aa3b2;
+        pointer-events: none;
       }
     </style>
   </head>
   <body>
     <div id="pack-stage"></div>
-    <p class="hint">Drag across the top of the pack to tear it — the lid peels and curls back.</p>
+    <p class="hint">Drag a line across the pack to tear it open — it rips along your path.</p>
 
     <script type="module">
       import { createPack } from "./src/pack.js";
