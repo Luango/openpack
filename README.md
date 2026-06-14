@@ -78,6 +78,7 @@ foil is chosen by tier — all from one mapping in
 ```
 .
 ├── index.html        host page — the DOM contract every module queries
+├── pack.html         OpenPack tear-to-open prototype (work in progress)
 ├── serve.py          no-cache static server
 └── src/
     ├── main.js       boot: load sets → load a set → wire gallery/filters/lightbox
@@ -87,8 +88,11 @@ foil is chosen by tier — all from one mapping in
     ├── gallery.js    owns the grid: render + rarity show/hide (delegated events)
     ├── filters.js    rarity chips + All/Only mode; persists intent across sets
     ├── lightbox.js   flip viewer: spring-driven tilt, glare, swipe-to-flip, full-res upgrade
+    ├── pack.js       OpenPack: SVG pack that tears open along a finger-drawn path
+    ├── motion.js     shared spring engine (rAF integrator) behind lightbox + pack
+    ├── particles.js  tiny canvas particle system — foil flecks + sparks
     ├── options.js    display toggles (e.g. Holo) → body class + localStorage
-    ├── sfx.js        Web Audio hover tick
+    ├── sfx.js        Web Audio: hover tick, foil scratch, sustained tear
     ├── util.js       escapeHtml / escapeAttr / delegated events
     ├── base.css      design tokens, layout, toolbar/chips/toggles chrome
     └── card.css      the Card component: grid tiles, detail card, holo VFX
@@ -106,10 +110,19 @@ foil is chosen by tier — all from one mapping in
   parent, or an `transform-style: flat` element in between flattens it to an
   orthographic skew. Flip is just an accumulated `rotateY`; `backface-visibility`
   hides whichever face is turned away.
-- **Spring, not transition.** The lightbox tilt/flip is rAF-driven with stiffness /
-  damping constants, so it follows the pointer with momentum and eases back to
-  rest — see the top of [`lightbox.js`](src/lightbox.js). Tuned to match the feel
-  of [Simey's poke-holo](https://poke-holo.simey.me/).
+- **Spring, not transition.** Gesture motion is rAF-driven by a shared engine in
+  [`motion.js`](src/motion.js) — a velocity integrator with stiffness / damping
+  constants, so it follows the pointer with momentum and eases back to rest. The
+  lightbox (tilt/flip/scale) and the pack (tear fling + recombine) both drive
+  their motion through it, so the feel stays consistent. The lightbox tuning is
+  matched to [Simey's poke-holo](https://poke-holo.simey.me/).
+- **One pack, shared parts.** The OpenPack prototype ([`pack.js`](src/pack.js),
+  hosted by [`pack.html`](pack.html)) is an SVG pack you tear open by dragging a
+  path across it: the rip propagates along your finger, splits into two
+  complementary pieces, and the smaller one flies off while the body stays. It
+  reuses the same `motion.js` spring, [`particles.js`](src/particles.js) flecks,
+  and [`sfx.js`](src/sfx.js) sounds as the gallery — and will reveal the cards
+  via the same [`card.js`](src/card.js) component.
 - **Extensible toggles.** Adding a display option is one entry in
   [`options.js`](src/options.js) + a matching `body.<class>` CSS rule. Nothing
   else to wire.

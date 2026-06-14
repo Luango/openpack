@@ -71,5 +71,5 @@ export function createParticles(canvas) {
 
   resize();
   window.addEventListener("resize", resize);
-  return { emit, resize };
+  return { emit };
 }

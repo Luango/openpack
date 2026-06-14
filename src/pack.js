@@ -114,13 +114,11 @@ export function createPack({ mountEl }) {
   let crossed = false;
   let split = false; // promoted to two pieces?
   let opened = false;
-  let dirA = { x: 1, y: 0 };
-  let dirB = { x: -1, y: 0 };
   let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the flying half tilts around
   let moverEl = null; // the SMALLER half (flies off); the larger body stays put
   let stayEl = null;
+  let moverDir = { x: 0, y: -1 }; // direction the flying half tears away in
   let scratchOnly = false; // started in the middle (not near an edge) → just scuff the foil
-  let moverDir = { x: 0, y: -1 };
   let lastClient = null;
   let lastT = 0;
   let peakSpeed = 0;
@@ -189,8 +187,8 @@ export function createPack({ mountEl }) {
     const nrm = { x: -chord.y, y: chord.x };
     const cA = sub(centroid(A), mid);
     const side = cA.x * nrm.x + cA.y * nrm.y >= 0 ? 1 : -1;
-    dirA = { x: nrm.x * side, y: nrm.y * side };
-    dirB = { x: -dirA.x, y: -dirA.y };
+    const dirA = { x: nrm.x * side, y: nrm.y * side };
+    const dirB = { x: -dirA.x, y: -dirA.y };
 
     // the SMALLER half tears off (the body keeps the cards); whichever side that
     // is, the opening — and the cards — come from there
