@@ -391,12 +391,12 @@ body {
 }
 
 /* Perspective sits on the card's DIRECT parent so the card foreshortens — the
-   corner under the pointer enlarges while the opposite shrinks. It must be the
-   direct parent: an element in between with the default transform-style:flat
-   flattens the rotation to an orthographic skew. Smaller = more dramatic
-   perspective; larger = flatter. */
+   corner under the pointer balloons toward you while the opposite shrinks. It
+   must be the direct parent: an element in between with the default transform-
+   style:flat flattens the rotation to an orthographic skew. Smaller = more
+   dramatic 3D pop (and more keystone); larger = flatter. */
 #lightbox-host {
-  perspective: 1200px;
+  perspective: 800px;
   perspective-origin: 50% 50%;
 }
 
