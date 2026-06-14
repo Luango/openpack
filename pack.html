@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>OpenPack · slash prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background:
+          radial-gradient(900px 600px at 50% -10%, rgba(155, 140, 255, 0.12), transparent 60%),
+          #0b0d12;
+        overflow: hidden;
+        font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #eef1f6;
+      }
+
+      #pack-stage {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        touch-action: none; /* the slash drives the tear, never scrolls */
+      }
+
+      .pack {
+        width: min(64vw, 46vh, 320px);
+        height: auto;
+        overflow: visible;
+        cursor: crosshair;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.6));
+        animation: float 5s ease-in-out infinite;
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translateY(-6px) rotate(-0.4deg); }
+        50% { transform: translateY(6px) rotate(0.4deg); }
+      }
+
+      .pack-fx {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* never block the slash */
+      }
+
+      .pack-logo {
+        font-size: 30px;
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: 0.5px;
+        fill: #fff;
+        paint-order: stroke;
+        stroke: rgba(11, 13, 18, 0.35);
+        stroke-width: 3px;
+      }
+      .pack-sub {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.28em;
+        fill: rgba(255, 255, 255, 0.82);
+      }
+
+      .hint {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 26px;
+        text-align: center;
+        font-size: 13px;
+        color: #9aa3b2;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pack-stage"></div>
+    <p class="hint">Slash across the pack to rip it — flick fast, or it just creases.</p>
+
+    <script type="module">
+      import { createPack } from "./src/pack.js";
+      createPack({ mountEl: document.getElementById("pack-stage") });
+    </script>
+  </body>
+</html>
