@@ -20,6 +20,12 @@ const FOIL_HALF_Y = 17; // → 33…67%
 const STIFF = 0.12;
 const DAMP = 0.82;
 
+// Press and hold to grow the card for a closer read: holding springs the scale
+// up to MAX_SCALE on its own slower rate, so it grows gradually the longer you
+// hold and then caps; it eases back to 1 on release.
+const MAX_SCALE = 1.25;
+const SCALE_STIFF = 0.05; // slower than the tilt so the grow is deliberate
+
 // Full-size card viewer. The card opens face-up (showing the holo front); hold
 // and swipe it to spin it over and reveal the back — like turning a real card
 // in your hand. Mouse hover tilts the card ±14° (Simey-style); pressing and
@@ -39,7 +45,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   // so the card opens face-up showing the front, settles to a multiple of 180°);
   // `rx` and `ty` are the small ±14° pointer-tilt added on top; the rest drive
   // the glare focus, foil shift, and holo intensity.
-  const REST = { rx: 0, flip: 0, ty: 0, mx: 50, my: 50, posx: 50, posy: 50, hyp: 0 };
+  const REST = { rx: 0, flip: 0, ty: 0, scale: 1, mx: 50, my: 50, posx: 50, posy: 50, hyp: 0 };
   const zeroVel = () => Object.fromEntries(Object.keys(REST).map((k) => [k, 0]));
   let cur = { ...REST };
   let vel = zeroVel();
@@ -50,7 +56,8 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     // No perspective() here — #lightbox-host provides it (see base.css). The
     // small tilt (ty) rides on top of the accumulated flip rotation.
     cardEl.style.transform =
-      `rotateX(${cur.rx.toFixed(2)}deg) rotateY(${(cur.flip + cur.ty).toFixed(2)}deg)`;
+      `rotateX(${cur.rx.toFixed(2)}deg) rotateY(${(cur.flip + cur.ty).toFixed(2)}deg) ` +
+      `scale3d(${cur.scale.toFixed(3)}, ${cur.scale.toFixed(3)}, 1)`;
     cardEl.style.setProperty("--mx", cur.mx.toFixed(1) + "%");
     cardEl.style.setProperty("--my", cur.my.toFixed(1) + "%");
     cardEl.style.setProperty("--posx", cur.posx.toFixed(1) + "%");
@@ -61,7 +68,8 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   function step() {
     let moving = false;
     for (const k in tgt) {
-      vel[k] = (vel[k] + (tgt[k] - cur[k]) * STIFF) * DAMP;
+      const stiff = k === "scale" ? SCALE_STIFF : STIFF; // scale grows on its own slower rate
+      vel[k] = (vel[k] + (tgt[k] - cur[k]) * stiff) * DAMP;
       cur[k] += vel[k];
       if (Math.abs(vel[k]) > 0.02 || Math.abs(tgt[k] - cur[k]) > 0.02) moving = true;
     }
@@ -114,6 +122,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     tgt.flip = Math.round(tgt.flip / 180) * 180;
     tgt.rx = 0;
     tgt.ty = 0;
+    tgt.scale = 1; // shrink back to resting size
     tgt.mx = tgt.my = tgt.posx = tgt.posy = 50;
     tgt.hyp = 0;
     spring();
@@ -176,6 +185,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     if (!cardEl || !cardEl.contains(e.target)) return; // ignore backdrop presses
     dragging = true;
     lastX = e.clientX;
+    tgt.scale = MAX_SCALE; // hold to grow toward the max
     overlayEl.setPointerCapture?.(e.pointerId); // keep moves coming if it strays off
     onPointerMove(e); // tilt from the contact point at once
   });

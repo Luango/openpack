@@ -114,10 +114,11 @@
 /* ---- detail (lightbox) card -------------------------------------------- */
 
 .card--detail {
-  /* Mobile-first, but left smaller than the viewport on purpose: on hover the
-     tilt pushes the near corner outward, so the resting size needs headroom to
-     lean into without clipping or hitting the caption. */
-  --w: min(76vw, 44vh, 380px);
+  /* Mobile-first, and kept well under the viewport on purpose: press-and-hold
+     grows the card (and the strong perspective balloons its near corner), so the
+     resting size needs room to grow into without clipping or hitting the
+     caption. Smaller resting also makes the hold-to-grow read as more dramatic. */
+  --w: min(64vw, 42vh, 350px);
   width: var(--w);
   height: auto;
   aspect-ratio: var(--card-aspect);
