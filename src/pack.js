@@ -44,8 +44,7 @@ export function createPack({ mountEl }) {
         <clipPath id="clipB"><polygon points=""/></clipPath>
       </defs>
 
-      <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#04060a"/>
-      <rect x="40" y="34" width="${VB.w - 80}" height="${VB.h - 68}" rx="8" fill="#0f1420"/>
+      <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
 
       <g class="half half-a">
         <use href="#art" clip-path="url(#clipA)"/>
@@ -153,7 +152,7 @@ export function createPack({ mountEl }) {
 
     if (!locked && pathLen(path) > LOCK_DIST) {
       lockCut();
-      sfx.rip(0.18); // soft crinkle as the tear begins
+      sfx.tearStart(); // begin the continuous tearing sound
     }
 
     const now = performance.now();
@@ -166,6 +165,7 @@ export function createPack({ mountEl }) {
     if (locked) spring.set({ sep: Math.min(0.85, pathLen(path) / span) }); // pull apart as you slash
 
     const inten = Math.min(1, speed / 2.5);
+    if (locked) sfx.tearMove(inten); // crackle louder the faster you pull
     particles.emit(e.clientX, e.clientY, { count: 1 + Math.round(inten * 4), speed: 2 + inten * 5, colors: FOIL, life: 36 });
     if (navigator.vibrate && inten > 0.5) navigator.vibrate(4);
   }
@@ -176,13 +176,14 @@ export function createPack({ mountEl }) {
     if (locked && (pathLen(path) > MIN_TEAR || peakSpeed > SPEED_COMMIT)) {
       opened = true;
       spring.set({ sep: 1 }); // halves fly fully apart
-      sfx.rip(Math.min(1, 0.6 + peakSpeed / 4));
+      sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4)); // the snap
       if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
       burstAlongCut();
     } else {
-      spring.set({ sep: 0 }); // not enough — halves rejoin
+      sfx.tearEnd(false);
+      spring.set({ sep: 0 }); // not enough — the two halves slide back into one piece
       setTimeout(() => {
-        if (!dragging && !opened) reset();
+        if (!dragging && !opened) clearTear();
       }, 420);
     }
   }
@@ -198,14 +199,24 @@ export function createPack({ mountEl }) {
     }
   }
 
+  // Tap an opened pack: slide the two halves back together — they fit exactly
+  // back into one piece (same shared cut) — then clear to a fresh sealed pack.
   function reset() {
     opened = false;
+    if (locked) spring.set({ sep: 0 });
+    setTimeout(clearTear, 380);
+  }
+
+  function clearTear() {
     locked = false;
     path = [];
     spring.reset();
     halfA.removeAttribute("transform");
     halfB.removeAttribute("transform");
-    setPoints(clipPolyA, RECT.split(" ").map((s) => ({ x: +s.split(",")[0], y: +s.split(",")[1] })));
+    setPoints(
+      clipPolyA,
+      RECT.split(" ").map((s) => ({ x: +s.split(",")[0], y: +s.split(",")[1] }))
+    );
     clipPolyB.setAttribute("points", "");
     edgeA.setAttribute("points", "");
     edgeB.setAttribute("points", "");

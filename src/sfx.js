@@ -93,3 +93,77 @@ export function rip(intensity = 1) {
   src.start(t);
   src.stop(t + dur);
 }
+
+// A SUSTAINED tearing sound for the slash: a looped bright noise crackle whose
+// loudness + brightness track the pull speed, so you hear a continuous foil rip
+// the whole time you're slashing. tearStart() on the first cut, tearMove() each
+// move, tearEnd() on release (with a snap if it committed).
+let tear = null;
+
+function noiseBuffer(c, seconds = 2) {
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * seconds), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return buf; // long buffer so the loop point is inaudible
+}
+
+export function tearStart() {
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  stopTear();
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c);
+  src.loop = true;
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 1500; // foil = bright, no low rumble
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 4000;
+  bp.Q.value = 0.9;
+  const gain = c.createGain();
+  gain.gain.value = 0.0001;
+  src.connect(hp).connect(bp).connect(gain).connect(c.destination);
+  src.start();
+  tear = { c, src, gain, bp };
+}
+
+export function tearMove(intensity = 0.5) {
+  if (!tear) return;
+  const i = Math.max(0, Math.min(1, intensity));
+  const t = tear.c.currentTime;
+  tear.gain.gain.setTargetAtTime(0.03 + i * 0.22, t, 0.03); // smooth crackle, no stutter
+  tear.bp.frequency.setTargetAtTime(3200 + i * 3600, t, 0.05);
+}
+
+export function tearEnd(commit = false, intensity = 0.6) {
+  if (!tear) return;
+  const { c, src, gain } = tear;
+  const t = c.currentTime;
+  gain.gain.cancelScheduledValues(t);
+  gain.gain.setValueAtTime(Math.max(0.0002, gain.gain.value), t);
+  if (commit) {
+    const i = Math.max(0, Math.min(1, intensity));
+    gain.gain.linearRampToValueAtTime(0.2 + i * 0.3, t + 0.02); // the snap
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    src.stop(t + 0.32);
+  } else {
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    src.stop(t + 0.14);
+  }
+  tear = null;
+}
+
+function stopTear() {
+  if (!tear) return;
+  try {
+    tear.src.stop();
+  } catch {
+    /* already stopped */
+  }
+  tear = null;
+}
