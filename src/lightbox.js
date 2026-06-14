@@ -1,5 +1,6 @@
 import { renderCard } from "./card.js";
 import { escapeHtml } from "./util.js";
+import { createSpring } from "./motion.js";
 
 // Tuned to match the feel of Simey's poke-holo (poke-holo.simey.me):
 //   ±14° symmetric pointer-tilt, a loose/elastic spring, and a holo foil whose
@@ -8,92 +9,68 @@ import { escapeHtml } from "./util.js";
 const MAX_TILT = 14; // Simey divides the centered pointer by 3.5 → ~±14.3°, symmetric
 
 // Glare tracks the pointer across the full face; the foil shifts within a much
-// narrower band (Simey maps 0–100% → 37–63% / 33–67%) — that mismatch is what
-// reads as depth. These are the half-ranges (±) about the 50% center.
+// narrower band (Simey maps 0–100% → 37–63% / 33–67%) — that mismatch reads as
+// depth. These are the half-ranges (±) about the 50% center.
 const FOIL_HALF_X = 13; // → 37…63%
 const FOIL_HALF_Y = 17; // → 33…67%
 
-// Spring constants. Our integrator is `vel = (vel + (tgt-cur)*STIFF) * DAMP`.
-// Stiff enough that the tilt tracks the pointer promptly (a too-loose spring
-// lagged so far behind the cursor that the perspective never showed), with
-// enough velocity-retention to keep a little elastic follow-through.
+// Press and hold to grow the card for a closer read.
+const MAX_SCALE = 1.25;
+
+// Spring rates (see motion.js): the tilt tracks the pointer promptly; the
+// hold-to-grow scale eases on its own slower rate so it builds deliberately.
 const STIFF = 0.12;
 const DAMP = 0.82;
-
-// Press and hold to grow the card for a closer read: holding springs the scale
-// up to MAX_SCALE on its own slower rate, so it grows gradually the longer you
-// hold and then caps; it eases back to 1 on release.
-const MAX_SCALE = 1.25;
-const SCALE_STIFF = 0.05; // slower than the tilt so the grow is deliberate
+const SCALE_STIFF = 0.05;
 
 // Pointer travel (px) past which a press counts as a drag, not a tap. A tap on
 // the back flips it to the front; a drag spins it.
 const TAP_SLOP = 6;
 
+// Animated quantities. `flip` is the accumulated face rotation (starts at 0° so
+// the card opens face-up showing the front, settles to a multiple of 180°); `rx`
+// and `ty` are the small ±14° pointer-tilt added on top; the rest drive the
+// glare focus, foil shift, and holo intensity.
+const REST = { rx: 0, flip: 0, ty: 0, scale: 1, mx: 50, my: 50, posx: 50, posy: 50, hyp: 0 };
+
 // Full-size card viewer. The card opens face-up (showing the holo front); hold
-// and swipe it to spin it over and reveal the back — like turning a real card
-// in your hand. Mouse hover tilts the card ±14° (Simey-style); pressing and
-// swiping additionally spins it around Y (a full card-width swipe ≈ 180°). On
-// release it eases straight back to flat, settling onto whichever face is
-// closest. Motion is spring-driven (rAF), not a CSS transition, so it follows
-// with elastic momentum.
+// and swipe it to spin it over and reveal the back — like turning a real card in
+// your hand. Mouse hover tilts the card ±14°; pressing and swiping additionally
+// spins it around Y (a full card-width swipe ≈ 180°). On release it eases back to
+// flat, settling onto whichever face is closest. Motion is spring-driven (rAF).
 export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   let cardEl = null; // current .card--detail element (recreated each open)
   let imgEl = null;
   let current = null;
-  let raf = null;
   let dragging = false; // a pointer is held down on the card and driving the spin
   let lastX = null; // previous pointer X, for the horizontal-swipe delta
   let downX = 0, downY = 0, moved = false; // tap-vs-drag for the current press
 
-  // Animated quantities. `flip` is the accumulated face rotation (starts at 0°
-  // so the card opens face-up showing the front, settles to a multiple of 180°);
-  // `rx` and `ty` are the small ±14° pointer-tilt added on top; the rest drive
-  // the glare focus, foil shift, and holo intensity.
-  const REST = { rx: 0, flip: 0, ty: 0, scale: 1, mx: 50, my: 50, posx: 50, posy: 50, hyp: 0 };
-  const zeroVel = () => Object.fromEntries(Object.keys(REST).map((k) => [k, 0]));
-  let cur = { ...REST };
-  let vel = zeroVel();
-  let tgt = { ...REST };
+  // The shared spring eases the quantities; each tick writes the card's
+  // transform + holo vars. No perspective() here — #lightbox-host provides it
+  // (see base.css); the small tilt (ty) rides on the accumulated flip.
+  const spring = createSpring({
+    rest: REST,
+    stiffness: STIFF,
+    damping: DAMP,
+    stiffnessByKey: { scale: SCALE_STIFF },
+    onTick: (c) => {
+      if (!cardEl) return;
+      cardEl.style.transform =
+        `rotateX(${c.rx.toFixed(2)}deg) rotateY(${(c.flip + c.ty).toFixed(2)}deg) ` +
+        `scale3d(${c.scale.toFixed(3)}, ${c.scale.toFixed(3)}, 1)`;
+      cardEl.style.setProperty("--mx", c.mx.toFixed(1) + "%");
+      cardEl.style.setProperty("--my", c.my.toFixed(1) + "%");
+      cardEl.style.setProperty("--posx", c.posx.toFixed(1) + "%");
+      cardEl.style.setProperty("--posy", c.posy.toFixed(1) + "%");
+      cardEl.style.setProperty("--hyp", c.hyp.toFixed(3));
+    },
+  });
+  const tgt = spring.target; // accumulate/assign targets directly (matches the gesture math)
 
-  function apply() {
-    if (!cardEl) return;
-    // No perspective() here — #lightbox-host provides it (see base.css). The
-    // small tilt (ty) rides on top of the accumulated flip rotation.
-    cardEl.style.transform =
-      `rotateX(${cur.rx.toFixed(2)}deg) rotateY(${(cur.flip + cur.ty).toFixed(2)}deg) ` +
-      `scale3d(${cur.scale.toFixed(3)}, ${cur.scale.toFixed(3)}, 1)`;
-    cardEl.style.setProperty("--mx", cur.mx.toFixed(1) + "%");
-    cardEl.style.setProperty("--my", cur.my.toFixed(1) + "%");
-    cardEl.style.setProperty("--posx", cur.posx.toFixed(1) + "%");
-    cardEl.style.setProperty("--posy", cur.posy.toFixed(1) + "%");
-    cardEl.style.setProperty("--hyp", cur.hyp.toFixed(3));
-  }
-
-  function step() {
-    let moving = false;
-    for (const k in tgt) {
-      const stiff = k === "scale" ? SCALE_STIFF : STIFF; // scale grows on its own slower rate
-      vel[k] = (vel[k] + (tgt[k] - cur[k]) * stiff) * DAMP;
-      cur[k] += vel[k];
-      if (Math.abs(vel[k]) > 0.02 || Math.abs(tgt[k] - cur[k]) > 0.02) moving = true;
-    }
-    if (!moving) {
-      cur = { ...tgt }; // snap to exact rest
-      vel = zeroVel();
-    }
-    apply();
-    raf = moving ? requestAnimationFrame(step) : null;
-  }
-
-  function spring() {
-    if (!raf) raf = requestAnimationFrame(step);
-  }
-
-  // Pointer drives the tilt, glare, and foil from its position over the card
-  // (Simey-style). While a pointer is held and dragging, horizontal motion also
-  // accumulates into the flip rotation. Mouse tilts on hover; touch (which can't
-  // hover) only acts while pressed.
+  // Pointer drives the tilt, glare, and foil from its position over the card.
+  // While held and dragging, horizontal motion accumulates into the flip. Mouse
+  // tilts on hover; touch (which can't hover) only acts while pressed.
   function onPointerMove(e) {
     if (!cardEl) return;
     const overCard = cardEl.contains(e.target);
@@ -118,36 +95,35 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     tgt.posx = 50 + cx * FOIL_HALF_X; // foil: narrow parallax band
     tgt.posy = 50 + cy * FOIL_HALF_Y;
     tgt.hyp = Math.min(1, Math.hypot(cx, cy));
-    spring();
+    spring.start();
   }
 
   // Float back to rest: settle onto the nearest face (even multiple of 180° =
-  // front, odd = back), flatten the tilt, and fade the glare/foil out — eased by
-  // the loose spring so it drifts rather than snaps.
+  // front, odd = back), flatten the tilt, and fade the glare/foil out.
   function rest() {
     tgt.flip = Math.round(tgt.flip / 180) * 180;
     tgt.rx = 0;
     tgt.ty = 0;
-    tgt.scale = 1; // shrink back to resting size
+    tgt.scale = 1;
     tgt.mx = tgt.my = tgt.posx = tgt.posy = 50;
     tgt.hyp = 0;
-    spring();
+    spring.start();
   }
 
   // a tap on the back: spin springily to the nearest front-facing angle
   function flipToFront() {
-    tgt.flip = Math.round(cur.flip / 360) * 360;
-    spring();
+    tgt.flip = Math.round(spring.cur.flip / 360) * 360;
+    spring.start();
   }
   // currently showing the back? (flip is an odd multiple of 180°)
-  const showingBack = () => Math.round(cur.flip / 180) % 2 !== 0;
+  const showingBack = () => Math.round(spring.cur.flip / 180) % 2 !== 0;
 
   function open(card) {
     if (!card) return;
     current = card;
 
-    // Render the shared Card. It starts on the cached thumbnail so it has full
-    // size + working tilt instantly; we then upgrade to the full-res scan.
+    // Render the shared Card on the cached thumbnail so it has full size + a
+    // working tilt instantly; then upgrade to the full-res scan.
     hostEl.innerHTML = renderCard(card, { variant: "detail" });
     cardEl = hostEl.querySelector(".card");
     imgEl = cardEl.querySelector(".card__art");
@@ -164,11 +140,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
       `${escapeHtml(card.name)} · <span class="cap-rarity">${escapeHtml(card.rarity)}</span>` +
       ` · ${escapeHtml(card.set || "")} #${escapeHtml(card.number || "?")}`;
 
-    // open face-up (REST.flip is 0°); a swipe spins it over to the back
-    cur = { ...REST };
-    vel = zeroVel();
-    tgt = { ...REST };
-    apply();
+    spring.reset(); // open face-up at rest (REST.flip is 0°)
 
     overlayEl.classList.remove("hidden");
     overlayEl.setAttribute("aria-hidden", "false");
@@ -176,8 +148,7 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   }
 
   function close() {
-    if (raf) cancelAnimationFrame(raf);
-    raf = null;
+    spring.stop();
     dragging = false;
     lastX = null;
     overlayEl.classList.add("hidden");
