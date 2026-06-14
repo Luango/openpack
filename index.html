@@ -23,15 +23,27 @@
 
     <section class="toolbar" aria-label="Filters">
       <div class="toolbar-row">
-        <div id="mode-switch" class="switch" role="tablist" aria-label="Filter mode">
-          <button class="switch-opt active" data-mode="all" role="tab">All</button>
-          <button class="switch-opt" data-mode="only" role="tab">Only</button>
-        </div>
+        <button id="filter-toggle" class="filter-toggle" aria-expanded="false" aria-controls="filter-panel">
+          Filters
+          <span id="filter-summary" class="filter-summary">All</span>
+          <span class="chevron" aria-hidden="true"></span>
+        </button>
 
         <div id="view-options" class="view-options" aria-label="Display options"></div>
       </div>
 
-      <div id="rarity-chips" class="chips" aria-label="Rarities"></div>
+      <div id="filter-panel" class="filter-panel" role="region" aria-label="Rarity filters">
+        <div class="filter-panel-inner">
+          <div class="filter-panel-body">
+            <div id="mode-switch" class="switch" role="tablist" aria-label="Filter mode">
+              <button class="switch-opt active" data-mode="all" role="tab">All</button>
+              <button class="switch-opt" data-mode="only" role="tab">Only</button>
+            </div>
+
+            <div id="rarity-chips" class="chips" aria-label="Rarities"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <p id="status-hint" class="status-hint hidden">Loading cards…</p>

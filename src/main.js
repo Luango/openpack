@@ -14,6 +14,9 @@ const el = {
   grid: $("#card-grid"),
   modeSwitch: $("#mode-switch"),
   rarityChips: $("#rarity-chips"),
+  toolbar: $(".toolbar"),
+  filterToggle: $("#filter-toggle"),
+  filterSummary: $("#filter-summary"),
 };
 
 createOptions({ containerEl: $("#view-options") });
@@ -34,12 +37,37 @@ const gallery = createGallery({
 const filters = createFilters({
   switchEl: el.modeSwitch,
   chipsEl: el.rarityChips,
-  onApply: (active) => {
+  onApply: (active, summary) => {
     const { visible, total } = gallery.applyFilter(active);
     el.cardCount.textContent =
       visible === total ? `${total} cards` : `${visible} / ${total} cards`;
+    el.filterSummary.textContent = summary; // collapsed-button label
   },
 });
+
+// Filters accordion: the toggle button collapses/expands the panel (mode switch
+// + rarity chips). Persisted, default collapsed; closes on outside click / Esc.
+const FILTERS_OPEN_KEY = "openpack.filters.open";
+function setFiltersOpen(open) {
+  el.toolbar.classList.toggle("open", open);
+  el.filterToggle.setAttribute("aria-expanded", String(open));
+  try {
+    localStorage.setItem(FILTERS_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* private mode — non-fatal */
+  }
+}
+el.filterToggle.addEventListener("click", (e) => {
+  e.stopPropagation(); // don't let the document handler immediately re-close it
+  setFiltersOpen(!el.toolbar.classList.contains("open"));
+});
+document.addEventListener("click", (e) => {
+  if (el.toolbar.classList.contains("open") && !el.toolbar.contains(e.target)) setFiltersOpen(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && el.toolbar.classList.contains("open")) setFiltersOpen(false);
+});
+setFiltersOpen(localStorage.getItem(FILTERS_OPEN_KEY) === "1");
 
 async function init() {
   try {

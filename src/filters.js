@@ -31,10 +31,18 @@ export function createFilters({ switchEl, chipsEl, onApply }) {
     );
   }
 
+  // Short label for the collapsed Filters button: the isolated rarity in Only
+  // mode, "All" when nothing's hidden, else "N of M".
+  function summarize(active) {
+    if (mode === "only") return [...active][0] || "None";
+    if (excluded.size === 0) return "All";
+    return `${active.size} of ${allRarities.length}`;
+  }
+
   function apply() {
     const active = recompute();
     sync(active);
-    onApply?.(active);
+    onApply?.(active, summarize(active));
   }
 
   delegate(switchEl, "click", ".switch-opt", (opt) => {

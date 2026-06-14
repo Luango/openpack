@@ -156,7 +156,6 @@ body {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   padding: 12px clamp(16px, 4vw, 40px);
   background: rgba(11, 13, 18, 0.72);
   backdrop-filter: blur(10px);
@@ -169,6 +168,81 @@ body {
   justify-content: space-between;
   gap: var(--gap);
   flex-wrap: wrap;
+}
+
+/* filters accordion — one button collapses the mode switch + rarity chips */
+.filter-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.filter-toggle:hover,
+.toolbar.open .filter-toggle {
+  border-color: var(--accent);
+}
+
+.filter-summary {
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.toolbar.open .filter-summary {
+  display: none; /* the open panel shows the full state */
+}
+
+.chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-dim);
+  transition: transform 0.18s ease;
+}
+
+.toolbar.open .chevron {
+  transform: rotate(180deg);
+}
+
+/* the collapsible panel — height animated via the grid-rows 0fr→1fr trick */
+.filter-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.18s ease, opacity 0.18s ease;
+}
+
+.toolbar.open .filter-panel {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.filter-panel-inner {
+  overflow: hidden; /* clips the body so the panel can collapse to a true 0 */
+  min-height: 0;
+}
+
+/* padding lives here, inside the clip — padding on .filter-panel-inner itself
+   would inflate the collapsed grid track and leak a gap */
+.filter-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
 }
 
 /* mode switch — segmented control */
