@@ -20,16 +20,13 @@ const FOIL_HALF_Y = 17; // → 33…67%
 const STIFF = 0.12;
 const DAMP = 0.82;
 
-// Simey holds the pose ~500ms after you stop, then floats back. We reuse that
-// pause before easing the tilt out and settling onto the nearest face.
-const HOLD_MS = 500;
-
 // Full-size card viewer. The card opens face-up (showing the holo front); hold
 // and swipe it to spin it over and reveal the back — like turning a real card
 // in your hand. Mouse hover tilts the card ±14° (Simey-style); pressing and
 // swiping additionally spins it around Y (a full card-width swipe ≈ 180°). On
-// release it holds, then floats onto whichever face is closest. Motion is
-// spring-driven (rAF), not a CSS transition, so it follows with elastic momentum.
+// release it eases straight back to flat, settling onto whichever face is
+// closest. Motion is spring-driven (rAF), not a CSS transition, so it follows
+// with elastic momentum.
 export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   let cardEl = null; // current .card--detail element (recreated each open)
   let imgEl = null;
@@ -37,7 +34,6 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   let raf = null;
   let dragging = false; // a pointer is held down on the card and driving the spin
   let lastX = null; // previous pointer X, for the horizontal-swipe delta
-  let holdTimer = null; // delays the float-back after interaction stops
 
   // Animated quantities. `flip` is the accumulated face rotation (starts at 0°
   // so the card opens face-up showing the front, settles to a multiple of 180°);
@@ -89,10 +85,9 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     if (!cardEl) return;
     const overCard = cardEl.contains(e.target);
     if (!dragging && !(e.pointerType === "mouse" && overCard)) {
-      if (e.pointerType === "mouse") scheduleRest(); // hovered off the card → float back
+      if (e.pointerType === "mouse") rest(); // hovered off the card → ease back
       return;
     }
-    clearTimeout(holdTimer); // actively interacting — cancel any pending float-back
 
     const r = cardEl.getBoundingClientRect();
     const clamp = (v) => Math.max(-1, Math.min(1, v));
@@ -124,11 +119,6 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     spring();
   }
 
-  function scheduleRest(delay = HOLD_MS) {
-    clearTimeout(holdTimer);
-    holdTimer = setTimeout(rest, delay);
-  }
-
   function open(card) {
     if (!card) return;
     current = card;
@@ -152,7 +142,6 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
       ` · ${escapeHtml(card.set || "")} #${escapeHtml(card.number || "?")}`;
 
     // open face-up (REST.flip is 0°); a swipe spins it over to the back
-    clearTimeout(holdTimer);
     cur = { ...REST };
     vel = zeroVel();
     tgt = { ...REST };
@@ -166,7 +155,6 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   function close() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
-    clearTimeout(holdTimer);
     dragging = false;
     lastX = null;
     overlayEl.classList.add("hidden");
@@ -188,7 +176,6 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
     if (!cardEl || !cardEl.contains(e.target)) return; // ignore backdrop presses
     dragging = true;
     lastX = e.clientX;
-    clearTimeout(holdTimer);
     overlayEl.setPointerCapture?.(e.pointerId); // keep moves coming if it strays off
     onPointerMove(e); // tilt from the contact point at once
   });
@@ -196,12 +183,12 @@ export function createLightbox({ overlayEl, hostEl, captionEl, closeEl }) {
   const release = () => {
     dragging = false;
     lastX = null;
-    scheduleRest();
+    rest();
   };
   overlayEl.addEventListener("pointerup", release);
   overlayEl.addEventListener("pointercancel", release);
   overlayEl.addEventListener("pointerleave", () => {
-    if (!dragging) scheduleRest(); // pointer left the overlay entirely
+    if (!dragging) rest(); // pointer left the overlay entirely
   });
   // a hold drives the tilt — block the long-press "save image" context menu
   overlayEl.addEventListener("contextmenu", (e) => e.preventDefault());
