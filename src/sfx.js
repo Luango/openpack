@@ -51,9 +51,9 @@ export function hover() {
   osc.stop(t + 0.13);
 }
 
-// Filtered noise burst — the pack tear. `intensity` (0–1, from slash velocity)
-// scales loudness, brightness, and length so a hard slash sounds like a violent
-// rip and a soft one a gentle crinkle.
+// The pack tear: an irregular noise crackle, low-pass swept downward so it reads
+// as ripping paper/foil rather than a bright hiss. `intensity` (0–1, from slash
+// velocity) scales loudness, brightness, and length.
 export function rip(intensity = 1) {
   const i = Math.max(0, Math.min(1, intensity));
   let c;
@@ -65,32 +65,31 @@ export function rip(intensity = 1) {
   if (c.state !== "running") return;
 
   const t = c.currentTime;
-  const dur = 0.16 + i * 0.16;
+  const dur = 0.2 + i * 0.24;
   const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
   const data = buf.getChannelData(0);
+  const grain = Math.max(1, (c.sampleRate * 0.004) | 0);
+  let crack = 1;
   for (let n = 0; n < data.length; n++) {
+    if (n % grain === 0) crack = 0.25 + Math.random() * 0.75; // irregular catches as it tears
     const decay = 1 - n / data.length;
-    data[n] = (Math.random() * 2 - 1) * decay * decay; // noise that tails off
+    data[n] = (Math.random() * 2 - 1) * decay * crack;
   }
   const src = c.createBufferSource();
   src.buffer = buf;
-  const bp = c.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.value = 900 + i * 2200; // harder slash = brighter
-  bp.Q.value = 0.6;
+  const hp = c.createBiquadFilter(); // trim low rumble
+  hp.type = "highpass";
+  hp.frequency.value = 280;
+  const lp = c.createBiquadFilter(); // sweep brightness down as it tails off
+  lp.type = "lowpass";
+  lp.Q.value = 0.5;
+  lp.frequency.setValueAtTime(2200 + i * 2800, t);
+  lp.frequency.exponentialRampToValueAtTime(650, t + dur);
   const gain = c.createGain();
   gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(0.05 + i * 0.3, t + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.05 + i * 0.32, t + 0.014);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(bp).connect(gain).connect(c.destination);
+  src.connect(hp).connect(lp).connect(gain).connect(c.destination);
   src.start(t);
   src.stop(t + dur);
-}
-
-// Tiny throttled scratch tick emitted while the tear is propagating.
-export function scratch(intensity = 0.5) {
-  const now = performance.now();
-  if (now - last < 32) return; // throttle so a fast drag doesn't machine-gun it
-  last = now;
-  rip(0.12 + Math.max(0, Math.min(1, intensity)) * 0.18);
 }
