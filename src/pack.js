@@ -21,8 +21,8 @@ import * as sfx from "./sfx.js";
 
 const VB = { w: 300, h: 420 };
 const GAP_TEAR = 40; // gap width while mid-tear
-const SEP_MAX = 130; // how far the top piece flies off once split (bottom stays put)
-const ROT = 18; // degrees the top piece tilts/flings as it tears away — dynamic motion
+const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
+const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
@@ -96,8 +96,8 @@ export function createPack({ mountEl }) {
   let opened = false;
   let dirA = { x: 1, y: 0 };
   let dirB = { x: -1, y: 0 };
-  let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the top piece tilts around
-  let moverEl = null; // the TOP piece (flies off); the bottom piece stays put
+  let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the flying half tilts around
+  let moverEl = null; // the SMALLER half (flies off); the larger body stays put
   let stayEl = null;
   let moverDir = { x: 0, y: -1 };
   let lastClient = null;
@@ -169,11 +169,12 @@ export function createPack({ mountEl }) {
     dirA = { x: nrm.x * side, y: nrm.y * side };
     dirB = { x: -dirA.x, y: -dirA.y };
 
-    // the higher piece is the "top" that tears off; the lower one stays put
-    const aIsTop = centroid(A).y < centroid(B).y;
-    moverEl = aIsTop ? pieceA : pieceB;
-    stayEl = aIsTop ? pieceB : pieceA;
-    moverDir = aIsTop ? dirA : dirB;
+    // the SMALLER half tears off (the body keeps the cards); whichever side that
+    // is, the opening — and the cards — come from there
+    const aIsSmaller = Math.abs(area(A)) < Math.abs(area(B));
+    moverEl = aIsSmaller ? pieceA : pieceB;
+    stayEl = aIsSmaller ? pieceB : pieceA;
+    moverDir = aIsSmaller ? dirA : dirB;
     stayEl.removeAttribute("transform");
 
     split = true;
@@ -322,6 +323,17 @@ function centroid(poly) {
     y += p.y;
   }
   return { x: x / poly.length, y: y / poly.length };
+}
+
+// signed polygon area (shoelace) — used to pick the smaller half to tear off
+function area(poly) {
+  let a = 0;
+  for (let i = 0, n = poly.length; i < n; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % n];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
 }
 
 const nearBorder = (p) => p.x < CROSS_MARGIN || p.x > VB.w - CROSS_MARGIN || p.y < CROSS_MARGIN || p.y > VB.h - CROSS_MARGIN;
