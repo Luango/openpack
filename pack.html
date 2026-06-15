@@ -28,6 +28,11 @@
         align-items: center;
         justify-content: center;
         touch-action: none; /* the slash drives the tear, never scrolls */
+        z-index: 2; /* the pack sits IN FRONT of the rising cards (which emerge from behind it) */
+      }
+      /* once a pack is open, its taps belong to the cards rising behind it */
+      body.revealing #pack-stage {
+        pointer-events: none;
       }
 
       .pack {
@@ -88,17 +93,20 @@
         pointer-events: none;
       }
 
-      /* ---- card-stack reveal (see src/reveal.js) ------------------------- */
+      /* ---- card-stack reveal (see src/reveal.js) -------------------------
+       * The reveal sits BEHIND the pack (z-index 1 < pack's 2). Cards rest
+       * tucked inside the pack (hidden behind the opaque foil); the front card
+       * rises UP so its top clears the foil while its base stays behind it —
+       * it looks like the card is sliding out of the opened pack. */
       .reveal {
         position: fixed;
         inset: 0;
-        z-index: 50;
+        z-index: 1;
         display: grid;
         place-items: center;
-        --stackw: min(74vw, 52vh, 360px);
-        background: radial-gradient(120% 90% at 50% 38%, rgba(24, 28, 40, 0.72), rgba(5, 6, 10, 0.94));
-        opacity: 1;
-        transition: opacity 0.35s;
+        --stackw: min(58vw, 40vh, 300px);
+        --rise: -62%; /* how far the front card lifts out of the pack */
+        pointer-events: none; /* only the front card opts back in */
       }
       .reveal.hidden { display: none; }
 
@@ -114,33 +122,37 @@
         position: relative;
         width: var(--stackw);
         aspect-ratio: 63 / 88;
-        transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s;
       }
 
       .reveal__slot {
         position: absolute;
         inset: 0;
         perspective: 1100px;
-        transform: translateY(calc(var(--d, 0) * 16px)) scale(calc(1 - var(--d, 0) * 0.06));
-        opacity: calc(1 - var(--d, 0) * 0.38);
-        transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s, box-shadow 0.4s;
+        transform: translateY(0) scale(0.97); /* resting: tucked in the pack */
+        opacity: 0;
+        transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s, box-shadow 0.4s;
         touch-action: none;
         will-change: transform;
       }
+      .reveal__slot.front {
+        transform: translateY(var(--rise)) scale(1); /* risen out of the pack */
+        opacity: 1;
+        pointer-events: auto;
+      }
       .reveal__slot.flung {
-        transform: translateY(-128%) rotate(-7deg) scale(1.06);
+        transform: translateY(calc(var(--rise) - 80%)) rotate(-6deg) scale(1.04); /* pulled away */
         opacity: 0;
       }
       .reveal__slot .card--detail {
         --w: var(--stackw);
         width: 100%;
         height: 100%;
-        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6);
       }
-      .reveal__slot.rare .card--detail {
+      .reveal__slot.front.rare .card--detail {
         box-shadow:
           0 0 48px 4px color-mix(in srgb, var(--tier-color) 70%, transparent),
-          0 30px 60px rgba(0, 0, 0, 0.6);
+          0 24px 50px rgba(0, 0, 0, 0.6);
       }
 
       .reveal__hint {
@@ -157,7 +169,7 @@
       .reveal__again {
         position: fixed;
         left: 50%;
-        bottom: 56px;
+        bottom: 54px;
         transform: translateX(-50%);
         padding: 11px 24px;
         border-radius: 999px;
@@ -167,6 +179,7 @@
         font: inherit;
         font-weight: 600;
         cursor: pointer;
+        pointer-events: auto;
       }
       .reveal__again[hidden] { display: none; }
     </style>

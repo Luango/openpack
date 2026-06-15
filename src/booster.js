@@ -11,6 +11,11 @@ import { rarityToTier } from "./rarity.js";
 const DEFAULT_SET = "sv8"; // Surging Sparks — modern foils + illustration rares
 const PACK_SIZE = 5;
 
+const FETCH_TIMEOUT = 7000; // give up on a slow/blocked API and show placeholders
+
+const withTimeout = (p, ms) =>
+  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+
 const pick = (a) => a[(Math.random() * a.length) | 0];
 function sample(a, n) {
   const pool = [...a];
@@ -22,9 +27,9 @@ function sample(a, n) {
 export async function buildBooster(setId = DEFAULT_SET, size = PACK_SIZE) {
   let pool = [];
   try {
-    pool = await fetchSetPool(setId);
+    pool = await withTimeout(fetchSetPool(setId), FETCH_TIMEOUT);
   } catch {
-    /* offline / rate-limited → placeholders below */
+    /* offline / slow / rate-limited → placeholders below */
   }
   const withImg = pool.filter((c) => c.image);
   if (!withImg.length) return mysteryPack(size);

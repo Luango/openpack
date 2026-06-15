@@ -50,30 +50,31 @@ export function createReveal({ mountEl, onAgain }) {
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot); // images start loading now (even while hidden)
     againEl.hidden = true;
-    layout();
+    // leave every slot in its resting state (tucked in the pack) — the rise is
+    // triggered by layout() inside show(), so the first card animates UP.
     updateHint();
   }
 
-  // Reveal the already-prepared stack — instant, no async work.
+  // Reveal the already-prepared stack — instant, no async work. The stack sits
+  // BEHIND the pack (lower z-index); the front card rises up so its top clears
+  // the foil while its base stays tucked behind it, like sliding out of the pack.
   function show() {
     if (!slots.length) return;
     host.classList.remove("hidden");
+    document.body.classList.add("revealing"); // CSS drops the pack's pointer-events
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
-    flourishIfRare(); // first card might already be the hit (single-card edge)
-
-    // rise the stack up out of the opening
-    stackEl.style.transform = "translateY(46px) scale(0.82)";
-    stackEl.style.opacity = "0";
+    // next frame, lift the front card out of the pack (transition animates the rise)
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        stackEl.style.transform = "";
-        stackEl.style.opacity = "1";
+        layout();
+        flourishIfRare();
       }),
     );
   }
 
   function close() {
     host.classList.add("hidden");
+    document.body.classList.remove("revealing");
     slots.forEach((s) => s.spring.stop());
   }
 
@@ -145,14 +146,14 @@ export function createReveal({ mountEl, onAgain }) {
     return entry;
   }
 
-  // Position every slot by its depth from the front (0 = front, then stacked
-  // behind; < 0 = already flicked away).
+  // The current card is the FRONT (risen out of the pack); cards still to come
+  // rest tucked behind the foil; already-seen cards are flung up and away. CSS
+  // drives the actual transforms off these classes.
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
+      s.slot.classList.toggle("front", d === 0);
       s.slot.classList.toggle("flung", d < 0);
-      s.slot.style.setProperty("--d", Math.max(0, d));
-      s.slot.style.zIndex = String(100 - d);
       s.slot.style.pointerEvents = d === 0 ? "auto" : "none";
     });
   }
@@ -179,7 +180,7 @@ export function createReveal({ mountEl, onAgain }) {
     s.slot.classList.toggle("rare", tier >= RARE_TIER);
     if (tier >= RARE_TIER) {
       const r = host.getBoundingClientRect();
-      particles.emit(r.left + r.width / 2, r.top + r.height * 0.46, {
+      particles.emit(r.left + r.width / 2, r.top + r.height * 0.32, { // where the risen card sits
         count: 46,
         speed: 7,
         spread: Math.PI * 2,

@@ -143,11 +143,15 @@ export function createPack({ mountEl, onOpen }) {
     damping: 0.7,
     onTick: (c) => {
       if (split) {
-        // only the top piece moves — it tilts/flings as it tears away; the
-        // bottom piece is left untransformed (anchored in place)
+        // only the torn-off half moves — it flings away AND fades as it goes, so
+        // it doesn't hover over the cards rising out of the opening behind it; the
+        // body half stays put (anchored in place)
         const d = c.sep * SEP_MAX;
         const a = c.sep * ROT;
-        moverEl?.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
+        if (moverEl) {
+          moverEl.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
+          moverEl.style.opacity = Math.max(0, 1 - c.sep * 1.15).toFixed(3);
+        }
       } else if (tearPath) {
         // open the dark gap through the sealed foil along the traced path
         const poly = ribbon(tearPath, c.w);
@@ -349,6 +353,7 @@ export function createPack({ mountEl, onOpen }) {
     pieceB.style.display = "none";
     pieceA.removeAttribute("transform");
     pieceB.removeAttribute("transform");
+    pieceA.style.opacity = pieceB.style.opacity = ""; // restore (the mover faded as it flew)
     gap.setAttribute("points", "");
   }
 
