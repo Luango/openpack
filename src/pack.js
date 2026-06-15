@@ -71,16 +71,18 @@ export function createPack({ mountEl }) {
 
       <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
 
+      <!-- Foil layers — free to fly off; each keeps only its own shape clip. -->
       <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
-      <polygon class="tear-edge" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+      <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
+      <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
 
-      <g class="piece piece-a" style="display:none">
-        <use href="#art" clip-path="url(#clipA)"/>
-        <polyline class="edge edge-a" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
-      </g>
-      <g class="piece piece-b" style="display:none">
-        <use href="#art" clip-path="url(#clipB)"/>
-        <polyline class="edge edge-b" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+      <!-- The torn WHITE edge lines live in their own static group clipped to the
+           fixed pack silhouette, so a stroke is only ever drawn ON the pack —
+           never outside it, not even the sliver at the trigger edge, and never
+           riding along with a piece that flings away. -->
+      <g clip-path="url(#body)">
+        <polygon class="tear-edge" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+        <polyline class="tear-line" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
       </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
@@ -93,8 +95,7 @@ export function createPack({ mountEl }) {
   const clipPolyB = mountEl.querySelector("#clipB polygon");
   const pieceA = mountEl.querySelector(".piece-a");
   const pieceB = mountEl.querySelector(".piece-b");
-  const edgeA = mountEl.querySelector(".edge-a");
-  const edgeB = mountEl.querySelector(".edge-b");
+  const tearLine = mountEl.querySelector(".tear-line"); // the torn edge, drawn statically (clipped to the pack)
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
   // Use a real foil-pack image if assets/pack.png is present; otherwise keep the
@@ -184,8 +185,7 @@ export function createPack({ mountEl }) {
     const B = [...full, ...cwCorners(sIn, sOut).reverse()]; // the other side
     setPoints(clipPolyA, A);
     setPoints(clipPolyB, B);
-    setPoints(edgeA, full);
-    setPoints(edgeB, full);
+    setPoints(tearLine, full); // one static torn-edge line, clipped to the pack
 
     // part the two pieces straight apart, perpendicular to the tear (opposite
     // directions), with A on whichever side its bulk sits
@@ -207,7 +207,7 @@ export function createPack({ mountEl }) {
 
     split = true;
     sealed.style.display = "none";
-    tearEdge.style.display = "none";
+    tearEdge.setAttribute("points", ""); // drop the mid-tear crack; the torn line takes over
     pieceA.style.display = "";
     pieceB.style.display = "";
   }
@@ -312,7 +312,7 @@ export function createPack({ mountEl }) {
 
   function burstAlongTear() {
     const m = svg.getScreenCTM();
-    for (const p of (edgeA.getAttribute("points") || "").split(" ")) {
+    for (const p of (tearLine.getAttribute("points") || "").split(" ")) {
       const [x, y] = p.split(",").map(Number);
       if (Number.isNaN(x)) continue;
       const c = new DOMPoint(x, y).matrixTransform(m);
@@ -335,13 +335,13 @@ export function createPack({ mountEl }) {
     path = [];
     spring.reset();
     sealed.style.display = "";
-    tearEdge.style.display = "";
     pieceA.style.display = "none";
     pieceB.style.display = "none";
     pieceA.removeAttribute("transform");
     pieceB.removeAttribute("transform");
     gap.setAttribute("points", "");
     tearEdge.setAttribute("points", "");
+    tearLine.setAttribute("points", "");
   }
 
   // listen on the whole stage so an in-progress tear keeps tracking even when
