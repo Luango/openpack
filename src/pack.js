@@ -19,7 +19,11 @@ import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import * as sfx from "./sfx.js";
 
-const VB = { w: 300, h: 554 }; // aspect matches the foil pack image (≈ 286:528)
+// Internal coordinate box. The width is a fixed unit; the HEIGHT is re-derived
+// from whatever pack image loads (see applyAspect), so dropping a pack of any
+// size/shape at PACK_IMG just works — the viewBox, art, mask, and tear geometry
+// all follow. 554 is only the placeholder until the real image reports its size.
+const VB = { w: 300, h: 554 };
 const PACK_IMG = "assets/pack.png"; // drop a foil-pack image here to replace the rainbow temp
 const GAP_TEAR = 10; // crack width while mid-tear — kept thin so it reads as a crack, not a gap
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
@@ -66,7 +70,7 @@ export function createPack({ mountEl }) {
         <clipPath id="clipB"><polygon points=""/></clipPath>
       </defs>
 
-      <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
+      <rect class="pack-bg" x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
            rip reads from the foil itself: the mid-tear opening is the dark gap
@@ -87,11 +91,27 @@ export function createPack({ mountEl }) {
   const pieceB = mountEl.querySelector(".piece-b");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
+  // Reshape the whole pack to a given image aspect: re-derive VB.h, the border
+  // corners the tear geometry rides on, and every height-bearing attribute. This
+  // is what makes any pack image — any size or shape — drop in and just work.
+  function applyAspect(natW, natH) {
+    if (!natW || !natH) return;
+    VB.h = Math.round(VB.w * (natH / natW));
+    CORNERS[2].y = VB.h; // bottom-right / bottom-left corners follow the new height
+    CORNERS[3].y = VB.h;
+    mid = { x: VB.w / 2, y: VB.h / 2 };
+    svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
+    mountEl.querySelector(".pack-bg").setAttribute("height", VB.h - 12);
+    mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
+    mountEl.querySelector("#tearmask rect").setAttribute("height", VB.h);
+  }
+
   // Use a real foil-pack image if assets/pack.png is present; otherwise keep the
   // rainbow temp. Probe with a plain Image so a missing file falls back cleanly
   // (a 404 just leaves the rainbow showing — no broken-image icon).
   const probe = new Image();
   probe.onload = () => {
+    applyAspect(probe.naturalWidth, probe.naturalHeight); // match the pack to this image
     const img = mountEl.querySelector(".pack-img");
     img.setAttribute("href", PACK_IMG);
     img.style.display = "";
