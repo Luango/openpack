@@ -104,6 +104,49 @@ body {
   letter-spacing: 0.2px;
 }
 
+/* ---- master nav (Gallery ↔ Open Pack) --------------------------------- */
+.app-nav {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+}
+/* floating variant for the full-screen pack page */
+.app-nav--floating {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  backdrop-filter: blur(6px);
+}
+.nav-link {
+  padding: 7px 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-link:hover {
+  color: var(--text);
+}
+.nav-link.is-active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+/* don't sit over the cards during a reveal */
+body.revealing .app-nav--floating {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
 .set-picker {
   display: flex;
   align-items: center;
