@@ -54,6 +54,9 @@ export async function fetchSetPool(setId) {
   })();
 
   poolCache.set(setId, promise);
+  // A FAILED fetch must not stay cached, or every later call reuses the rejected
+  // promise and never recovers (until reload). Drop it on failure so it retries.
+  promise.catch(() => poolCache.delete(setId));
   return promise;
 }
 

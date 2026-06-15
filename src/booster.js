@@ -11,10 +11,25 @@ import { rarityToTier } from "./rarity.js";
 const DEFAULT_SET = "sv8"; // Surging Sparks — modern foils + illustration rares
 const PACK_SIZE = 5;
 
-const FETCH_TIMEOUT = 20000; // wait for the real cards (the "Preparing…" gate covers it); placeholders are a last resort for a truly dead/offline API
+const FETCH_TIMEOUT = 12000; // per attempt; the "Preparing…" gate covers the wait
+const FETCH_TRIES = 3; // retry a slow/failed fetch before falling back to placeholders
 
 const withTimeout = (p, ms) =>
   Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+
+// Get the set's cards, retrying a few times. A rejected fetch is no longer
+// cached (see api.js), so each retry starts fresh; a slow one is re-raced. Only
+// after all tries fail do we return [] (→ placeholder pack).
+async function fetchPool(setId) {
+  for (let i = 0; i < FETCH_TRIES; i++) {
+    try {
+      return await withTimeout(fetchSetPool(setId), FETCH_TIMEOUT);
+    } catch {
+      /* slow or failed — try again */
+    }
+  }
+  return [];
+}
 
 const pick = (a) => a[(Math.random() * a.length) | 0];
 function sample(a, n) {
@@ -25,12 +40,7 @@ function sample(a, n) {
 }
 
 export async function buildBooster(setId = DEFAULT_SET, size = PACK_SIZE) {
-  let pool = [];
-  try {
-    pool = await withTimeout(fetchSetPool(setId), FETCH_TIMEOUT);
-  } catch {
-    /* offline / slow / rate-limited → placeholders below */
-  }
+  const pool = await fetchPool(setId);
   const withImg = pool.filter((c) => c.image);
   if (!withImg.length) return mysteryPack(size);
 
