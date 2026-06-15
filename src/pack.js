@@ -351,6 +351,9 @@ export function createPack({ mountEl }) {
   mountEl.addEventListener("pointerup", onUp);
   mountEl.addEventListener("pointercancel", onUp);
   mountEl.addEventListener("contextmenu", (e) => e.preventDefault());
+  // a press-and-drag on the SVG <image> would otherwise start a NATIVE image
+  // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
+  mountEl.addEventListener("dragstart", (e) => e.preventDefault());
 
   return { reset };
 }

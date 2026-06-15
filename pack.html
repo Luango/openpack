@@ -36,8 +36,13 @@
         user-select: none;
         -webkit-user-select: none;
         -webkit-touch-callout: none;
+        -webkit-user-drag: none; /* never let a drag lift a ghost copy of the art */
         filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.6));
         animation: float 5s ease-in-out infinite;
+      }
+      .pack image {
+        -webkit-user-drag: none;
+        pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
       }
 
       @keyframes float {
