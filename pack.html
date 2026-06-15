@@ -28,19 +28,13 @@
         align-items: center;
         justify-content: center;
         touch-action: none; /* the slash drives the tear, never scrolls */
-        z-index: 2; /* the pack sits IN FRONT of the rising cards (which emerge from behind it) */
+        z-index: 2;
+        transition: transform 0.7s cubic-bezier(0.45, 0, 0.7, 0.45), opacity 0.6s;
       }
-      /* once a pack is open, its taps belong to the cards rising behind it */
+      /* once the pack is open, it drops away (and the cards spring up over it) */
       body.revealing #pack-stage {
         pointer-events: none;
-      }
-      /* the dark interior backing is only for the tear's "inside"; during the
-         reveal it would sit between the foil and the rising card as a black
-         slab, so fade it out and let the card show through the opening */
-      .pack-bg {
-        transition: opacity 0.3s;
-      }
-      body.revealing .pack-bg {
+        transform: translateY(120vh) rotate(4deg);
         opacity: 0;
       }
 
@@ -103,18 +97,16 @@
       }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
-       * The reveal sits BEHIND the pack (z-index 1 < pack's 2). Cards rest
-       * tucked inside the pack (hidden behind the opaque foil); the front card
-       * rises UP so its top clears the foil while its base stays behind it —
-       * it looks like the card is sliding out of the opened pack. */
+       * After the opened pack drops away, the front card springs UP from where
+       * the pack was to screen center, full size. Tapping flings it off and the
+       * next card springs up from below. */
       .reveal {
         position: fixed;
         inset: 0;
-        z-index: 1;
+        z-index: 3; /* in front of the (dropping) pack */
         display: grid;
         place-items: center;
-        --stackw: min(58vw, 40vh, 300px);
-        --rise: -62%; /* how far the front card lifts out of the pack */
+        --stackw: min(72vw, 58vh, 360px);
         pointer-events: none; /* only the front card opts back in */
       }
       .reveal.hidden { display: none; }
@@ -137,19 +129,19 @@
         position: absolute;
         inset: 0;
         perspective: 1100px;
-        transform: translateY(0) scale(0.97); /* resting: tucked in the pack */
+        transform: translateY(122%) scale(0.9); /* waiting below, down where the pack was */
         opacity: 0;
-        transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s, box-shadow 0.4s;
+        transition: transform 0.6s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.4s, box-shadow 0.4s;
         touch-action: none;
         will-change: transform;
       }
       .reveal__slot.front {
-        transform: translateY(var(--rise)) scale(1); /* risen out of the pack */
+        transform: translateY(0) scale(1); /* sprung up to center */
         opacity: 1;
         pointer-events: auto;
       }
       .reveal__slot.flung {
-        transform: translateY(calc(var(--rise) - 80%)) rotate(-6deg) scale(1.04); /* pulled away */
+        transform: translateY(-130%) rotate(-6deg) scale(1.04); /* pulled away */
         opacity: 0;
       }
       .reveal__slot .card--detail {
@@ -195,21 +187,28 @@
   </head>
   <body class="holo-on">
     <div id="pack-stage"></div>
-    <p class="hint">Drag a line across the pack to tear it open — it rips along your path.</p>
+    <p class="hint">Preparing pack…</p>
 
     <script type="module">
       import { createPack } from "./src/pack.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
 
+      const hintEl = document.querySelector(".hint");
+      const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
       let pack, reveal, ready;
 
-      // Build a booster AND render its card stack (hidden) up front, so the
-      // moment the pack tears the reveal just shows — nothing to fetch or build.
+      // Build a booster AND render its card stack (hidden) up front, then ARM the
+      // pack. The pack can't be torn until its cards are ready, so the reveal is
+      // always instant — no fetch or render after the rip.
       function loadNextPack() {
+        pack?.setArmed(false);
+        hintEl.textContent = "Preparing pack…";
         ready = buildBooster().then((cards) => {
           cards.forEach((c) => { const im = new Image(); im.src = c.image; }); // warm hi-res
           reveal.prepare(cards); // pre-render the stack while the pack is still sealed
+          pack.setArmed(true); // now it's safe to tear
+          hintEl.textContent = TEAR_HINT;
         });
       }
 
@@ -224,7 +223,8 @@
       pack = createPack({
         mountEl: document.getElementById("pack-stage"),
         onOpen: async () => {
-          await ready; // (already prepared in the common case — instant)
+          hintEl.textContent = ""; // the reveal has its own hint
+          await ready; // (already prepared — instant)
           reveal.show();
         },
       });

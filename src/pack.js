@@ -119,6 +119,7 @@ export function createPack({ mountEl, onOpen }) {
   };
   probe.src = PACK_IMG;
 
+  let armed = false; // a tear can't start until the cards behind it are ready
   let path = [];
   let tearPath = null;
   let dragging = false;
@@ -227,6 +228,7 @@ export function createPack({ mountEl, onOpen }) {
 
   function onDown(e) {
     if (opened) return reset();
+    if (!armed) return; // cards aren't loaded yet — hold the tear until they are
 
     // A tear can only begin while TOUCHING the pack — a press off the pack does
     // nothing (no line is ever drawn in the empty stage). On the pack, the thin
@@ -369,7 +371,10 @@ export function createPack({ mountEl, onOpen }) {
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
   mountEl.addEventListener("dragstart", (e) => e.preventDefault());
 
-  return { reset };
+  return {
+    reset,
+    setArmed: (v) => { armed = v; }, // the host arms the pack once its cards are prepared
+  };
 }
 
 // ---- geometry helpers -----------------------------------------------------

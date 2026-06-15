@@ -55,21 +55,18 @@ export function createReveal({ mountEl, onAgain }) {
     updateHint();
   }
 
-  // Reveal the already-prepared stack — instant, no async work. The stack sits
-  // BEHIND the pack (lower z-index); the front card rises up so its top clears
-  // the foil while its base stays tucked behind it, like sliding out of the pack.
+  // Reveal the already-prepared stack — instant, no async work. The opened pack
+  // drops away (CSS, body.revealing) and then the front card springs up to center.
   function show() {
     if (!slots.length) return;
     host.classList.remove("hidden");
-    document.body.classList.add("revealing"); // CSS drops the pack's pointer-events
+    document.body.classList.add("revealing"); // CSS: the pack drops off + stops taking taps
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
-    // next frame, lift the front card out of the pack (transition animates the rise)
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        layout();
-        flourishIfRare();
-      }),
-    );
+    // let the pack start falling, then spring the first card up into view
+    setTimeout(() => {
+      layout();
+      flourishIfRare();
+    }, 180);
   }
 
   function close() {
@@ -146,9 +143,9 @@ export function createReveal({ mountEl, onAgain }) {
     return entry;
   }
 
-  // The current card is the FRONT (risen out of the pack); cards still to come
-  // rest tucked behind the foil; already-seen cards are flung up and away. CSS
-  // drives the actual transforms off these classes.
+  // The current card is the FRONT (sprung up to center); cards still to come
+  // wait below (where the pack was); already-seen cards are flung up and away.
+  // CSS drives the actual transforms off these classes.
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
@@ -180,7 +177,7 @@ export function createReveal({ mountEl, onAgain }) {
     s.slot.classList.toggle("rare", tier >= RARE_TIER);
     if (tier >= RARE_TIER) {
       const r = host.getBoundingClientRect();
-      particles.emit(r.left + r.width / 2, r.top + r.height * 0.32, { // where the risen card sits
+      particles.emit(r.left + r.width / 2, r.top + r.height * 0.44, { // where the centered card sits
         count: 46,
         speed: 7,
         spread: Math.PI * 2,
