@@ -97,18 +97,20 @@
       }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
-       * After the opened pack drops away, the front card springs UP from where
-       * the pack was to screen center, full size. Tapping flings it off and the
-       * next card springs up from below. */
+       * The stack sits BEHIND the pack (z-index 1) so the top card peeks through
+       * the tear gap as you rip. When the pack opens it drops away, the reveal
+       * jumps in front (z-index 3, via body.revealing), and the front card
+       * springs from its small peek size up to full at center. */
       .reveal {
         position: fixed;
         inset: 0;
-        z-index: 3; /* in front of the (dropping) pack */
+        z-index: 1; /* behind the sealed pack — the top card peeks through the gap */
         display: grid;
         place-items: center;
         --stackw: min(72vw, 58vh, 360px);
         pointer-events: none; /* only the front card opts back in */
       }
+      body.revealing .reveal { z-index: 3; } /* pack is dropping → bring cards in front */
       .reveal.hidden { display: none; }
 
       .reveal__fx {
@@ -129,14 +131,21 @@
         position: absolute;
         inset: 0;
         perspective: 1100px;
-        transform: translateY(122%) scale(0.9); /* waiting below, down where the pack was */
+        transform: scale(0.9); /* waiting: hidden, ready to spring */
         opacity: 0;
         transition: transform 0.6s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.4s, box-shadow 0.4s;
         touch-action: none;
         will-change: transform;
       }
+      .reveal__slot.peek {
+        /* tucked inside the still-sealed pack — sized to sit WITHIN the pack so
+           it never pokes past the edges, and shown through the tear gap (the
+           foil + masked backing hide the rest). Springs to full on open. */
+        transform: scale(0.78);
+        opacity: 1;
+      }
       .reveal__slot.front {
-        transform: translateY(0) scale(1); /* sprung up to center */
+        transform: scale(1); /* sprung up to full size at center */
         opacity: 1;
         pointer-events: auto;
       }

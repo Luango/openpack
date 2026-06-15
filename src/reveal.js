@@ -39,32 +39,34 @@ export function createReveal({ mountEl, onAgain }) {
   let slots = []; // { slot, cardEl, card, spring }
   let cards = [];
   let pos = 0; // index of the current front card
+  let peeking = true; // true while still inside the pack (peeking through the gap)
 
-  // Render + load the whole stack UP FRONT, while the pack is still sealed, so
-  // the reveal has nothing to fetch or build when the pack finally tears — it
-  // just shows. Stays hidden until show().
+  // Render + load the whole stack UP FRONT, behind the still-sealed pack, so the
+  // top card sits INSIDE the pack and peeks through the tear gap as you rip — and
+  // there's nothing to fetch or build when the pack finally opens.
   function prepare(packCards) {
     cards = packCards || [];
     pos = 0;
     slots.forEach((s) => s.spring.stop());
     stackEl.innerHTML = "";
-    slots = cards.map(makeSlot); // images start loading now (even while hidden)
+    slots = cards.map(makeSlot);
     againEl.hidden = true;
-    // leave every slot in its resting state (tucked in the pack) — the rise is
-    // triggered by layout() inside show(), so the first card animates UP.
-    updateHint();
+    hintEl.textContent = ""; // no hint until the cards are out
+    host.classList.remove("hidden"); // visible, but BEHIND the pack (z-index) — hidden by the foil
+    layout(); // the front card sits in "peek" position behind the pack
   }
 
-  // Reveal the already-prepared stack — instant, no async work. The opened pack
-  // drops away (CSS, body.revealing) and then the front card springs up to center.
+  // Open the prepared stack — instant. The pack drops away (CSS, body.revealing,
+  // which also raises the reveal in front), then the front card springs from its
+  // peek-behind-the-pack spot up to full size at center.
   function show() {
     if (!slots.length) return;
-    host.classList.remove("hidden");
-    document.body.classList.add("revealing"); // CSS: the pack drops off + stops taking taps
+    document.body.classList.add("revealing");
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
-    // let the pack start falling, then spring the first card up into view
+    peeking = false;
     setTimeout(() => {
-      layout();
+      layout(); // front card springs from peek → full
+      updateHint();
       flourishIfRare();
     }, 180);
   }
@@ -72,6 +74,7 @@ export function createReveal({ mountEl, onAgain }) {
   function close() {
     host.classList.add("hidden");
     document.body.classList.remove("revealing");
+    peeking = true;
     slots.forEach((s) => s.spring.stop());
   }
 
@@ -143,15 +146,19 @@ export function createReveal({ mountEl, onAgain }) {
     return entry;
   }
 
-  // The current card is the FRONT (sprung up to center); cards still to come
-  // wait below (where the pack was); already-seen cards are flung up and away.
-  // CSS drives the actual transforms off these classes.
+  // Place the cards: the current one is either PEEKING (small, behind the still-
+  // sealed pack, showing through the tear gap) or, once opened, the FRONT (sprung
+  // up full-size at center). Already-seen cards are flung away; the rest wait
+  // hidden. CSS drives the transforms off these classes; z keeps the current card
+  // on top so it's what shows through the gap.
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
-      s.slot.classList.toggle("front", d === 0);
+      s.slot.classList.toggle("peek", d === 0 && peeking);
+      s.slot.classList.toggle("front", d === 0 && !peeking);
       s.slot.classList.toggle("flung", d < 0);
-      s.slot.style.pointerEvents = d === 0 ? "auto" : "none";
+      s.slot.style.zIndex = String(d === 0 ? 10 : 1);
+      s.slot.style.pointerEvents = d === 0 && !peeking ? "auto" : "none";
     });
   }
 

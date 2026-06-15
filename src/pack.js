@@ -70,12 +70,13 @@ export function createPack({ mountEl, onOpen }) {
         <clipPath id="clipB"><polygon points=""/></clipPath>
       </defs>
 
-      <rect class="pack-bg" x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
+      <!-- The dark interior is masked by the SAME tear gap as the foil, so the
+           rip punches a real hole right through to whatever sits behind the pack
+           (the card stack) — you peek the cards through the gap as you tear. -->
+      <rect class="pack-bg" x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b" mask="url(#tearmask)"/>
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
-           rip reads from the foil itself: the mid-tear opening is the dark gap
-           punched through the sealed foil, and the split shows each piece's own
-           jagged torn edge — no drawn white line. -->
+           split shows each piece's own jagged torn edge — no drawn white line. -->
       <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
