@@ -97,20 +97,20 @@
       }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
-       * The stack sits BEHIND the pack (z-index 1) so the top card peeks through
-       * the tear gap as you rip. When the pack opens it drops away, the reveal
-       * jumps in front (z-index 3, via body.revealing), and the front card
-       * springs from its small peek size up to full at center. */
+       * The REAL card stack sits behind the pack (z-index 1) the whole time,
+       * sized to fit inside it. The top card peeks through the tear gap as you
+       * rip (the tear only cuts the foil — the cards stay whole). When the pack
+       * opens it just drops away, uncovering that same stack IN PLACE — no
+       * separate card popping out. Tapping flicks the top card off to the next. */
       .reveal {
         position: fixed;
         inset: 0;
-        z-index: 1; /* behind the sealed pack — the top card peeks through the gap */
+        z-index: 1; /* behind the pack — stays behind; the pack drops away to uncover it */
         display: grid;
         place-items: center;
-        --stackw: min(72vw, 58vh, 360px);
-        pointer-events: none; /* only the front card opts back in */
+        --stackw: min(62vw, 40vh, 330px); /* fits inside the pack with margin */
+        pointer-events: none; /* only the top card (once open) opts back in */
       }
-      body.revealing .reveal { z-index: 3; } /* pack is dropping → bring cards in front */
       .reveal.hidden { display: none; }
 
       .reveal__fx {
@@ -127,30 +127,21 @@
         aspect-ratio: 63 / 88;
       }
 
+      /* Each card sits in the stack at its depth (--d, 0 = top). The top card is
+         what peeks through the gap and what's uncovered when the pack drops — it
+         never springs or pops; it's simply there. */
       .reveal__slot {
         position: absolute;
         inset: 0;
         perspective: 1100px;
-        transform: scale(0.9); /* waiting: hidden, ready to spring */
-        opacity: 0;
-        transition: transform 0.6s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.4s, box-shadow 0.4s;
+        transform: translateY(calc(var(--d, 0) * 6px)) scale(calc(1 - var(--d, 0) * 0.02));
+        opacity: 1;
+        transition: transform 0.5s ease, opacity 0.4s ease;
         touch-action: none;
         will-change: transform;
       }
-      .reveal__slot.peek {
-        /* tucked inside the still-sealed pack — sized to sit WITHIN the (now
-           bigger) pack with margin to spare, so it stays covered even as the
-           pack floats, and shows through the tear gap. Springs to full on open. */
-        transform: scale(0.88);
-        opacity: 1;
-      }
-      .reveal__slot.front {
-        transform: scale(1); /* sprung up to full size at center */
-        opacity: 1;
-        pointer-events: auto;
-      }
       .reveal__slot.flung {
-        transform: translateY(-130%) rotate(-6deg) scale(1.04); /* pulled away */
+        transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
         opacity: 0;
       }
       .reveal__slot .card--detail {

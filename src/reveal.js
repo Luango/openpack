@@ -56,19 +56,17 @@ export function createReveal({ mountEl, onAgain }) {
     layout(); // the front card sits in "peek" position behind the pack
   }
 
-  // Open the prepared stack — instant. The pack drops away (CSS, body.revealing,
-  // which also raises the reveal in front), then the front card springs from its
-  // peek-behind-the-pack spot up to full size at center.
+  // Open the prepared stack — instant. The pack drops away (CSS, body.revealing),
+  // uncovering the SAME stack that was inside it, in place — no card springs or
+  // pops out; the top card is simply there once the foil is gone.
   function show() {
     if (!slots.length) return;
-    document.body.classList.add("revealing");
+    document.body.classList.add("revealing"); // the pack drops away + stops taking taps
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
     peeking = false;
-    setTimeout(() => {
-      layout(); // front card springs from peek → full
-      updateHint();
-      flourishIfRare();
-    }, 180);
+    layout(); // the top card is now interactive (it never moved — just uncovered)
+    updateHint();
+    flourishIfRare();
   }
 
   function close() {
@@ -146,18 +144,17 @@ export function createReveal({ mountEl, onAgain }) {
     return entry;
   }
 
-  // Place the cards: the current one is either PEEKING (small, behind the still-
-  // sealed pack, showing through the tear gap) or, once opened, the FRONT (sprung
-  // up full-size at center). Already-seen cards are flung away; the rest wait
-  // hidden. CSS drives the transforms off these classes; z keeps the current card
-  // on top so it's what shows through the gap.
+  // Lay the cards out as a real stack: depth 0 is the top card (peeks through the
+  // gap, and is uncovered in place when the pack drops), deeper cards sit behind
+  // it, already-seen cards are flung away. CSS reads --d for the stack offset; z
+  // keeps the top card frontmost. The top card only takes taps once opened.
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
-      s.slot.classList.toggle("peek", d === 0 && peeking);
-      s.slot.classList.toggle("front", d === 0 && !peeking);
+      s.slot.classList.toggle("front", d === 0);
       s.slot.classList.toggle("flung", d < 0);
-      s.slot.style.zIndex = String(d === 0 ? 10 : 1);
+      s.slot.style.setProperty("--d", String(Math.max(0, d)));
+      s.slot.style.zIndex = String(d < 0 ? 1 : 100 - d);
       s.slot.style.pointerEvents = d === 0 && !peeking ? "auto" : "none";
     });
   }
