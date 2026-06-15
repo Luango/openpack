@@ -64,20 +64,23 @@ export function createPack({ mountEl }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
+        <!-- the pack silhouette; clips the tear strokes so a jagged/offset point
+             near an edge can never draw a line out in the empty margin -->
+        <clipPath id="body"><rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16"/></clipPath>
       </defs>
 
       <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
 
       <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
-      <polygon class="tear-edge" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+      <polygon class="tear-edge" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
 
       <g class="piece piece-a" style="display:none">
         <use href="#art" clip-path="url(#clipA)"/>
-        <polyline class="edge edge-a" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+        <polyline class="edge edge-a" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
       </g>
       <g class="piece piece-b" style="display:none">
         <use href="#art" clip-path="url(#clipB)"/>
-        <polyline class="edge edge-b" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
+        <polyline class="edge edge-b" points="" clip-path="url(#body)" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
       </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
