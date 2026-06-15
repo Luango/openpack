@@ -40,7 +40,7 @@ const CORNERS = [
   { s: 3, x: 0, y: VB.h },
 ];
 
-export function createPack({ mountEl }) {
+export function createPack({ mountEl, onOpen }) {
   mountEl.innerHTML = `
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
       <defs>
@@ -310,6 +310,8 @@ export function createPack({ mountEl }) {
       sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
       if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
       burstAlongTear();
+      // let the halves fly for a beat, then hand off to the card reveal
+      setTimeout(() => onOpen?.(), 380);
     } else {
       sfx.tearEnd(false);
       spring.set({ w: 0 }); // didn't cross — the crack eases shut into one piece

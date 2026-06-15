@@ -157,3 +157,60 @@ function stopTear() {
   }
   tear = null;
 }
+
+// A quick airy whoosh as a revealed card flicks away to the next.
+export function flick() {
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  if (c.state !== "running") return;
+  const t = c.currentTime;
+  const dur = 0.18;
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = 0.8;
+  bp.frequency.setValueAtTime(900, t);
+  bp.frequency.exponentialRampToValueAtTime(5200, t + dur); // upward swish
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp).connect(gain).connect(c.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
+// A bright rising sparkle when a rare card surfaces — higher + fuller for a
+// bigger pull (tier 5–9). A little arpeggio of triangle notes.
+export function chime(tier = 5) {
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  if (c.state !== "running") return;
+  const t = c.currentTime;
+  const lift = Math.max(0, Math.min(4, tier - 5)); // 0…4 over the top tiers
+  const root = 523.25 * Math.pow(2, lift / 12); // C5, nudged up for rarer cards
+  const steps = [0, 4, 7, 12, 16]; // major arpeggio
+  steps.forEach((semi, i) => {
+    const f = root * Math.pow(2, semi / 12);
+    const ts = t + i * 0.07;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = f;
+    gain.gain.setValueAtTime(0.0001, ts);
+    gain.gain.exponentialRampToValueAtTime(0.11, ts + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ts + 0.5);
+    osc.connect(gain).connect(c.destination);
+    osc.start(ts);
+    osc.stop(ts + 0.52);
+  });
+}

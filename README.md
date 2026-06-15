@@ -89,10 +89,12 @@ foil is chosen by tier — all from one mapping in
     ├── filters.js    rarity chips + All/Only mode; persists intent across sets
     ├── lightbox.js   flip viewer: spring-driven tilt, glare, swipe-to-flip, full-res upgrade
     ├── pack.js       OpenPack: SVG pack that tears open along a finger-drawn path
+    ├── booster.js    assembles one booster from a set pool (rarest last)
+    ├── reveal.js     card-stack reveal: cards rise from the opened pack
     ├── motion.js     shared spring engine (rAF integrator) behind lightbox + pack
     ├── particles.js  tiny canvas particle system — foil flecks + sparks
     ├── options.js    display toggles (e.g. Holo) → body class + localStorage
-    ├── sfx.js        Web Audio: hover tick, foil scratch, sustained tear
+    ├── sfx.js        Web Audio: hover tick, foil scratch, tear, flick, rare chime
     ├── util.js       escapeHtml / escapeAttr / delegated events
     ├── base.css      design tokens, layout, toolbar/chips/toggles chrome
     └── card.css      the Card component: grid tiles, detail card, holo VFX
@@ -121,8 +123,16 @@ foil is chosen by tier — all from one mapping in
   path across it: the rip propagates along your finger, splits into two
   complementary pieces, and the smaller one flies off while the body stays. It
   reuses the same `motion.js` spring, [`particles.js`](src/particles.js) flecks,
-  and [`sfx.js`](src/sfx.js) sounds as the gallery — and will reveal the cards
-  via the same [`card.js`](src/card.js) component.
+  and [`sfx.js`](src/sfx.js) sounds as the gallery.
+- **Tear → reveal, same Card.** When the pack opens, [`reveal.js`](src/reveal.js)
+  raises the booster's cards as a stack you tap through — rarest last, the hit
+  landing with a glow, foil burst, and chime. The cards are the very same
+  [`card.js`](src/card.js) `detail` component the lightbox uses (holo foil driven
+  by a `motion.js` tilt). [`booster.js`](src/booster.js) assembles the pack from a
+  real set via [`api.js`](src/api.js), falling back to offline placeholders.
+- **Drop-in pack art.** Replace [`assets/pack.png`](assets/pack.png) with any
+  design, any size — the pack reads the image's aspect on load and re-derives the
+  whole tear geometry to fit.
 - **Extensible toggles.** Adding a display option is one entry in
   [`options.js`](src/options.js) + a matching `body.<class>` CSS rule. Nothing
   else to wire.

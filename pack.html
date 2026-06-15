@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>OpenPack · slash prototype</title>
+    <link rel="stylesheet" href="src/base.css" />
+    <link rel="stylesheet" href="src/card.css" />
     <style>
       :root {
         color-scheme: dark;
@@ -85,15 +87,116 @@
         color: #9aa3b2;
         pointer-events: none;
       }
+
+      /* ---- card-stack reveal (see src/reveal.js) ------------------------- */
+      .reveal {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-items: center;
+        --stackw: min(74vw, 52vh, 360px);
+        background: radial-gradient(120% 90% at 50% 38%, rgba(24, 28, 40, 0.72), rgba(5, 6, 10, 0.94));
+        opacity: 1;
+        transition: opacity 0.35s;
+      }
+      .reveal.hidden { display: none; }
+
+      .reveal__fx {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .reveal__stack {
+        position: relative;
+        width: var(--stackw);
+        aspect-ratio: 63 / 88;
+        transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s;
+      }
+
+      .reveal__slot {
+        position: absolute;
+        inset: 0;
+        perspective: 1100px;
+        transform: translateY(calc(var(--d, 0) * 16px)) scale(calc(1 - var(--d, 0) * 0.06));
+        opacity: calc(1 - var(--d, 0) * 0.38);
+        transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s, box-shadow 0.4s;
+        touch-action: none;
+        will-change: transform;
+      }
+      .reveal__slot.flung {
+        transform: translateY(-128%) rotate(-7deg) scale(1.06);
+        opacity: 0;
+      }
+      .reveal__slot .card--detail {
+        --w: var(--stackw);
+        width: 100%;
+        height: 100%;
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+      }
+      .reveal__slot.rare .card--detail {
+        box-shadow:
+          0 0 48px 4px color-mix(in srgb, var(--tier-color) 70%, transparent),
+          0 30px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .reveal__hint {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 30px;
+        margin: 0;
+        text-align: center;
+        font-size: 13px;
+        color: #9aa3b2;
+        pointer-events: none;
+      }
+      .reveal__again {
+        position: fixed;
+        left: 50%;
+        bottom: 56px;
+        transform: translateX(-50%);
+        padding: 11px 24px;
+        border-radius: 999px;
+        border: 1px solid var(--line, #2a313f);
+        background: var(--bg-elev, #141821);
+        color: #eef1f6;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .reveal__again[hidden] { display: none; }
     </style>
   </head>
-  <body>
+  <body class="holo-on">
     <div id="pack-stage"></div>
     <p class="hint">Drag a line across the pack to tear it open — it rips along your path.</p>
 
     <script type="module">
       import { createPack } from "./src/pack.js";
-      createPack({ mountEl: document.getElementById("pack-stage") });
+      import { createReveal } from "./src/reveal.js";
+      import { buildBooster } from "./src/booster.js";
+
+      let pack, reveal;
+      let cardsPromise = buildBooster(); // prefetch a pack while the user tears
+      cardsPromise.then((cs) => cs.forEach((c) => { const im = new Image(); im.src = c.image; })); // warm the images
+
+      reveal = createReveal({
+        mountEl: document.body,
+        onAgain: () => {
+          pack.reset(); // reseal the pack
+          cardsPromise = buildBooster(); // and line up the next one
+          cardsPromise.then((cs) => cs.forEach((c) => { const im = new Image(); im.src = c.image; }));
+        },
+      });
+
+      pack = createPack({
+        mountEl: document.getElementById("pack-stage"),
+        onOpen: async () => reveal.open(await cardsPromise),
+      });
     </script>
   </body>
 </html>
