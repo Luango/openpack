@@ -11,7 +11,7 @@ import { rarityToTier } from "./rarity.js";
 const DEFAULT_SET = "sv8"; // Surging Sparks — modern foils + illustration rares
 const PACK_SIZE = 5;
 
-const FETCH_TIMEOUT = 7000; // give up on a slow/blocked API and show placeholders
+const FETCH_TIMEOUT = 20000; // wait for the real cards (the "Preparing…" gate covers it); placeholders are a last resort for a truly dead/offline API
 
 const withTimeout = (p, ms) =>
   Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);

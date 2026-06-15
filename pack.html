@@ -110,7 +110,7 @@
         z-index: 1; /* behind the pack — stays behind; the pack drops away to uncover it */
         display: grid;
         place-items: center;
-        --stackw: min(62vw, 40vh, 330px); /* fits inside the pack with margin */
+        --stackw: var(--card-detail-w); /* same size as the gallery's card — one card, one size (the bigger pack still covers it) */
         pointer-events: none; /* only the top card (once open) opts back in */
       }
       .reveal.hidden { display: none; }

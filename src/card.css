@@ -16,6 +16,9 @@
 :root {
   /* card aspect ratio — standard TCG card is 63mm × 88mm */
   --card-aspect: 63 / 88;
+  /* the ONE size for a full (detail) card — used by the gallery lightbox AND the
+     pack reveal, so a card is the same size everywhere */
+  --card-detail-w: min(64vw, 42vh, 350px);
 }
 
 .card {
@@ -118,7 +121,7 @@
      grows the card (and the strong perspective balloons its near corner), so the
      resting size needs room to grow into without clipping or hitting the
      caption. Smaller resting also makes the hold-to-grow read as more dramatic. */
-  --w: min(64vw, 42vh, 350px);
+  --w: var(--card-detail-w);
   width: var(--w);
   height: auto;
   aspect-ratio: var(--card-aspect);
