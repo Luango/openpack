@@ -34,6 +34,15 @@
       body.revealing #pack-stage {
         pointer-events: none;
       }
+      /* the dark interior backing is only for the tear's "inside"; during the
+         reveal it would sit between the foil and the rising card as a black
+         slab, so fade it out and let the card show through the opening */
+      .pack-bg {
+        transition: opacity 0.3s;
+      }
+      body.revealing .pack-bg {
+        opacity: 0;
+      }
 
       .pack {
         width: min(64vw, 46vh, 320px);
