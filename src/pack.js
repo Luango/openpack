@@ -64,45 +64,27 @@ export function createPack({ mountEl }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
-        <!-- rough pack silhouette (the viewBox). Used as the stroke clip BEFORE the
-             real image loads / for the rainbow fallback, which fills the viewBox. -->
-        <clipPath id="body"><rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16"/></clipPath>
-        <!-- exact foil silhouette: the pack image's own ALPHA. The real foil is
-             inset from the viewBox (transparent margin in the PNG), so once it
-             loads we mask the strokes to this — a tear line shows only where there
-             is actual foil, never in the dark margin beside it. -->
-        <mask id="foilmask" maskUnits="userSpaceOnUse" style="mask-type:alpha">
-          <image class="mask-img" x="0" y="0" width="${VB.w}" height="${VB.h}" preserveAspectRatio="xMidYMid slice"/>
-        </mask>
       </defs>
 
       <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
 
-      <!-- Foil layers — free to fly off; each keeps only its own shape clip. -->
+      <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
+           rip reads from the foil itself: the mid-tear opening is the dark gap
+           punched through the sealed foil, and the split shows each piece's own
+           jagged torn edge — no drawn white line. -->
       <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
-
-      <!-- The torn WHITE edge lines live in their own static group clipped to the
-           fixed pack silhouette, so a stroke is only ever drawn ON the pack —
-           never outside it, not even the sliver at the trigger edge, and never
-           riding along with a piece that flings away. -->
-      <g class="tear-ink" clip-path="url(#body)">
-        <polygon class="tear-edge" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
-        <polyline class="tear-line" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
-      </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
 
   const svg = mountEl.querySelector(".pack");
   const sealed = mountEl.querySelector(".sealed");
   const gap = mountEl.querySelector(".gap");
-  const tearEdge = mountEl.querySelector(".tear-edge");
   const clipPolyA = mountEl.querySelector("#clipA polygon");
   const clipPolyB = mountEl.querySelector("#clipB polygon");
   const pieceA = mountEl.querySelector(".piece-a");
   const pieceB = mountEl.querySelector(".piece-b");
-  const tearLine = mountEl.querySelector(".tear-line"); // the torn edge, drawn statically (clipped to the pack)
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
   // Use a real foil-pack image if assets/pack.png is present; otherwise keep the
@@ -114,9 +96,6 @@ export function createPack({ mountEl }) {
     img.setAttribute("href", PACK_IMG);
     img.style.display = "";
     mountEl.querySelector(".foil-fallback").style.display = "none";
-    // mask the tear strokes to the real foil's alpha (it's inset from the viewBox)
-    mountEl.querySelector(".mask-img").setAttribute("href", PACK_IMG);
-    mountEl.querySelector(".tear-ink").setAttribute("mask", "url(#foilmask)");
   };
   probe.src = PACK_IMG;
 
@@ -131,6 +110,7 @@ export function createPack({ mountEl }) {
   let moverEl = null; // the SMALLER half (flies off); the larger body stays put
   let stayEl = null;
   let moverDir = { x: 0, y: -1 }; // direction the flying half tears away in
+  let seam = null; // the split tear line, in pack coords (drives the fleck burst)
   let scratchOnly = false; // started in the middle (not near an edge) → just scuff the foil
   let lastClient = null;
   let lastT = 0;
@@ -149,10 +129,10 @@ export function createPack({ mountEl }) {
         const a = c.sep * ROT;
         moverEl?.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
       } else if (tearPath) {
+        // open the dark gap through the sealed foil along the traced path
         const poly = ribbon(tearPath, c.w);
         const pts = poly ? poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") : "";
         gap.setAttribute("points", pts);
-        tearEdge.setAttribute("points", c.w > 1 ? pts : "");
       }
     },
   });
@@ -195,7 +175,7 @@ export function createPack({ mountEl }) {
     const B = [...full, ...cwCorners(sIn, sOut).reverse()]; // the other side
     setPoints(clipPolyA, A);
     setPoints(clipPolyB, B);
-    setPoints(tearLine, full); // one static torn-edge line, clipped to the pack
+    seam = full; // remember the tear line (for the foil-fleck burst on release)
 
     // part the two pieces straight apart, perpendicular to the tear (opposite
     // directions), with A on whichever side its bulk sits
@@ -216,8 +196,7 @@ export function createPack({ mountEl }) {
     stayEl.removeAttribute("transform");
 
     split = true;
-    sealed.style.display = "none";
-    tearEdge.setAttribute("points", ""); // drop the mid-tear crack; the torn line takes over
+    sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
     pieceA.style.display = "";
     pieceB.style.display = "";
   }
@@ -322,10 +301,8 @@ export function createPack({ mountEl }) {
 
   function burstAlongTear() {
     const m = svg.getScreenCTM();
-    for (const p of (tearLine.getAttribute("points") || "").split(" ")) {
-      const [x, y] = p.split(",").map(Number);
-      if (Number.isNaN(x)) continue;
-      const c = new DOMPoint(x, y).matrixTransform(m);
+    for (const p of seam || []) {
+      const c = new DOMPoint(p.x, p.y).matrixTransform(m);
       particles.emit(c.x, c.y, { count: 3, speed: 4.5, colors: FOIL, life: 50, size: 2.6 });
     }
   }
@@ -344,14 +321,13 @@ export function createPack({ mountEl }) {
     tearPath = null;
     path = [];
     spring.reset();
+    seam = null;
     sealed.style.display = "";
     pieceA.style.display = "none";
     pieceB.style.display = "none";
     pieceA.removeAttribute("transform");
     pieceB.removeAttribute("transform");
     gap.setAttribute("points", "");
-    tearEdge.setAttribute("points", "");
-    tearLine.setAttribute("points", "");
   }
 
   // listen on the whole stage so an in-progress tear keeps tracking even when
