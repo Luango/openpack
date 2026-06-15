@@ -90,6 +90,10 @@ export function createReveal({ mountEl, onAgain }) {
     slot.className = "reveal__slot";
     slot.innerHTML = renderCard(card, { variant: "detail" });
     const cardEl = slot.querySelector(".card");
+    // renderCard seeds the thumbnail; swap in the full-res scan (already preloaded)
+    // so the pulled card is as crisp as the gallery's lightbox.
+    const art = cardEl.querySelector(".card__art");
+    if (art && card.image) art.src = card.image;
     stackEl.appendChild(slot);
 
     // the front card's tilt + holo, eased by the shared spring
