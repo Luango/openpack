@@ -155,9 +155,14 @@ export function createPack({ mountEl }) {
   }
 
   // While tearing: build the open gap path (anchor edge → finger), pinched at tip.
+  // The anchor is the start point snapped straight to its NEAREST edge — the press
+  // is gated to begin at/near an edge, so that's where the rip opens. (Casting a
+  // ray backward along the drag direction instead would shoot across the whole
+  // pack to a far border whenever the drag wasn't aimed at the near edge, drawing
+  // a spurious straight gap clear across the pack.)
   function rebuildGap() {
     const raw = jitter(path);
-    const anchor = toBorder(raw[0], unit(sub(raw[0], raw[1])));
+    const anchor = snapBorder(raw[0]);
     const tip = raw[raw.length - 1];
     crossed = nearBorder(tip) && pathLen(path) > CROSS_MIN;
     tearPath = [anchor, ...raw];
@@ -167,7 +172,7 @@ export function createPack({ mountEl }) {
   // full edge-to-edge tear line.
   function makePieces() {
     const raw = jitter(path);
-    const Pin = toBorder(raw[0], unit(sub(raw[0], raw[1])));
+    const Pin = snapBorder(raw[0]); // start snapped to its nearest edge (see rebuildGap)
     const Pout = snapBorder(raw[raw.length - 1]);
     const full = [Pin, ...raw, Pout];
     const sIn = perim(Pin);
@@ -411,24 +416,6 @@ function jitter(pts) {
   }
   out.push(pts[pts.length - 1]);
   return out;
-}
-
-function toBorder(p, d) {
-  let best = Infinity;
-  let hit = null;
-  const ts = [];
-  if (Math.abs(d.x) > 1e-6) ts.push((0 - p.x) / d.x, (VB.w - p.x) / d.x);
-  if (Math.abs(d.y) > 1e-6) ts.push((0 - p.y) / d.y, (VB.h - p.y) / d.y);
-  for (const t of ts) {
-    if (t <= 0 || t >= best) continue;
-    const x = p.x + d.x * t;
-    const y = p.y + d.y * t;
-    if (x >= -0.5 && x <= VB.w + 0.5 && y >= -0.5 && y <= VB.h + 0.5) {
-      best = t;
-      hit = { x: Math.max(0, Math.min(VB.w, x)), y: Math.max(0, Math.min(VB.h, y)) };
-    }
-  }
-  return hit || { x: Math.max(0, Math.min(VB.w, p.x)), y: Math.max(0, Math.min(VB.h, p.y)) };
 }
 
 // perimeter parameter s ∈ [0,4): top 0–1, right 1–2, bottom 2–3, left 3–4
