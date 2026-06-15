@@ -91,6 +91,10 @@ export function createPack({ mountEl, onOpen }) {
   const pieceB = mountEl.querySelector(".piece-b");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
+  // Pause/resume the idle float (CSS animation on .pack) — the pack steadies the
+  // moment you grab it to tear, and floats again only when it's whole at rest.
+  const floatOn = (on) => { svg.style.animationPlayState = on ? "running" : "paused"; };
+
   // Reshape the whole pack to a given image aspect: re-derive VB.h, the border
   // corners the tear geometry rides on, and every height-bearing attribute. This
   // is what makes any pack image — any size or shape — drop in and just work.
@@ -241,6 +245,7 @@ export function createPack({ mountEl, onOpen }) {
     if (!inside) return; // not on the pack → ignore entirely
     scratchOnly = Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
 
+    floatOn(false); // steady the pack while it's being handled — stop the idle float
     dragging = true;
     tearing = false;
     crossed = false;
@@ -306,6 +311,7 @@ export function createPack({ mountEl, onOpen }) {
     dragging = false;
     if (scratchOnly) {
       scratchOnly = false; // just a scuff — nothing to open
+      floatOn(true); // resume the idle float
       return;
     }
     if (crossed) {
@@ -316,11 +322,13 @@ export function createPack({ mountEl, onOpen }) {
       sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
       if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
       burstAlongTear();
-      // let the halves fly for a beat, then hand off to the card reveal
-      setTimeout(() => onOpen?.(), 380);
+      // let the torn-off top FULLY fly away first, THEN hand off to the reveal
+      // (which drops the pack body and springs the cards up)
+      setTimeout(() => onOpen?.(), 750);
     } else {
       sfx.tearEnd(false);
       spring.set({ w: 0 }); // didn't cross — the crack eases shut into one piece
+      floatOn(true); // stayed one piece — resume the idle float
       setTimeout(() => {
         if (!dragging && !opened) clearTear();
       }, 420);
@@ -357,6 +365,7 @@ export function createPack({ mountEl, onOpen }) {
     pieceB.removeAttribute("transform");
     pieceA.style.opacity = pieceB.style.opacity = ""; // restore (the mover faded as it flew)
     gap.setAttribute("points", "");
+    floatOn(true); // the pack is whole again — let it float
   }
 
   // listen on the whole stage so an in-progress tear keeps tracking even when
