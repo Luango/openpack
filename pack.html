@@ -224,6 +224,7 @@
 
       pack = createPack({
         mountEl: document.getElementById("pack-stage"),
+        onGrab: () => reveal.wake(), // bring the stack in behind the pack only once it's grabbed
         onOpen: async () => {
           hintEl.textContent = ""; // the reveal has its own hint
           await ready; // (already prepared — instant)

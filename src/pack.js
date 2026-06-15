@@ -40,7 +40,7 @@ const CORNERS = [
   { s: 3, x: 0, y: VB.h },
 ];
 
-export function createPack({ mountEl, onOpen }) {
+export function createPack({ mountEl, onOpen, onGrab }) {
   mountEl.innerHTML = `
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
       <defs>
@@ -252,6 +252,7 @@ export function createPack({ mountEl, onOpen }) {
     scratchOnly = Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
 
     floatOn(false); // steady the pack while it's being handled — stop the idle float
+    onGrab?.(); // pack grabbed (sealed, covering) → safe to bring the card stack in behind it
     dragging = true;
     tearing = false;
     crossed = false;

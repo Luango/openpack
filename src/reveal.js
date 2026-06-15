@@ -52,8 +52,16 @@ export function createReveal({ mountEl, onAgain }) {
     slots = cards.map(makeSlot);
     againEl.hidden = true;
     hintEl.textContent = ""; // no hint until the cards are out
-    host.classList.remove("hidden"); // visible, but BEHIND the pack (z-index) — hidden by the foil
+    // NOTE: stay hidden. The cards (images) still load while display:none, but the
+    // stack isn't shown until the pack is grabbed (wake) — so it's never exposed
+    // while the pack is floating or sliding back in after "Open another".
     layout(); // the front card sits in "peek" position behind the pack
+  }
+
+  // Bring the stack in behind the pack the moment it's grabbed to tear (the pack
+  // is sealed and covering, so the cards stay hidden until the gap opens).
+  function wake() {
+    if (slots.length) host.classList.remove("hidden");
   }
 
   // Open the prepared stack — instant. The pack drops away (CSS, body.revealing),
@@ -61,6 +69,7 @@ export function createReveal({ mountEl, onAgain }) {
   // pops out; the top card is simply there once the foil is gone.
   function show() {
     if (!slots.length) return;
+    host.classList.remove("hidden"); // ensure visible (normally already woken on grab)
     document.body.classList.add("revealing"); // the pack drops away + stops taking taps
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
     peeking = false;
@@ -204,5 +213,5 @@ export function createReveal({ mountEl, onAgain }) {
     onAgain?.();
   });
 
-  return { prepare, show, close };
+  return { prepare, wake, show, close };
 }
