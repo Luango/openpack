@@ -21,7 +21,7 @@ import * as sfx from "./sfx.js";
 
 const VB = { w: 300, h: 554 }; // aspect matches the foil pack image (≈ 286:528)
 const PACK_IMG = "assets/pack.png"; // drop a foil-pack image here to replace the rainbow temp
-const GAP_TEAR = 40; // gap width while mid-tear
+const GAP_TEAR = 10; // crack width while mid-tear — kept thin so it reads as a crack, not a gap
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
@@ -259,18 +259,12 @@ export function createPack({ mountEl }) {
     }
     if (!tearing) return;
 
+    // Stay ONE piece with just a thin crack tracking the finger the whole time;
+    // the split + fly-off is deferred to release (onUp), so tearing reads as a
+    // small crack rather than a gaping hole parting open as you drag.
     const progress = Math.min(1, pathLen(path) / (VB.h * 0.6));
-    if (!split) {
-      rebuildGap();
-      if (crossed) {
-        makePieces();
-        spring.set({ sep: 0.55 }); // pieces visibly part the moment it crosses
-      } else {
-        spring.set({ w: progress * GAP_TEAR });
-      }
-    } else {
-      spring.set({ sep: Math.min(1, 0.55 + progress * 0.4) });
-    }
+    rebuildGap(); // updates the `crossed` flag + the crack path
+    spring.set({ w: progress * GAP_TEAR });
 
     const now = performance.now();
     const dt = Math.max(1, now - lastT);
@@ -296,7 +290,9 @@ export function createPack({ mountEl }) {
       scratchOnly = false; // just a scuff — nothing to open
       return;
     }
-    if (split) {
+    if (crossed) {
+      // the crack reached the far edge → NOW split and fling the smaller half off
+      makePieces();
       opened = true;
       spring.set({ sep: 1 }); // pieces pull fully apart
       sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
@@ -304,7 +300,7 @@ export function createPack({ mountEl }) {
       burstAlongTear();
     } else {
       sfx.tearEnd(false);
-      spring.set({ w: 0 }); // didn't cross — the gap eases shut into one piece
+      spring.set({ w: 0 }); // didn't cross — the crack eases shut into one piece
       setTimeout(() => {
         if (!dragging && !opened) clearTear();
       }, 420);
