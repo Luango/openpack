@@ -284,7 +284,11 @@ export function createPack({ mountEl }) {
 
     const inten = Math.min(1, speed / 2.5);
     sfx.tearMove(inten);
-    particles.emit(e.clientX, e.clientY, { count: 1 + Math.round(inten * 4), speed: 2 + inten * 5, colors: FOIL, life: 36 });
+    // spray flecks at the finger CLAMPED onto the pack (p is already clamped in
+    // pack space) — a tear may start just outside the edge, and emitting at the
+    // raw client point would scatter foil into the empty margin
+    const sp = new DOMPoint(p.x, p.y).matrixTransform(svg.getScreenCTM());
+    particles.emit(sp.x, sp.y, { count: 1 + Math.round(inten * 4), speed: 2 + inten * 5, colors: FOIL, life: 36 });
     if (navigator.vibrate && inten > 0.5) navigator.vibrate(4);
   }
 
