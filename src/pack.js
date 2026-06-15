@@ -223,6 +223,13 @@ export function createPack({ mountEl, onOpen }) {
     moverDir = aIsSmaller ? dirA : dirB;
     stayEl.removeAttribute("transform");
 
+    // When the pack later opens, the remaining big half slides off AWAY from the
+    // opening (opposite the torn-off piece): up for a bottom tear, sideways for a
+    // vertical tear, down for a top tear. CSS reads these on #pack-stage.
+    mountEl.style.setProperty("--exit-x", (-moverDir.x * 120).toFixed(1) + "vmax");
+    mountEl.style.setProperty("--exit-y", (-moverDir.y * 120).toFixed(1) + "vmax");
+    mountEl.style.setProperty("--exit-rot", (-moverDir.x * 8).toFixed(1) + "deg");
+
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
     pieceA.style.display = "";
