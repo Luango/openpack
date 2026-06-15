@@ -25,8 +25,7 @@ const GAP_TEAR = 40; // gap width while mid-tear
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
-const START_MARGIN = 46; // a press must begin within this margin of the pack to start a tear
-const EDGE_BAND = 30; // …and within this thin edge band to TEAR; the whole center only scratches
+const EDGE_BAND = 42; // a tear must START on the pack within this edge band; the center only scratches
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
@@ -212,19 +211,17 @@ export function createPack({ mountEl }) {
 
   function onDown(e) {
     if (opened) return reset();
-    // only start a tear if the press begins near the pack (not anywhere on the stage)
-    const r = svg.getBoundingClientRect();
-    const M = START_MARGIN;
-    if (e.clientX < r.left - M || e.clientX > r.right + M || e.clientY < r.top - M || e.clientY > r.bottom + M) return;
 
-    // a tear must START at/near an edge; pressing in the middle of the pack only
-    // scuffs the foil (the unclamped pack-space point tells us how deep inside it is)
+    // A tear can only begin while TOUCHING the pack — a press off the pack does
+    // nothing (no line is ever drawn in the empty stage). On the pack, the thin
+    // EDGE_BAND is the tear trigger; pressing deeper in only scuffs the foil.
     const q = svg.createSVGPoint();
     q.x = e.clientX;
     q.y = e.clientY;
     const s = q.matrixTransform(svg.getScreenCTM().inverse());
     const inside = s.x >= 0 && s.x <= VB.w && s.y >= 0 && s.y <= VB.h;
-    scratchOnly = inside && Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
+    if (!inside) return; // not on the pack → ignore entirely
+    scratchOnly = Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
 
     dragging = true;
     tearing = false;
@@ -348,8 +345,9 @@ export function createPack({ mountEl }) {
     tearEdge.setAttribute("points", "");
   }
 
-  // listen on the whole stage (not just the pack) so a tear can start from
-  // outside the pack edge and drag across
+  // listen on the whole stage so an in-progress tear keeps tracking even when
+  // the finger strays off the pack mid-drag (onDown still gates the START to
+  // on-pack presses; the path clamps to the pack so the line stays on it)
   mountEl.addEventListener("pointerdown", onDown);
   mountEl.addEventListener("pointermove", onMove);
   mountEl.addEventListener("pointerup", onUp);
