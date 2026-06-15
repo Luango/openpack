@@ -70,10 +70,9 @@ export function createPack({ mountEl, onOpen }) {
         <clipPath id="clipB"><polygon points=""/></clipPath>
       </defs>
 
-      <!-- The dark interior is masked by the SAME tear gap as the foil, so the
-           rip punches a real hole right through to whatever sits behind the pack
-           (the card stack) — you peek the cards through the gap as you tear. -->
-      <rect class="pack-bg" x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b" mask="url(#tearmask)"/>
+      <!-- No solid interior: behind the foil is the real card stack itself, so a
+           tear (gap or a flown-off piece) opens straight onto the complete cards
+           — the rip only ever cuts the foil, never the cards behind it. -->
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
            split shows each piece's own jagged torn edge — no drawn white line. -->
@@ -106,7 +105,6 @@ export function createPack({ mountEl, onOpen }) {
     CORNERS[3].y = VB.h;
     mid = { x: VB.w / 2, y: VB.h / 2 };
     svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
-    mountEl.querySelector(".pack-bg").setAttribute("height", VB.h - 12);
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
     mountEl.querySelector("#tearmask rect").setAttribute("height", VB.h);
   }
