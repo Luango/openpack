@@ -39,7 +39,7 @@
       }
 
       .pack {
-        width: min(64vw, 46vh, 320px);
+        width: min(82vw, 46vh, 420px); /* big enough to fully contain the card stack behind it */
         height: auto;
         overflow: visible;
         cursor: crosshair;
@@ -138,10 +138,10 @@
         will-change: transform;
       }
       .reveal__slot.peek {
-        /* tucked inside the still-sealed pack — sized to sit WITHIN the pack so
-           it never pokes past the edges, and shown through the tear gap (the
-           foil + masked backing hide the rest). Springs to full on open. */
-        transform: scale(0.78);
+        /* tucked inside the still-sealed pack — sized to sit WITHIN the (now
+           bigger) pack with margin to spare, so it stays covered even as the
+           pack floats, and shows through the tear gap. Springs to full on open. */
+        transform: scale(0.88);
         opacity: 1;
       }
       .reveal__slot.front {
