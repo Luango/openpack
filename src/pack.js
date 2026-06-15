@@ -64,9 +64,16 @@ export function createPack({ mountEl }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
-        <!-- the pack silhouette; clips the tear strokes so a jagged/offset point
-             near an edge can never draw a line out in the empty margin -->
+        <!-- rough pack silhouette (the viewBox). Used as the stroke clip BEFORE the
+             real image loads / for the rainbow fallback, which fills the viewBox. -->
         <clipPath id="body"><rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16"/></clipPath>
+        <!-- exact foil silhouette: the pack image's own ALPHA. The real foil is
+             inset from the viewBox (transparent margin in the PNG), so once it
+             loads we mask the strokes to this — a tear line shows only where there
+             is actual foil, never in the dark margin beside it. -->
+        <mask id="foilmask" maskUnits="userSpaceOnUse" style="mask-type:alpha">
+          <image class="mask-img" x="0" y="0" width="${VB.w}" height="${VB.h}" preserveAspectRatio="xMidYMid slice"/>
+        </mask>
       </defs>
 
       <rect x="6" y="6" width="${VB.w - 12}" height="${VB.h - 12}" rx="12" fill="#05070b"/>
@@ -80,7 +87,7 @@ export function createPack({ mountEl }) {
            fixed pack silhouette, so a stroke is only ever drawn ON the pack —
            never outside it, not even the sliver at the trigger edge, and never
            riding along with a piece that flings away. -->
-      <g clip-path="url(#body)">
+      <g class="tear-ink" clip-path="url(#body)">
         <polygon class="tear-edge" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
         <polyline class="tear-line" points="" fill="none" stroke="#e4e1d8" stroke-width="1.5" stroke-linejoin="round"/>
       </g>
@@ -107,6 +114,9 @@ export function createPack({ mountEl }) {
     img.setAttribute("href", PACK_IMG);
     img.style.display = "";
     mountEl.querySelector(".foil-fallback").style.display = "none";
+    // mask the tear strokes to the real foil's alpha (it's inset from the viewBox)
+    mountEl.querySelector(".mask-img").setAttribute("href", PACK_IMG);
+    mountEl.querySelector(".tear-ink").setAttribute("mask", "url(#foilmask)");
   };
   probe.src = PACK_IMG;
 
