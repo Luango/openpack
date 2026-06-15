@@ -146,16 +146,17 @@
         transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
         opacity: 0;
       }
+      /* The card is the SAME component as the gallery — no size/shadow overrides;
+         it fills the slot because --stackw equals the card's own --card-detail-w. */
       .reveal__slot .card--detail {
-        --w: var(--stackw);
         width: 100%;
         height: 100%;
-        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6);
       }
+      /* a rare pull adds a tier-colored glow on top of the card's own shadow */
       .reveal__slot.front.rare .card--detail {
         box-shadow:
           0 0 48px 4px color-mix(in srgb, var(--tier-color) 70%, transparent),
-          0 24px 50px rgba(0, 0, 0, 0.6);
+          0 40px 80px rgba(0, 0, 0, 0.6);
       }
 
       .reveal__hint {
