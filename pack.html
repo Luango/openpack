@@ -180,23 +180,34 @@
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
 
-      let pack, reveal;
-      let cardsPromise = buildBooster(); // prefetch a pack while the user tears
-      cardsPromise.then((cs) => cs.forEach((c) => { const im = new Image(); im.src = c.image; })); // warm the images
+      let pack, reveal, ready;
+
+      // Build a booster AND render its card stack (hidden) up front, so the
+      // moment the pack tears the reveal just shows — nothing to fetch or build.
+      function loadNextPack() {
+        ready = buildBooster().then((cards) => {
+          cards.forEach((c) => { const im = new Image(); im.src = c.image; }); // warm hi-res
+          reveal.prepare(cards); // pre-render the stack while the pack is still sealed
+        });
+      }
 
       reveal = createReveal({
         mountEl: document.body,
         onAgain: () => {
           pack.reset(); // reseal the pack
-          cardsPromise = buildBooster(); // and line up the next one
-          cardsPromise.then((cs) => cs.forEach((c) => { const im = new Image(); im.src = c.image; }));
+          loadNextPack(); // and pre-load the next one
         },
       });
 
       pack = createPack({
         mountEl: document.getElementById("pack-stage"),
-        onOpen: async () => reveal.open(await cardsPromise),
+        onOpen: async () => {
+          await ready; // (already prepared in the common case — instant)
+          reveal.show();
+        },
       });
+
+      loadNextPack(); // start loading the first pack immediately
     </script>
   </body>
 </html>

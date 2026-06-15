@@ -71,5 +71,7 @@ export function createParticles(canvas) {
 
   resize();
   window.addEventListener("resize", resize);
-  return { emit };
+  // resize() is exposed so a consumer can re-measure after revealing a canvas
+  // that was created while hidden (display:none reports a zero-size rect).
+  return { emit, resize };
 }

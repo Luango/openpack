@@ -40,16 +40,25 @@ export function createReveal({ mountEl, onAgain }) {
   let cards = [];
   let pos = 0; // index of the current front card
 
-  function open(packCards) {
+  // Render + load the whole stack UP FRONT, while the pack is still sealed, so
+  // the reveal has nothing to fetch or build when the pack finally tears — it
+  // just shows. Stays hidden until show().
+  function prepare(packCards) {
     cards = packCards || [];
     pos = 0;
     slots.forEach((s) => s.spring.stop());
     stackEl.innerHTML = "";
-    slots = cards.map(makeSlot);
+    slots = cards.map(makeSlot); // images start loading now (even while hidden)
     againEl.hidden = true;
-    host.classList.remove("hidden");
     layout();
     updateHint();
+  }
+
+  // Reveal the already-prepared stack — instant, no async work.
+  function show() {
+    if (!slots.length) return;
+    host.classList.remove("hidden");
+    particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
     flourishIfRare(); // first card might already be the hit (single-card edge)
 
     // rise the stack up out of the opening
@@ -193,5 +202,5 @@ export function createReveal({ mountEl, onAgain }) {
     onAgain?.();
   });
 
-  return { open, close };
+  return { prepare, show, close };
 }
