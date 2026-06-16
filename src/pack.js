@@ -237,8 +237,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const chordVertical = Math.abs(chord.y) >= Math.abs(chord.x);
     const exitX = chordVertical ? (small.x < VB.w / 2 ? 1 : -1) : 0;
     const exitY = chordVertical ? 0 : (small.y < VB.h / 2 ? 1 : -1);
-    mountEl.style.setProperty("--exit-x", (exitX * 120).toFixed(1) + "vmax");
-    mountEl.style.setProperty("--exit-y", (exitY * 120).toFixed(1) + "vmax");
+    // Exit distance in PIXELS, not viewport units: iOS Safari often won't ANIMATE a
+    // transform transition whose target is in vmax/vh/vw — it jumps to the end, so
+    // the half just vanishes instead of sliding. Pixels transition everywhere.
+    const reach = Math.max(window.innerWidth, window.innerHeight) * 1.3; // clears the screen
+    mountEl.style.setProperty("--exit-x", Math.round(exitX * reach) + "px");
+    mountEl.style.setProperty("--exit-y", Math.round(exitY * reach) + "px");
     mountEl.style.setProperty("--exit-rot", "0deg"); // straight slide — no tilt
 
     split = true;

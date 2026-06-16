@@ -30,13 +30,14 @@
         touch-action: none; /* the slash drives the tear, never scrolls */
         z-index: 2;
         transition: transform 0.7s cubic-bezier(0.45, 0, 0.7, 0.45), opacity 0.6s;
+        will-change: transform, opacity; /* promote a layer so mobile composites the slide smoothly */
       }
-      /* once the pack is open, the remaining big half slides off — in the
-         direction set by the tear (see pack.js: --exit-*), away from the opening,
-         uncovering the cards behind it */
+      /* once the pack is open, the remaining big half slides off — in the direction
+         set by the tear (see pack.js: --exit-*, in px so iOS animates it), away from
+         the opening, uncovering the cards behind it */
       body.revealing #pack-stage {
         pointer-events: none;
-        transform: translate(var(--exit-x, 0), var(--exit-y, 120vh)) rotate(var(--exit-rot, 4deg));
+        transform: translate(var(--exit-x, 0px), var(--exit-y, 0px)) rotate(var(--exit-rot, 0deg));
         opacity: 0;
       }
 
