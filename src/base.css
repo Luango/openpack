@@ -58,6 +58,7 @@ body {
   font: 15px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  touch-action: manipulation; /* no double-tap-to-zoom (iOS ignores user-scalable); panning/scroll still work */
 }
 
 .hidden {

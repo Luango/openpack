@@ -49,7 +49,12 @@
   border-radius: inherit;
   background: var(--bg-elev);
   /* a touch-and-hold on the card drives the tilt — suppress the browser's
-     long-press image callout / drag-ghost / selection that would hijack it */
+     long-press image callout / drag-ghost / selection that would hijack it.
+     pointer-events:none makes the long-press land on the parent <div> instead of
+     this <img>, so iOS shows no image context menu (callout:none alone doesn't
+     stop the newer iOS menu). All card interaction is handled on parent elements
+     (gallery grid, lightbox overlay, reveal slot), never on the image. */
+  pointer-events: none;
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
   user-select: none;
