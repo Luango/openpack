@@ -41,7 +41,7 @@
       }
 
       .pack {
-        width: min(82vw, 46vh, 420px); /* big enough to fully contain the card stack behind it */
+        width: calc(var(--card-detail-w) * 1.1); /* just larger than the card it holds — hugs the card, not a giant sleeve */
         height: auto;
         overflow: visible;
         cursor: crosshair;
@@ -51,10 +51,43 @@
         -webkit-user-drag: none; /* never let a drag lift a ghost copy of the art */
         filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.6));
         animation: float 5s ease-in-out infinite;
+        opacity: 0; /* stay hidden until the card stack is prepared (pack.js adds .ready) */
+        transition: opacity 0.45s ease;
       }
+      /* armed = the booster's card stack is rendered behind it; only then does the
+         pack fade in so there's never a pack with nothing to open behind it */
+      .pack.ready { opacity: 1; }
       .pack image {
         -webkit-user-drag: none;
         pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
+      }
+
+      /* The tear-trigger guide (drawn in pack.js as .tear-zone): the top & bottom
+         crimp strips where a press starts a tear (not the sides or face). Hidden
+         until the "Tear zone" toggle adds body.show-tear-zone — a debug aid you toggle. */
+      .tear-zone {
+        fill: color-mix(in srgb, var(--accent, #6ea8fe) 18%, transparent);
+        stroke: var(--accent, #6ea8fe);
+        stroke-width: 1.5;
+        stroke-dasharray: 7 5;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+      }
+      body.show-tear-zone .tear-zone { opacity: 1; }
+
+      /* the on/off switch sits opposite the nav and bows out during a reveal */
+      .app-toggle--floating {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        z-index: 10;
+        backdrop-filter: blur(6px);
+      }
+      body.revealing .app-toggle--floating {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
       }
 
       @keyframes float {
@@ -68,23 +101,6 @@
         width: 100%;
         height: 100%;
         pointer-events: none; /* never block the slash */
-      }
-
-      .pack-logo {
-        font-size: 30px;
-        font-weight: 800;
-        font-style: italic;
-        letter-spacing: 0.5px;
-        fill: #fff;
-        paint-order: stroke;
-        stroke: rgba(11, 13, 18, 0.35);
-        stroke-width: 3px;
-      }
-      .pack-sub {
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.28em;
-        fill: rgba(255, 255, 255, 0.82);
       }
 
       .hint {
@@ -188,11 +204,15 @@
       .reveal__again[hidden] { display: none; }
     </style>
   </head>
-  <body class="holo-on">
+  <body class="holo-on show-tear-zone">
     <nav class="app-nav app-nav--floating" aria-label="Sections">
       <a class="nav-link" href="index.html">Gallery</a>
       <a class="nav-link is-active" href="pack.html" aria-current="page">Open Pack</a>
     </nav>
+    <button id="tear-zone-toggle" class="toggle app-toggle--floating on" role="switch" aria-checked="true" aria-label="Highlight the tear-trigger zone">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      Tear zone
+    </button>
     <div id="pack-stage"></div>
     <p class="hint">Preparing pack…</p>
 
@@ -204,6 +224,14 @@
       const hintEl = document.querySelector(".hint");
       const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
       let pack, reveal, ready;
+
+      // "Tear zone" switch — show/hide the highlighted band where a tear can start.
+      const tzToggle = document.getElementById("tear-zone-toggle");
+      tzToggle.addEventListener("click", () => {
+        const on = document.body.classList.toggle("show-tear-zone");
+        tzToggle.classList.toggle("on", on);
+        tzToggle.setAttribute("aria-checked", String(on));
+      });
 
       // Build a booster AND render its card stack (hidden) up front, then ARM the
       // pack. The pack can't be torn until its cards are ready, so the reveal is

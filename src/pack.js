@@ -4,9 +4,10 @@
 //   1. WHILE tearing — the pack is still ONE piece. A gap opens from the start
 //      edge along your traced path and PINCHES SHUT at your fingertip, staying
 //      joined ahead of the tear front (no premature split).
-//   2. WHEN the tear crosses to the far edge — the pack splits into TWO
-//      complementary pieces (each side of the same jagged tear line) that pull
-//      apart, revealing the interior. They fit back into one pack (recombine).
+//   2. THE MOMENT the tear crosses to the far edge — even with the finger still
+//      down — the pack splits into TWO complementary pieces (each side of the
+//      same jagged tear line) that pull apart, revealing the interior. They fit
+//      back into one pack (recombine).
 //
 // Stop short and the gap eases shut into one piece. The tear follows your finger
 // (jittered for rough torn paper), foil flecks spray, and a sustained foil-rip
@@ -24,12 +25,20 @@ import * as sfx from "./sfx.js";
 // size/shape at PACK_IMG just works — the viewBox, art, mask, and tear geometry
 // all follow. 554 is only the placeholder until the real image reports its size.
 const VB = { w: 300, h: 554 };
-const PACK_IMG = "assets/pack.png"; // drop a foil-pack image here to replace the rainbow temp
+const PACK_IMG = "assets/pack.png"; // the pack art — swap this file to reskin the pack
 const GAP_TEAR = 10; // crack width while mid-tear — kept thin so it reads as a crack, not a gap
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
-const EDGE_BAND = 42; // a tear must START on the pack within this edge band; the center only scratches
+const TURN_SEG = 14; // length over which the tear's heading is measured for the turn check
+const TURN_KINK_RAD = Math.PI / 2; // max single-step turn (90°) — a sharper kink voids the tear
+const TURN_CUM_RAD = Math.PI * 0.39; // max cumulative net turn (~70°) — catches a gradual hook/U-turn early, before it can reach an edge and commit
+// Tear zone = the top & bottom crimp strips, symmetric top/bottom and full width, but
+// DEEPER at the four corners than across the middle (the crimp's notch shape). The
+// side seams and the inner face just scratch (you can't tear from inside the pack).
+const TEAR_CORNER_X = 0.10; // how wide each corner block is (fraction of the width) — 30u of the 300u width
+const TEAR_CORNER_Y = 0.13; // corner strip depth — the taller "green" part (fraction of the height)
+const TEAR_MID_Y = 0.07; // middle strip depth — the shorter "red" part (fraction of the height)
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
@@ -44,23 +53,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   mountEl.innerHTML = `
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
       <defs>
-        <linearGradient id="foil" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#ff5d8f"/><stop offset=".2" stop-color="#ffd24a"/>
-          <stop offset=".45" stop-color="#5fcf8e"/><stop offset=".65" stop-color="#3fd6c8"/>
-          <stop offset=".82" stop-color="#6ea8fe"/><stop offset="1" stop-color="#b072e6"/>
-        </linearGradient>
         <g id="art">
-          <!-- rainbow temp pack (fallback when no assets/pack.png is supplied) -->
-          <g class="foil-fallback">
-            <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="url(#foil)"/>
-            <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#0b0d12" opacity=".30"/>
-            <rect x="0" y="0" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
-            <rect x="0" y="${VB.h - 22}" width="${VB.w}" height="22" fill="#fff" opacity=".10"/>
-            <text x="${VB.w / 2}" y="${VB.h * 0.47}" text-anchor="middle" class="pack-logo">OPENPACK</text>
-            <text x="${VB.w / 2}" y="${VB.h * 0.47 + 28}" text-anchor="middle" class="pack-sub">TEAR TO OPEN</text>
-          </g>
-          <!-- real pack art, swapped in by JS if assets/pack.png loads -->
-          <image class="pack-img" x="0" y="0" width="${VB.w}" height="${VB.h}" preserveAspectRatio="xMidYMid slice" style="display:none"/>
+          <image class="pack-img" x="0" y="0" width="${VB.w}" height="${VB.h}" href="${PACK_IMG}" preserveAspectRatio="xMidYMid slice"/>
         </g>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -79,6 +73,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
+
+      <!-- Guide overlay: the top & bottom crimp strips where a press STARTS a tear
+           — never the sides or face (see onDown). Shown only when body.show-tear-zone
+           is set (the "Tear zone" toggle). pointer-events:none — never blocks the slash. -->
+      <path class="tear-zone" fill-rule="evenodd" d=""/>
     </svg>
     <canvas class="pack-fx"></canvas>`;
 
@@ -89,7 +88,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   const clipPolyB = mountEl.querySelector("#clipB polygon");
   const pieceA = mountEl.querySelector(".piece-a");
   const pieceB = mountEl.querySelector(".piece-b");
+  const tearZone = mountEl.querySelector(".tear-zone");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
+
+  // Draw the tear-trigger guide band; re-run whenever the pack is resized.
+  const drawTearZone = () => tearZone.setAttribute("d", tearZonePath());
+  drawTearZone();
 
   // Pause/resume the idle float (CSS animation on .pack) — the pack steadies the
   // moment you grab it to tear, and floats again only when it's whole at rest.
@@ -107,19 +111,14 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
     mountEl.querySelector("#tearmask rect").setAttribute("height", VB.h);
+    drawTearZone(); // re-fit the trigger-zone guide to the new size
   }
 
-  // Use a real foil-pack image if assets/pack.png is present; otherwise keep the
-  // rainbow temp. Probe with a plain Image so a missing file falls back cleanly
-  // (a 404 just leaves the rainbow showing — no broken-image icon).
+  // The <image> renders the pack art straight away; probing it with a plain
+  // Image just reports the natural size so applyAspect can match the viewBox to
+  // it (no crop). A missing file leaves the SVG <image> empty — no broken icon.
   const probe = new Image();
-  probe.onload = () => {
-    applyAspect(probe.naturalWidth, probe.naturalHeight); // match the pack to this image
-    const img = mountEl.querySelector(".pack-img");
-    img.setAttribute("href", PACK_IMG);
-    img.style.display = "";
-    mountEl.querySelector(".foil-fallback").style.display = "none";
-  };
+  probe.onload = () => applyAspect(probe.naturalWidth, probe.naturalHeight);
   probe.src = PACK_IMG;
 
   let armed = false; // a tear can't start until the cards behind it are ready
@@ -136,6 +135,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let moverDir = { x: 0, y: -1 }; // direction the flying half tears away in
   let seam = null; // the split tear line, in pack coords (drives the fleck burst)
   let scratchOnly = false; // started in the middle (not near an edge) → just scuff the foil
+  let invalid = false; // the trace turned back on itself (>90° / U-turn) → tear voided, can't open
+  let headDir = null; // the tear's established heading (unit vector), for the turn check
+  let headAnchor = null; // the point headDir was last measured from
+  let cumTurn = 0; // cumulative SIGNED heading rotation (rad) — catches a gradual U-turn
   let lastClient = null;
   let lastT = 0;
   let peakSpeed = 0;
@@ -223,12 +226,20 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     moverDir = aIsSmaller ? dirA : dirB;
     stayEl.removeAttribute("transform");
 
-    // When the pack later opens, the remaining big half slides off AWAY from the
-    // opening (opposite the torn-off piece): up for a bottom tear, sideways for a
-    // vertical tear, down for a top tear. CSS reads these on #pack-stage.
-    mountEl.style.setProperty("--exit-x", (-moverDir.x * 120).toFixed(1) + "vmax");
-    mountEl.style.setProperty("--exit-y", (-moverDir.y * 120).toFixed(1) + "vmax");
-    mountEl.style.setProperty("--exit-rot", (-moverDir.x * 8).toFixed(1) + "deg");
+    // When the pack later opens, the big half slides STRAIGHT off, away from the
+    // mouth. The tear's ORIENTATION sets the axis: a vertical-ish tear splits the
+    // pack left/right (mouth is on a side → exit sideways, never up/down); a
+    // horizontal-ish tear splits it top/bottom (exit up/down). Then the torn-off
+    // (smaller) piece's position picks the direction — exit AWAY from it. This
+    // guarantees the big half never leaves through a still-sealed side.
+    // Result: mouth left → right, right → left, top → down, bottom → up.
+    const small = centroid(aIsSmaller ? A : B);
+    const chordVertical = Math.abs(chord.y) >= Math.abs(chord.x);
+    const exitX = chordVertical ? (small.x < VB.w / 2 ? 1 : -1) : 0;
+    const exitY = chordVertical ? 0 : (small.y < VB.h / 2 ? 1 : -1);
+    mountEl.style.setProperty("--exit-x", (exitX * 120).toFixed(1) + "vmax");
+    mountEl.style.setProperty("--exit-y", (exitY * 120).toFixed(1) + "vmax");
+    mountEl.style.setProperty("--exit-rot", "0deg"); // straight slide — no tilt
 
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
@@ -241,15 +252,19 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (!armed) return; // cards aren't loaded yet — hold the tear until they are
 
     // A tear can only begin while TOUCHING the pack — a press off the pack does
-    // nothing (no line is ever drawn in the empty stage). On the pack, the thin
-    // EDGE_BAND is the tear trigger; pressing deeper in only scuffs the foil.
+    // nothing (no line is ever drawn in the empty stage). On the pack, only the
+    // top/bottom crimp strips start a tear; the sides and inner face scuff the foil.
     const q = svg.createSVGPoint();
     q.x = e.clientX;
     q.y = e.clientY;
     const s = q.matrixTransform(svg.getScreenCTM().inverse());
     const inside = s.x >= 0 && s.x <= VB.w && s.y >= 0 && s.y <= VB.h;
     if (!inside) return; // not on the pack → ignore entirely
-    scratchOnly = Math.min(s.x, VB.w - s.x, s.y, VB.h - s.y) > EDGE_BAND;
+    // a tear can only START in the top or bottom crimp strip — deeper at the corners,
+    // shallower across the middle. Never the side seams or the inner face.
+    const nearCorner = s.x < VB.w * TEAR_CORNER_X || s.x > VB.w * (1 - TEAR_CORNER_X);
+    const depth = VB.h * (nearCorner ? TEAR_CORNER_Y : TEAR_MID_Y);
+    scratchOnly = s.y > depth && s.y < VB.h - depth;
 
     floatOn(false); // steady the pack while it's being handled — stop the idle float
     onGrab?.(); // pack grabbed (sealed, covering) → safe to bring the card stack in behind it
@@ -257,6 +272,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     tearing = false;
     crossed = false;
     split = false;
+    invalid = false;
+    headDir = null;
+    headAnchor = null;
+    cumTurn = 0;
     path = [toSvg(e)];
     lastClient = { x: e.clientX, y: e.clientY };
     lastT = performance.now();
@@ -289,11 +308,44 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     }
     if (!tearing) return;
 
-    // Stay ONE piece with just a thin crack tracking the finger the whole time;
-    // the split + fly-off is deferred to release (onUp), so tearing reads as a
-    // small crack rather than a gaping hole parting open as you drag.
+    // A real tear runs forward — it can't hook back. Measure the heading over each
+    // ~TURN_SEG-long chunk and void the tear if it turns more than 90° EITHER in a
+    // single step (a sharp kink) OR cumulatively (a gradual U-turn). Net rotation is
+    // signed, so back-and-forth wobble cancels out and gentle curves still pass.
+    if (!invalid) {
+      if (!headAnchor) headAnchor = path[0];
+      const seg = sub(p, headAnchor);
+      if (Math.hypot(seg.x, seg.y) >= TURN_SEG) {
+        const dir = unit(seg);
+        if (headDir) {
+          const turn = Math.atan2(headDir.x * dir.y - headDir.y * dir.x, headDir.x * dir.x + headDir.y * dir.y);
+          cumTurn += turn;
+          if (Math.abs(turn) > TURN_KINK_RAD || Math.abs(cumTurn) > TURN_CUM_RAD) {
+            invalid = true;
+            sfx.tearEnd(false); // cut the rip sound short
+            if (navigator.vibrate) navigator.vibrate(24);
+          }
+        }
+        headDir = dir;
+        headAnchor = p;
+      }
+    }
+    if (invalid) {
+      spring.set({ w: 0 }); // the voided tear heals — it can't open
+      return;
+    }
+
+    // Stay ONE piece with just a thin crack tracking the finger — UNTIL the tear
+    // fully crosses the pack, at which point the tear is DONE and it splits open
+    // right then (finger still on the screen, no need to lift). Before crossing
+    // it reads as a small crack, not a gaping hole parting open as you drag.
     const progress = Math.min(1, pathLen(path) / (VB.h * 0.6));
     rebuildGap(); // updates the `crossed` flag + the crack path
+    if (crossed) {
+      dragging = false; // the tear completes the instant it crosses the body
+      commitOpen();
+      return;
+    }
     spring.set({ w: progress * GAP_TEAR });
 
     const now = performance.now();
@@ -313,28 +365,36 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (navigator.vibrate && inten > 0.5) navigator.vibrate(4);
   }
 
+  // The tear has crossed the whole pack body → split it into two pieces and fling
+  // the smaller half off. Fired the MOMENT the crack reaches the far edge (mid-
+  // drag, finger still on the screen) — or on release if it crossed right as the
+  // finger lifted. Guarded by `opened` so a tear only ever opens once.
+  function commitOpen() {
+    if (opened) return;
+    opened = true;
+    makePieces();
+    spring.set({ sep: 1 }); // pieces pull fully apart
+    sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
+    if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
+    burstAlongTear();
+    // let the torn-off top FULLY fly away first, THEN hand off to the reveal
+    // (which drops the pack body and springs the cards up)
+    setTimeout(() => onOpen?.(), 750);
+  }
+
   function onUp() {
-    if (!dragging) return;
+    if (!dragging) return; // never started, or already committed mid-drag
     dragging = false;
     if (scratchOnly) {
       scratchOnly = false; // just a scuff — nothing to open
       floatOn(true); // resume the idle float
       return;
     }
-    if (crossed) {
-      // the crack reached the far edge → NOW split and fling the smaller half off
-      makePieces();
-      opened = true;
-      spring.set({ sep: 1 }); // pieces pull fully apart
-      sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
-      if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
-      burstAlongTear();
-      // let the torn-off top FULLY fly away first, THEN hand off to the reveal
-      // (which drops the pack body and springs the cards up)
-      setTimeout(() => onOpen?.(), 750);
+    if (crossed && !invalid) {
+      commitOpen(); // crossed right as the finger lifted
     } else {
-      sfx.tearEnd(false);
-      spring.set({ w: 0 }); // didn't cross — the crack eases shut into one piece
+      if (!invalid) sfx.tearEnd(false); // (a void tear already cut its sound)
+      spring.set({ w: 0 }); // didn't cross (or was voided) — the crack eases shut
       floatOn(true); // stayed one piece — resume the idle float
       setTimeout(() => {
         if (!dragging && !opened) clearTear();
@@ -361,6 +421,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     tearing = false;
     crossed = false;
     split = false;
+    invalid = false;
+    headDir = null;
+    headAnchor = null;
+    cumTurn = 0;
     tearPath = null;
     path = [];
     spring.reset();
@@ -389,7 +453,13 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
   return {
     reset,
-    setArmed: (v) => { armed = v; }, // the host arms the pack once its cards are prepared
+    // The host arms the pack once its cards are prepared. Arming also REVEALS the
+    // pack (it stays hidden while the stack is still loading) — no pack shows up
+    // until there's a card stack behind it to open.
+    setArmed: (v) => {
+      armed = v;
+      svg.classList.toggle("ready", v);
+    },
   };
 }
 
@@ -434,6 +504,21 @@ function area(poly) {
 }
 
 const nearBorder = (p) => p.x < CROSS_MARGIN || p.x > VB.w - CROSS_MARGIN || p.y < CROSS_MARGIN || p.y > VB.h - CROSS_MARGIN;
+
+// The tear-trigger zone as an SVG path: the top and bottom crimp strips — deeper at
+// the four corners (TEAR_CORNER_Y) than across the middle (TEAR_MID_Y), the crimp's
+// notch shape — where onDown lets a press START a tear (side seams + inner face only
+// scratch). Outer corners follow the pack's rounded corner (rx 16).
+function tearZonePath() {
+  const r = 16;
+  const { w, h } = VB;
+  const cx = w * TEAR_CORNER_X;
+  const cy = h * TEAR_CORNER_Y;
+  const my = h * TEAR_MID_Y;
+  const top = `M0,${cy.toFixed(1)} V${r} A${r},${r} 0 0 1 ${r},0 H${w - r} A${r},${r} 0 0 1 ${w},${r} V${cy.toFixed(1)} H${(w - cx).toFixed(1)} V${my.toFixed(1)} H${cx.toFixed(1)} V${cy.toFixed(1)} Z`;
+  const bottom = `M0,${(h - cy).toFixed(1)} H${cx.toFixed(1)} V${(h - my).toFixed(1)} H${(w - cx).toFixed(1)} V${(h - cy).toFixed(1)} H${w} V${(h - r).toFixed(1)} A${r},${r} 0 0 1 ${w - r},${h} H${r} A${r},${r} 0 0 1 0,${h - r} Z`;
+  return `${top} ${bottom}`;
+}
 
 function snapBorder(p) {
   const d = [p.y, VB.w - p.x, VB.h - p.y, p.x];

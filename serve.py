@@ -4,6 +4,7 @@
 webview) hold onto stale JS modules between edits. This sends no-store on every
 response so a reload always fetches the current files.
 """
+import os
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -17,5 +18,7 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8123
+    # Prefer the PORT env var (the preview harness assigns a free one when
+    # autoPort is set), then a CLI arg, then the default.
+    port = int(os.environ.get("PORT") or (sys.argv[1] if len(sys.argv) > 1 else 8123))
     ThreadingHTTPServer(("127.0.0.1", port), NoCacheHandler).serve_forever()
