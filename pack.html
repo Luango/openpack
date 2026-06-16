@@ -19,7 +19,14 @@
         overflow: hidden;
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         color: #eef1f6;
+        /* iOS ignores user-scalable=no, so kill the gestures that zoom/blow up the
+           cards: double-tap-to-zoom, the long-press image preview, and selection. */
+        touch-action: manipulation;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
       }
+      img { -webkit-user-drag: none; -webkit-touch-callout: none; }
 
       #pack-stage {
         position: fixed;
