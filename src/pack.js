@@ -226,17 +226,14 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     moverDir = aIsSmaller ? dirA : dirB;
     stayEl.removeAttribute("transform");
 
-    // When the pack later opens, the big half slides STRAIGHT off, away from the
-    // mouth. The tear's ORIENTATION sets the axis: a vertical-ish tear splits the
-    // pack left/right (mouth is on a side → exit sideways, never up/down); a
-    // horizontal-ish tear splits it top/bottom (exit up/down). Then the torn-off
-    // (smaller) piece's position picks the direction — exit AWAY from it. This
-    // guarantees the big half never leaves through a still-sealed side.
-    // Result: mouth left → right, right → left, top → down, bottom → up.
-    const small = centroid(aIsSmaller ? A : B);
-    const chordVertical = Math.abs(chord.y) >= Math.abs(chord.x);
-    const exitX = chordVertical ? (small.x < VB.w / 2 ? 1 : -1) : 0;
-    const exitY = chordVertical ? 0 : (small.y < VB.h / 2 ? 1 : -1);
+    // The tear can only START in the top or bottom crimp (that's the whole tear
+    // zone), so the opening IS that crimp — and the big half slides STRAIGHT away
+    // from it: a top-crimp tear exits DOWN, a bottom-crimp tear exits UP, no matter
+    // what angle the cut took. (The cut's orientation is irrelevant; you opened the
+    // top, so the pack drops down.)
+    const startedTop = path[0].y < VB.h / 2;
+    const exitX = 0;
+    const exitY = startedTop ? 1 : -1;
     // Exit distance in PIXELS, not viewport units: iOS Safari often won't ANIMATE a
     // transform transition whose target is in vmax/vh/vw — it jumps to the end, so
     // the half just vanishes instead of sliding. Pixels transition everywhere.
