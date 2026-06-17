@@ -80,6 +80,7 @@ foil is chosen by tier — all from one mapping in
 ├── index.html        host page — the DOM contract every module queries
 ├── pack.html         OpenPack tear-to-open prototype (work in progress)
 ├── serve.py          no-cache static server
+├── docs/             design specs (e.g. the pack tear & exit)
 └── src/
     ├── main.js       boot: load sets → load a set → wire gallery/filters/lightbox
     ├── api.js        Pokémon TCG API wrapper (paging + per-set cache)
@@ -123,7 +124,9 @@ foil is chosen by tier — all from one mapping in
   path across it: the rip propagates along your finger, splits into two
   complementary pieces, and the smaller one flies off while the body stays. It
   reuses the same `motion.js` spring, [`particles.js`](src/particles.js) flecks,
-  and [`sfx.js`](src/sfx.js) sounds as the gallery.
+  and [`sfx.js`](src/sfx.js) sounds as the gallery. The exact tear-zone,
+  tear-validity, commit, and exit rules live in
+  [`docs/tear-and-exit.md`](docs/tear-and-exit.md) — keep it in sync with `pack.js`.
 - **Tear → reveal, same Card.** When the pack opens, [`reveal.js`](src/reveal.js)
   raises the booster's cards as a stack you tap through — rarest last, the hit
   landing with a glow, foil burst, and chime. The cards are the very same
