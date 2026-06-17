@@ -160,11 +160,20 @@
         position: absolute;
         inset: 0;
         perspective: 1100px;
-        transform: translateY(calc(var(--d, 0) * 6px)) scale(calc(1 - var(--d, 0) * 0.02));
+        /* while still inside the pack: tight + centered so no card edge pokes past
+           the foil (only the top card shows, through the tear gap) */
+        transform: scale(calc(1 - var(--d, 0) * 0.02));
         opacity: 1;
         transition: transform 0.5s ease, opacity 0.4s ease;
         touch-action: none;
         will-change: transform;
+      }
+      /* once the pack is open, fan the deck diagonally so each card behind shows
+         its SIDE edge — reads as a real stack you can count through */
+      body.revealing .reveal__slot:not(.flung) {
+        transform:
+          translate(calc(var(--d, 0) * 7px), calc(var(--d, 0) * 5px))
+          scale(calc(1 - var(--d, 0) * 0.013));
       }
       .reveal__slot.flung {
         transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
