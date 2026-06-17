@@ -168,12 +168,13 @@
         touch-action: none;
         will-change: transform;
       }
-      /* once the pack is open, fan the deck diagonally so each card behind shows
-         its SIDE edge — reads as a real stack you can count through */
+      /* once the pack is open, the deck rests as a plain front-view stack — a small
+         downward step just hints at the cards behind. The hand only fans out while
+         you tap-and-hold, a motion driven slot-by-slot from reveal.js. */
       body.revealing .reveal__slot:not(.flung) {
         transform:
-          translate(calc(var(--d, 0) * 7px), calc(var(--d, 0) * 5px))
-          scale(calc(1 - var(--d, 0) * 0.013));
+          translateY(calc(var(--d, 0) * 5px))
+          scale(calc(1 - var(--d, 0) * 0.02));
       }
       .reveal__slot.flung {
         transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
