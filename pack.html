@@ -179,6 +179,11 @@
         transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
         opacity: 0;
       }
+      /* while you drag the deck into a fanned hand (reveal.js), the spring writes
+         each slot's transform every frame — kill the CSS easing so it tracks 1:1 */
+      .reveal.browsing .reveal__slot {
+        transition: none;
+      }
       /* The card is the SAME component as the gallery — no size/shadow overrides;
          it fills the slot because --stackw equals the card's own --card-detail-w. */
       .reveal__slot .card--detail {

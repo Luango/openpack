@@ -18,6 +18,11 @@ const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
 const FOIL_Y = 17;
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
+const FAN_SLOP = 14; // px of horizontal travel that turns a press into a fan-browse drag
+const FAN_DRAG_PER_CARD = 90; // px of horizontal drag that scrubs one card along the fan
+const FAN_STEP_X = 64; // fanned spacing between neighbouring cards (px)
+const FAN_STEP_Y = 14; // how far off-centre cards sink (px per step) — gives the hand its arc
+const FAN_STEP_ROT = 5; // arc rotation per step from centre (deg)
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
 
@@ -41,12 +46,100 @@ export function createReveal({ mountEl, onAgain }) {
   let pos = 0; // index of the current front card
   let peeking = true; // true while still inside the pack (peeking through the gap)
 
+  // ---- fan-browse ---------------------------------------------------------------
+  // Press-drag the deck left/right and it spreads into a hand you can slide through
+  // to read each card; release and it springs back to the stack. (Tap still flips
+  // to the next card — see the slot handlers + `advance`.)
+  let browsing = false; // a fan-browse drag is in progress
+  let fanActive = false; // the fan owns the slots' inline transforms right now
+
+  // One spring drives the whole deck: `open` 0→1 morphs stacked→fanned; `center`
+  // is the (fractional) card index sitting in the middle. fanRender reads both.
+  const deckSpring = createSpring({
+    rest: { open: 0, center: 0 },
+    stiffness: 0.2,
+    damping: 0.8,
+    onTick: (c) => fanRender(c.open, c.center),
+  });
+
+  function startBrowse() {
+    if (peeking || pos >= cards.length) return;
+    browsing = true;
+    fanActive = true;
+    host.classList.add("browsing"); // freeze the CSS slot transition — the spring drives it now
+    slots[pos]?.spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // flatten the focused card
+    deckSpring.reset({ open: 0, center: pos }); // start from the stacked state, centred on the top card
+    deckSpring.set({ open: 1, center: pos }); // …and fan it open
+  }
+
+  function browseDrag(dx) {
+    if (!browsing) return;
+    // drag left → later cards slide to the centre; clamp to the remaining range
+    const center = Math.max(pos, Math.min(cards.length - 1, pos - dx / FAN_DRAG_PER_CARD));
+    deckSpring.set({ open: 1, center });
+  }
+
+  function endBrowse() {
+    browsing = false;
+    deckSpring.set({ open: 0, center: pos }); // collapse back to the top; fanRender finalises at rest
+  }
+
+  // Place every live slot between its stacked spot (open 0) and its fanned spot
+  // (open 1). The open-0 values are computed to MATCH the CSS stacked fan, so when
+  // the fan fully closes we can clear the inline styles and hand back to CSS with
+  // no visible jump.
+  function fanRender(open, center) {
+    // Collapse finished → hand the slots back to CSS exactly once. `open` can ring
+    // slightly past 0 before it settles, so use a soft threshold AND tear down via
+    // `fanActive` so a trailing tick can't re-apply the inline transforms.
+    if (!browsing && open <= 0.01) {
+      if (fanActive) {
+        fanActive = false;
+        host.classList.remove("browsing");
+        slots.forEach((s) => {
+          s.slot.style.transform = "";
+          s.slot.style.opacity = "";
+        });
+        layout(); // restore --d / z-index / front pointer-events
+        deckSpring.stop();
+      }
+      return;
+    }
+    if (!fanActive) return; // torn down already — ignore stray ticks while center settles
+    const k = Math.max(0, open);
+    for (let i = 0; i < slots.length; i++) {
+      if (i < pos) continue; // already flung — leave it to the .flung CSS
+      const d = i - pos;
+      // stacked (open 0) — mirrors `body.revealing .reveal__slot:not(.flung)` in pack.html
+      const tx0 = 7 * d, ty0 = 5 * d, sc0 = 1 - 0.013 * d, z0 = 100 - d;
+      // fanned (open 1) — a hand spread around `center`
+      const o = i - center;
+      const ax = Math.abs(o);
+      const tx1 = o * FAN_STEP_X;
+      const ty1 = ax * FAN_STEP_Y;
+      const sc1 = Math.max(0.8, 1 - ax * 0.06);
+      const rot1 = o * FAN_STEP_ROT;
+      const z1 = Math.round(300 - ax * 10);
+      const op1 = Math.max(0.4, 1 - ax * 0.18);
+      const st = slots[i].slot.style;
+      st.transform =
+        `translate(${(tx0 + (tx1 - tx0) * k).toFixed(1)}px, ${(ty0 + (ty1 - ty0) * k).toFixed(1)}px)` +
+        ` scale(${(sc0 + (sc1 - sc0) * k).toFixed(3)}) rotate(${(rot1 * k).toFixed(2)}deg)`;
+      st.zIndex = String(Math.round(z0 + (z1 - z0) * k));
+      st.opacity = (1 + (op1 - 1) * k).toFixed(2);
+    }
+  }
+
   // Render + load the whole stack UP FRONT, behind the still-sealed pack, so the
   // top card sits INSIDE the pack and peeks through the tear gap as you rip — and
   // there's nothing to fetch or build when the pack finally opens.
   function prepare(packCards) {
     cards = packCards || [];
     pos = 0;
+    browsing = false;
+    fanActive = false;
+    deckSpring.stop();
+    host.classList.remove("browsing");
     slots.forEach((s) => s.spring.stop());
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
@@ -80,8 +173,12 @@ export function createReveal({ mountEl, onAgain }) {
 
   function close() {
     host.classList.add("hidden");
+    host.classList.remove("browsing");
     document.body.classList.remove("revealing");
     peeking = true;
+    browsing = false;
+    fanActive = false;
+    deckSpring.stop();
     slots.forEach((s) => s.spring.stop());
   }
 
@@ -112,7 +209,7 @@ export function createReveal({ mountEl, onAgain }) {
     });
 
     const entry = { slot, cardEl, card, spring };
-    let downX = 0, downY = 0, moved = false, holding = false;
+    let downX = 0, downY = 0, moved = false, holding = false, gestureMode = null;
 
     const isFront = () => slots[pos] === entry;
     const tilt = (e) => {
@@ -134,6 +231,7 @@ export function createReveal({ mountEl, onAgain }) {
       if (!isFront()) return;
       holding = true;
       moved = false;
+      gestureMode = null;
       downX = e.clientX;
       downY = e.clientY;
       slot.setPointerCapture?.(e.pointerId);
@@ -141,14 +239,29 @@ export function createReveal({ mountEl, onAgain }) {
     });
     slot.addEventListener("pointermove", (e) => {
       if (!holding || !isFront()) return;
-      if (Math.hypot(e.clientX - downX, e.clientY - downY) > TAP_SLOP) moved = true;
+      const dx = e.clientX - downX, dy = e.clientY - downY;
+      if (gestureMode === "browse") { browseDrag(dx); return; }
+      // a clearly horizontal drag fans the deck out to browse; anything else tilts
+      if (Math.abs(dx) > FAN_SLOP && Math.abs(dx) > Math.abs(dy)) {
+        gestureMode = "browse";
+        moved = true;
+        startBrowse();
+        browseDrag(dx);
+        return;
+      }
+      if (Math.hypot(dx, dy) > TAP_SLOP) { gestureMode = "tilt"; moved = true; }
       tilt(e);
     });
     const release = () => {
       if (!holding) return;
       holding = false;
-      spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // ease flat
-      if (!moved) advance(); // a tap (not a tilt-drag) flicks the card away
+      if (gestureMode === "browse") {
+        endBrowse(); // collapse the fan back to the stack — browsing never advances
+      } else {
+        spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // ease flat
+        if (!moved) advance(); // a tap (not a tilt-drag) flicks the card away
+      }
+      gestureMode = null;
     };
     slot.addEventListener("pointerup", release);
     slot.addEventListener("pointercancel", release);
@@ -209,7 +322,7 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function updateHint() {
-    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to reveal`;
+    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · drag to fan`;
   }
 
   againEl.addEventListener("click", () => {
