@@ -226,15 +226,17 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     moverDir = aIsSmaller ? dirA : dirB;
     stayEl.removeAttribute("transform");
 
-    // The big half slides STRAIGHT off, away from the mouth, on ONE cardinal axis
-    // set by the tear's orientation: a horizontal-ish cut takes off a top/bottom
-    // strip → exit up/down; a vertical-ish cut splits left/right → exit sideways.
-    // The torn-off (smaller) piece's position picks the direction — exit away from
-    // it: top strip → down, bottom → up, left → right, right → left.
+    // The big half slides STRAIGHT off on ONE cardinal axis. A tear that actually
+    // spans TOP-to-BOTTOM is a left/right split → exit sideways, away from the
+    // torn-off (smaller) half. Any other tear just took a strip off the crimp it
+    // started in → drop away from that crimp: top → down, bottom → up. (So a top
+    // tear that merely angled off to a side still drops DOWN, not sideways.)
     const small = centroid(aIsSmaller ? A : B);
-    const chordVertical = Math.abs(chord.y) >= Math.abs(chord.x);
-    const exitX = chordVertical ? (small.x < VB.w / 2 ? 1 : -1) : 0;
-    const exitY = chordVertical ? 0 : (small.y < VB.h / 2 ? 1 : -1);
+    const onTop = (p) => p.y <= 0.5;
+    const onBottom = (p) => p.y >= VB.h - 0.5;
+    const spansTopBottom = (onTop(Pin) && onBottom(Pout)) || (onBottom(Pin) && onTop(Pout));
+    const exitX = spansTopBottom ? (small.x < VB.w / 2 ? 1 : -1) : 0;
+    const exitY = spansTopBottom ? 0 : (path[0].y < VB.h / 2 ? 1 : -1);
     // Exit distance in PIXELS, not viewport units: iOS Safari often won't ANIMATE a
     // transform transition whose target is in vmax/vh/vw — it jumps to the end, so
     // the half just vanishes instead of sliding. Pixels transition everywhere.
