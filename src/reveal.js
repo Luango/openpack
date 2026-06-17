@@ -18,13 +18,10 @@ const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
 const FOIL_Y = 17;
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
-const HOLD_MS = 240; // press and hold this long (without dragging) → the deck fans out
+const HOLD_MS = 240; // press and hold this long (without dragging) → the stack spreads
 const TILT_SLOP = 12; // moving more than this before the hold fires makes it a tilt-drag, not a hold
-const FAN_STEP_Y = 14; // how far off-centre cards sink when fanned (px per step) — the hand's arc
-const FAN_STEP_ROT = 5; // arc rotation per step from centre (deg)
-const FAN_FIT = 0.9; // the open hand spans this much of the viewport width…
-const FAN_STEP_MAX = 0.62; // …but neighbours never sit more than this × card width apart…
-const FAN_STEP_MIN = 0.26; // …nor closer than this (keeps a readable overlap when the hand is full)
+const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — the parallel cascade step
+const EXPAND_DIR = [-0.8, -0.6]; // default cascade direction (up-left) until your finger steers it
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
 
@@ -48,63 +45,67 @@ export function createReveal({ mountEl, onAgain }) {
   let pos = 0; // index of the current front card
   let peeking = true; // true while still inside the pack (peeking through the gap)
 
-  // ---- tap-and-hold to fan ------------------------------------------------------
-  // A quick tap flips to the next card. Press and HOLD and the deck fans out into a
-  // hand — auto-sized to the screen so every card you've still got is readable at
-  // once (no dragging needed); let go and it collapses back to the plain front-view
-  // stack. (A drag tilts the holo instead — see the slot handlers.)
-  let browsing = false; // the hand is fanned open (or animating)
-  let fanActive = false; // the fan owns the slots' inline transforms right now
-  let fanCenter = 0; // fractional index sitting in the middle of the open hand
-  let fanStepX = 0; // horizontal spacing between neighbours, sized to the screen
+  // ---- hold to spread the stack -------------------------------------------------
+  // A quick tap flips to the next card. Press and HOLD and the whole stack slides
+  // apart in PARALLEL — every card steps out along your finger by a fixed amount, so
+  // only each card's side edge shows (a real deck cracked open at an angle). Let go
+  // and it closes back to the front-view stack. (A quick drag tilts the holo — and
+  // the front card keeps tilting toward your finger while the stack is spread, too.)
+  let browsing = false; // the stack is spread open (or animating)
+  let fanActive = false; // the spread owns the slots' inline transforms right now
+  let dirX = EXPAND_DIR[0], dirY = EXPAND_DIR[1]; // unit cascade direction (steered by the finger)
+  let centerX = 0, centerY = 0; // deck centre in screen px, for steering
 
-  // One spring drives the whole deck: `open` 0→1 morphs the stacked deck into the
-  // fanned hand. fanRender reads it each tick.
+  // One spring drives the spread: `open` 0→1 slides the stack from closed to cracked.
   const deckSpring = createSpring({
     rest: { open: 0 },
-    stiffness: 0.18,
+    stiffness: 0.2,
     damping: 0.82,
-    onTick: (c) => fanRender(c.open),
+    onTick: (c) => expandRender(c.open),
   });
 
-  function startFan() {
+  // point the cascade from the deck centre toward the finger (ignore tiny moves so a
+  // dead-still hold keeps the last/default direction)
+  function steer(px, py) {
+    const dx = px - centerX, dy = py - centerY, m = Math.hypot(dx, dy);
+    if (m > 18) { dirX = dx / m; dirY = dy / m; }
+  }
+
+  function startExpand(px, py) {
     if (peeking || pos >= cards.length) return;
-    const n = cards.length - pos; // cards still in hand
-    fanCenter = pos + (n - 1) / 2; // centre the spread on the middle of what's left
-    // size the spread to the screen: span FAN_FIT of the viewport, clamped so a few
-    // cards never fly apart and a full hand still overlaps readably
-    const cardW = stackEl.getBoundingClientRect().width || 200;
-    const fit = n > 1 ? (window.innerWidth * FAN_FIT - cardW) / (n - 1) : 0;
-    fanStepX = n > 1 ? Math.min(cardW * FAN_STEP_MAX, Math.max(cardW * FAN_STEP_MIN, fit)) : 0;
+    const r = stackEl.getBoundingClientRect();
+    centerX = r.left + r.width / 2;
+    centerY = r.top + r.height / 2;
+    steer(px, py); // aim it toward where you pressed
     browsing = true;
     fanActive = true;
-    host.classList.add("browsing"); // freeze the CSS slot transition — the spring drives it now
-    slots[pos]?.spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // flatten the front card
-    deckSpring.reset({ open: 0 }); // start from the stacked state…
-    deckSpring.set({ open: 1 }); // …and fan it open
+    host.classList.add("browsing"); // freeze the CSS slot transition — the spring/drag drive it now
+    deckSpring.reset({ open: 0 });
+    deckSpring.set({ open: 1 });
     if (navigator.vibrate) navigator.vibrate(8);
   }
 
-  function endFan() {
-    browsing = false;
-    deckSpring.set({ open: 0 }); // collapse back to the stack; fanRender finalises at rest
+  function expandDrag(px, py) {
+    if (!browsing) return;
+    steer(px, py);
+    expandRender(deckSpring.cur.open); // re-aim immediately, 1:1 with the finger
   }
 
-  // Place every live slot between its stacked spot (open 0) and its fanned spot
-  // (open 1). The open-0 values MATCH the CSS resting stack, so when the hand fully
-  // closes we can clear the inline styles and hand back to CSS with no visible jump.
-  function fanRender(open) {
-    // Collapse finished → hand the slots back to CSS exactly once. `open` can ring
-    // slightly past 0 before it settles, so use a soft threshold AND tear down via
-    // `fanActive` so a trailing tick can't re-apply the inline transforms.
+  function endExpand() {
+    browsing = false;
+    deckSpring.set({ open: 0 }); // close; expandRender finalises at rest
+  }
+
+  // Slide every live card out PARALLEL by `d` steps along the cascade direction (no
+  // rotation, same size) so the cards behind the front one reveal only their side
+  // edge. The front card stays put and on top; open 0 matches the CSS resting stack,
+  // so when it closes we hand the slots back to CSS with no visible jump.
+  function expandRender(open) {
     if (!browsing && open <= 0.01) {
       if (fanActive) {
         fanActive = false;
         host.classList.remove("browsing");
-        slots.forEach((s) => {
-          s.slot.style.transform = "";
-          s.slot.style.opacity = "";
-        });
+        slots.forEach((s) => { s.slot.style.transform = ""; });
         layout(); // restore --d / z-index / front pointer-events
         deckSpring.stop();
       }
@@ -116,22 +117,14 @@ export function createReveal({ mountEl, onAgain }) {
       if (i < pos) continue; // already flung — leave it to the .flung CSS
       const d = i - pos;
       // stacked (open 0) — mirrors `body.revealing .reveal__slot:not(.flung)` in pack.html
-      const ty0 = 5 * d, sc0 = 1 - 0.02 * d, z0 = 100 - d;
-      // fanned (open 1) — a hand spread around fanCenter
-      const o = i - fanCenter;
-      const ax = Math.abs(o);
-      const tx1 = o * fanStepX;
-      const ty1 = ax * FAN_STEP_Y;
-      const sc1 = Math.max(0.84, 1 - ax * 0.05);
-      const rot1 = o * FAN_STEP_ROT;
-      const z1 = Math.round(300 - ax * 10);
-      const op1 = Math.max(0.6, 1 - ax * 0.12);
-      const st = slots[i].slot.style;
-      st.transform =
-        `translate(${(tx1 * k).toFixed(1)}px, ${(ty0 + (ty1 - ty0) * k).toFixed(1)}px)` +
-        ` scale(${(sc0 + (sc1 - sc0) * k).toFixed(3)}) rotate(${(rot1 * k).toFixed(2)}deg)`;
-      st.zIndex = String(Math.round(z0 + (z1 - z0) * k));
-      st.opacity = (1 + (op1 - 1) * k).toFixed(2);
+      const ty0 = 5 * d, sc0 = 1 - 0.02 * d;
+      // cracked open (open 1) — slid out d steps along the cascade dir, back to full size
+      const slide = EXPAND_EDGE * d;
+      const tx = dirX * slide * k;
+      const ty = ty0 + (dirY * slide - ty0) * k;
+      const sc = sc0 + (1 - sc0) * k;
+      slots[i].slot.style.transform =
+        `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${sc.toFixed(3)})`;
     }
   }
 
@@ -241,15 +234,16 @@ export function createReveal({ mountEl, onAgain }) {
       downX = e.clientX;
       downY = e.clientY;
       try { slot.setPointerCapture?.(e.pointerId); } catch {} // never let a stray pointer id abort the gesture
-      // hold still (no real drag) for HOLD_MS → fan the deck out
+      // hold still (no real drag) for HOLD_MS → spread the stack open
       clearHold();
       holdTimer = setTimeout(() => {
         holdTimer = null;
-        if (holding && gestureMode === null) { gestureMode = "fan"; moved = true; startFan(); }
+        if (holding && gestureMode === null) { gestureMode = "expand"; moved = true; startExpand(downX, downY); }
       }, HOLD_MS);
     });
     slot.addEventListener("pointermove", (e) => {
-      if (!holding || !isFront() || gestureMode === "fan") return; // hand's open — ignore until release
+      if (!holding || !isFront()) return;
+      if (gestureMode === "expand") { expandDrag(e.clientX, e.clientY); tilt(e); return; } // steer the spread + keep tilting the front card
       const dx = e.clientX - downX, dy = e.clientY - downY;
       // moving past the slop before the hold fires makes this a tilt-drag, not a hold
       if (gestureMode !== "tilt" && Math.hypot(dx, dy) > TILT_SLOP) {
@@ -263,11 +257,11 @@ export function createReveal({ mountEl, onAgain }) {
       if (!holding) return;
       holding = false;
       clearHold();
-      if (gestureMode === "fan") {
-        endFan(); // let go of the hold → the hand collapses back to the stack
-      } else {
-        spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // ease flat
-        if (!moved) advance(); // a quick tap flicks the card away to the next
+      spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // ease the front card flat
+      if (gestureMode === "expand") {
+        endExpand(); // let go of the hold → the stack closes back up
+      } else if (!moved) {
+        advance(); // a quick tap flicks the card away to the next
       }
       gestureMode = null;
     };
@@ -330,7 +324,7 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function updateHint() {
-    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · hold to fan`;
+    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · hold to spread`;
   }
 
   againEl.addEventListener("click", () => {
