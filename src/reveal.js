@@ -18,7 +18,7 @@ const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
 const FOIL_Y = 17;
 const TILT_TRACK = [0.12, 0.82]; // soft spring [stiffness, damping] while the tilt follows the pointer — smooth, no shake
-const TILT_SNAP = [0.4, 0.8]; // stiff spring to magnet-snap every card flat on release
+const TILT_SNAP = [0.3, 0.5]; // snap every card flat fast but CLEAN — low damping = heavy friction, so it settles without bouncing
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
 const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this it's a tap)
 const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
