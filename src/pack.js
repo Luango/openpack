@@ -30,6 +30,8 @@ const GAP_TEAR = 10; // crack width while mid-tear — kept thin so it reads as 
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
 const START_DIST = 12; // finger travel before the tear engages
+const STEP_MIN = 16; // min finger travel between recorded tear points — keeps the teeth long-
+//                      wavelength so a SLOW tear doesn't pile up points into steep, dense teeth
 const TURN_SEG = 14; // length over which the tear's heading is measured for the turn check
 const TURN_KINK_RAD = Math.PI / 2; // max single-step turn (90°) — a sharper kink voids the tear
 const TURN_CUM_RAD = Math.PI * 0.39; // max cumulative net turn (~70°) — catches a gradual hook/U-turn early, before it can reach an edge and commit
@@ -334,7 +336,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     }
 
     const p = toSvg(e);
-    if (dist(p, path[path.length - 1]) < 3) return;
+    if (dist(p, path[path.length - 1]) < STEP_MIN) return;
     path.push(p);
 
     if (!tearing && pathLen(path) > START_DIST) {
@@ -590,7 +592,7 @@ function jitter(pts) {
   const out = [pts[0]];
   for (let i = 1; i < pts.length - 1; i++) {
     const n = unit({ x: -(pts[i + 1].y - pts[i - 1].y), y: pts[i + 1].x - pts[i - 1].x });
-    const j = (Math.abs((Math.sin(i * 51.3) * 7919) % 1) - 0.5) * 5;
+    const j = (Math.abs((Math.sin(i * 51.3) * 7919) % 1) - 0.5) * 2.6;
     out.push({ x: pts[i].x + n.x * j, y: pts[i].y + n.y * j });
   }
   out.push(pts[pts.length - 1]);
