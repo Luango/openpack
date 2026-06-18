@@ -100,6 +100,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
+        <!-- the OPEN side of the tear: light only escapes here, never through the
+             intact foil. A half-plane on the torn-off half's side of the seam. -->
+        <clipPath id="lightclip"><polygon points=""/></clipPath>
       </defs>
 
       <!-- No solid interior: behind the foil is the real card stack itself, so a
@@ -112,8 +115,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            painted on the front of the bag. .open-bloom is the soft core at the card
            centre; .light-rays the fan of shafts radiating from it; .gap-glow the
            gold along the crack while tearing. (Drawn first → furthest back.) -->
-      <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
-      <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
+      <g class="open-light" clip-path="url(#lightclip)">
+        <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
+        <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
+      </g>
       <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
@@ -162,6 +167,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   const openBloom = mountEl.querySelector(".open-bloom");
   const lightRays = mountEl.querySelector(".light-rays");
   const lightRaysPath = lightRays.querySelector("path");
+  const lightClipPoly = mountEl.querySelector("#lightclip polygon");
   const tearZone = mountEl.querySelector(".tear-zone");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
@@ -342,6 +348,20 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // the light shafts fan OUT of the opening — aim them in the direction the
     // gap faces (where the torn-off half pulls away from)
     lightRaysPath.setAttribute("d", sunburst(Math.atan2(moverDir.y, moverDir.x)));
+
+    // Light only escapes through the OPENING, never the intact foil. Clip it to a
+    // half-plane on the torn-off half's side of the seam: the seam line (Pin→Pout,
+    // extended both ways) with everything pushed far out in moverDir. So the glow
+    // is cut off cleanly at the tear and never bleeds past the sealed side.
+    const BIG = 2400;
+    const pinE = { x: Pin.x - chord.x * BIG, y: Pin.y - chord.y * BIG };
+    const poutE = { x: Pout.x + chord.x * BIG, y: Pout.y + chord.y * BIG };
+    setPoints(lightClipPoly, [
+      pinE,
+      poutE,
+      { x: poutE.x + moverDir.x * BIG, y: poutE.y + moverDir.y * BIG },
+      { x: pinE.x + moverDir.x * BIG, y: pinE.y + moverDir.y * BIG },
+    ]);
 
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
@@ -548,6 +568,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     lightRays.style.opacity = 0; // the fan of shafts goes dark with the rest
     lightRays.removeAttribute("transform");
     lightRaysPath.setAttribute("d", "");
+    lightClipPoly.setAttribute("points", ""); // drop the open-side clip until the next tear
     floatOn(true); // the pack is whole again — let it float
   }
 
