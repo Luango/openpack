@@ -106,6 +106,16 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            tear (gap or a flown-off piece) opens straight onto the complete cards
            — the rip only ever cuts the foil, never the cards behind it. -->
 
+      <!-- Treasure light = the card stack's glow, sitting BEHIND the foil so the
+           bag OCCLUDES it. Only what spills past the bag's edges and through the
+           opening shows, so the light reads as coming from inside the pack — never
+           painted on the front of the bag. .open-bloom is the soft core at the card
+           centre; .light-rays the fan of shafts radiating from it; .gap-glow the
+           gold along the crack while tearing. (Drawn first → furthest back.) -->
+      <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
+      <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
+      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
+
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
            split shows each piece's own jagged torn edge — no drawn white line. -->
       <g class="sealed" mask="url(#tearmask)">
@@ -114,16 +124,6 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       </g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
-
-      <!-- Treasure light. While tearing, .gap-glow traces the crack and brightens
-           as the gap widens; on opening, .open-bloom blooms out of the parting
-           seam like light pouring from inside. Both screen-blend so they ADD light
-           over the foil and the cards behind. -->
-      <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
-      <!-- fan of light shafts shining out of the opening (built + aimed in makePieces),
-           grown + brightened by the spring as the gap widens -->
-      <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
-      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
 
       <!-- Guide overlay: the top & bottom crimp strips where a press STARTS a tear
            — never the sides or face (see onDown). Shown only when body.show-tear-zone
