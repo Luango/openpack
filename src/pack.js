@@ -356,18 +356,21 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // only the open-side shafts escape the torn hole (see the open-side clip below)
     lightRaysPath.setAttribute("d", sunburst());
 
-    // Light only escapes through the OPENING, never the intact foil. Clip it to a
-    // half-plane on the torn-off half's side of the seam: the seam line (Pin→Pout,
-    // extended both ways) with everything pushed far out in moverDir. So the glow
-    // is cut off cleanly at the tear and never bleeds past the sealed side.
-    const BIG = 2400;
-    const pinE = { x: Pin.x - chord.x * BIG, y: Pin.y - chord.y * BIG };
-    const poutE = { x: Pout.x + chord.x * BIG, y: Pout.y + chord.y * BIG };
+    // Light escapes ONLY through the torn-open mouth. Clip it to the cone cast from
+    // the card centre through the opening: the INNER edge is the actual jagged tear
+    // path (`full`), so the light is bounded exactly at the torn foil edge — no
+    // straight cut across the card — and the opening's outer (pack-edge) boundary is
+    // projected far out from the card centre, so the shafts fan out past the pack
+    // only where the mouth faces. The intact foil + every other direction stay dark.
+    const cardC = { x: VB.w / 2, y: VB.h / 2 };
+    const F = 14; // project the mouth's outer rim this far out (well off-screen)
+    const proj = (p) => ({ x: cardC.x + (p.x - cardC.x) * F, y: cardC.y + (p.y - cardC.y) * F });
+    const moverCorners = (aIsSmaller ? A : B).slice(full.length); // pack corners on the open side
     setPoints(lightClipPoly, [
-      pinE,
-      poutE,
-      { x: poutE.x + moverDir.x * BIG, y: poutE.y + moverDir.y * BIG },
-      { x: pinE.x + moverDir.x * BIG, y: pinE.y + moverDir.y * BIG },
+      ...full, // the jagged tear: Pin → tear path → Pout (the mouth's lip, matches the foil edge)
+      proj(Pout),
+      ...moverCorners.map(proj), // the opening's outer rim, cast far out from the card
+      proj(Pin),
     ]);
 
     split = true;
