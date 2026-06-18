@@ -64,6 +64,18 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
+        <!-- treasure light: a bright warm core fading to gold then transparent —
+             used for the glow that pours out of the tear as it opens -->
+        <radialGradient id="treasure" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stop-color="#fffdf3"/>
+          <stop offset="0.28" stop-color="#ffe48f"/>
+          <stop offset="0.65" stop-color="#ffba38" stop-opacity="0.55"/>
+          <stop offset="1" stop-color="#ff9e1f" stop-opacity="0"/>
+        </radialGradient>
+        <!-- soft blur so the gold leaking along the crack reads as light, not a stripe -->
+        <filter id="gapblur" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="4"/>
+        </filter>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
           <polygon class="gap" points="" fill="#000"/>
@@ -89,6 +101,13 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       </g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
+
+      <!-- Treasure light. While tearing, .gap-glow traces the crack and brightens
+           as the gap widens; on opening, .open-bloom blooms out of the parting
+           seam like light pouring from inside. Both screen-blend so they ADD light
+           over the foil and the cards behind. -->
+      <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
+      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
 
       <!-- Guide overlay: the top & bottom crimp strips where a press STARTS a tear
            — never the sides or face (see onDown). Shown only when body.show-tear-zone
@@ -123,6 +142,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   const clipPolyB = mountEl.querySelector("#clipB polygon");
   const pieceA = mountEl.querySelector(".piece-a");
   const pieceB = mountEl.querySelector(".piece-b");
+  const gapGlow = mountEl.querySelector(".gap-glow");
+  const openBloom = mountEl.querySelector(".open-bloom");
   const tearZone = mountEl.querySelector(".tear-zone");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
@@ -197,11 +218,21 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           moverEl.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
           moverEl.style.opacity = Math.max(0, 1 - c.sep * 1.15).toFixed(3);
         }
+        // treasure light pours from the opening — bigger + brighter as the halves part
+        const r = 32 + c.sep * VB.w * 0.75;
+        openBloom.setAttribute("cx", mid.x.toFixed(1));
+        openBloom.setAttribute("cy", mid.y.toFixed(1));
+        openBloom.setAttribute("rx", r.toFixed(1));
+        openBloom.setAttribute("ry", (r * 0.78).toFixed(1));
+        openBloom.style.opacity = Math.min(0.95, c.sep * 1.25).toFixed(3);
       } else if (tearPath) {
         // open the dark gap through the sealed foil along the traced path
         const poly = ribbon(tearPath, c.w);
         const pts = poly ? poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") : "";
         gap.setAttribute("points", pts);
+        // gold light leaks from the crack, brightening as the gap widens
+        gapGlow.setAttribute("points", pts);
+        gapGlow.style.opacity = Math.min(0.9, (c.w / GAP_TEAR) * 0.9).toFixed(3);
       }
     },
   });
@@ -285,6 +316,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
+    gapGlow.style.opacity = 0; // crack glow gives way to the opening bloom
+    gapGlow.setAttribute("points", "");
     pieceA.style.display = "";
     pieceB.style.display = "";
   }
@@ -478,6 +511,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     pieceB.removeAttribute("transform");
     pieceA.style.opacity = pieceB.style.opacity = ""; // restore (the mover faded as it flew)
     gap.setAttribute("points", "");
+    gapGlow.setAttribute("points", ""); // clear the treasure light too
+    gapGlow.style.opacity = 0;
+    openBloom.style.opacity = 0;
+    openBloom.setAttribute("rx", 0);
+    openBloom.setAttribute("ry", 0);
     floatOn(true); // the pack is whole again — let it float
   }
 
