@@ -66,6 +66,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
           <polygon class="gap" points="" fill="#000"/>
         </mask>
+        <!-- the pack art's own alpha — clips the sheen so its screen-blend
+             highlight never lands on the transparent background, only on foil. -->
+        <mask id="artalpha" maskUnits="userSpaceOnUse" style="mask-type:alpha">
+          <use href="#art"/>
+        </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
       </defs>
@@ -78,7 +83,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            split shows each piece's own jagged torn edge — no drawn white line. -->
       <g class="sealed" mask="url(#tearmask)">
         <use href="#art"/>
-        <g transform="skewX(-9)"><rect class="pack-sheen" x="0" y="-200" width="130" height="1200" fill="url(#sheen)" style="mix-blend-mode:screen"/></g>
+        <g mask="url(#artalpha)"><g transform="skewX(-9)"><rect class="pack-sheen" x="0" y="-200" width="130" height="1200" fill="url(#sheen)" style="mix-blend-mode:screen"/></g></g>
       </g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
