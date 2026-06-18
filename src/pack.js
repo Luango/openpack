@@ -62,9 +62,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="sparkgrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
-          <stop offset="0.55" stop-color="#fff0d8" stop-opacity="0.55"/>
-          <stop offset="1" stop-color="#ffca7a" stop-opacity="0"/>
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="1" stop-color="#fff3df" stop-opacity="0.95"/>
         </linearGradient>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -96,11 +96,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            pack.js flicks one every few seconds (rise + fade). pointer-events:none.
            Above the foil at y<0 — shown by the pack's overflow:visible. -->
       <g class="sparks" aria-hidden="true">
-        <rect class="spark" x="38"  y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="95"  y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="150" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="205" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="262" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="38"  y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="95"  y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="150" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="205" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="262" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
       </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
@@ -489,11 +489,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const el = sparkEls[(Math.random() * sparkEls.length) | 0];
     el.animate(
       [
-        { opacity: 0, transform: "translateY(2px) scaleY(0.35)" },
-        { opacity: 1, transform: "translateY(-6px) scaleY(1)", offset: 0.22 }, // quick bright pop off the seal
-        { opacity: 0, transform: "translateY(-32px) scaleY(1.45)" }, // …then shoots up and fades
+        { opacity: 0, transform: "translateY(0) scaleY(0.15)" }, // a sliver at the seal
+        { opacity: 1, transform: "translateY(-2px) scaleY(1)", offset: 0.3 }, // shoots up out of the gap, full + bright
+        { opacity: 0.85, transform: "translateY(-6px) scaleY(1.2)", offset: 0.8 },
+        { opacity: 0, transform: "translateY(-12px) scaleY(1.35)" }, // fades, drifting up a touch
       ],
-      { duration: 560 + Math.random() * 200, easing: "cubic-bezier(.12,.6,.3,1)" }
+      { duration: 600 + Math.random() * 220, easing: "cubic-bezier(.12,.6,.3,1)" }
     );
     sfx.spark();
   }
