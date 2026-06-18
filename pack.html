@@ -138,10 +138,18 @@
         pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
       }
 
-      /* the gold light leaking along the rip — a STATIC CSS blur (GPU, on a tiny
-         element) replaces the old per-frame SVG feGaussianBlur whose region grew
-         with the crack and re-blurred in software every frame (mobile jank). */
-      .gap-glow { filter: blur(3px); }
+      /* the rip overlay — sits OVER the foil but OUTSIDE the drop-shadow-filtered
+         .pack, so updating the crack each frame never re-rasters the big foil
+         through that filter (the real mobile slice-lag). Unfiltered + no per-frame
+         blur: the dark slit is a flat fill, the gold reads as light via screen
+         blend alone (crisp is fine in motion; the commit bloom adds the soft glow). */
+      .pack-cut {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: 1; /* over the foil */
+      }
 
       /* PERF: while a tear is underway (.pack-wrap.tearing, set in floatOn) freeze
          every ambient animation so the whole mobile raster/composite budget goes to
@@ -716,7 +724,12 @@
 
       pack = createPack({
         mountEl: document.getElementById("pack-stage"),
-        onGrab: () => reveal.wake(), // bring the stack in behind the pack only once it's grabbed
+        // NB: we no longer wake the reveal on grab. The crack is now an opaque slit
+        // (no see-through peek), so the card stack stays fully hidden behind the
+        // covering pack until it actually opens — keeping 5 holo cards (with running
+        // glitter animations) OUT of the per-frame compositing during the tear.
+        // reveal.show() reveals + arranges the stack at the open; it's pre-rendered,
+        // so the reveal is still instant.
         onOpen: async () => {
           hintEl.textContent = ""; // the reveal has its own hint
           await ready; // (already prepared — instant)

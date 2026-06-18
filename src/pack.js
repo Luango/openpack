@@ -129,11 +129,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <g mask="url(#artalpha)"><g transform="skewX(-9)"><rect class="pack-sheen" x="0" y="-200" width="130" height="1200" fill="url(#sheen)" style="mix-blend-mode:screen"/></g></g>
       </g>
 
-      <!-- the rip, drawn OVER the foil: a thin dark slit + gold light leaking along
-           it. Both follow the ribbon path — cheap vector, no per-frame mask/filter
-           re-raster (the gold's soft glow is a static CSS blur on .gap-glow). -->
-      <polygon class="gap-crack" points="" fill="#0a0a0d" opacity="0"/>
-      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" style="mix-blend-mode:screen"/>
+      <!-- NB: the rip (.gap-crack / .gap-glow) is NOT here — it lives in the
+           separate .pack-cut overlay below, OUTSIDE this drop-shadow-filtered .pack
+           svg. A CSS filter re-rasters its WHOLE element when any child changes, so
+           a crack inside here would re-raster the 2.7MB foil through the drop-shadow
+           every frame (the real mobile slice-lag). Out here, .pack stays static. -->
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
 
@@ -143,6 +143,14 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       <path class="tear-zone" fill-rule="evenodd" d=""/>
 
     </svg>
+      <!-- the rip overlay — drawn OVER the foil but OUTSIDE the drop-shadow-filtered
+           .pack, so writing the crack each frame never re-rasters the big foil (that
+           per-frame filter re-raster was the mobile slice-lag). A thin dark slit +
+           gold light leaking along it; cheap, unfiltered vector. -->
+      <svg class="pack-cut" viewBox="0 0 ${VB.w} ${VB.h}" aria-hidden="true">
+        <polygon class="gap-crack" points="" fill="#0a0a0d" opacity="0"/>
+        <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" style="mix-blend-mode:screen"/>
+      </svg>
       <!-- tear-reference line: a thick, slightly hand-drawn guide line along the seal,
            with a rim-light beam sweeping left<->right. Hidden once a tear starts. -->
       <svg class="crimp-streak" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true">
@@ -212,6 +220,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     mid = { x: VB.w / 2, y: VB.h / 2 };
     svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
     mountEl.querySelector(".pack-light").setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`); // keep the light overlay aligned
+    mountEl.querySelector(".pack-cut").setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`); // …and the rip overlay
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
     mountEl.querySelector("#foilclip rect").setAttribute("height", VB.h); // keep the foil clip sized
     ctm = ctmInv = null; // geometry changed — drop the cached matrix

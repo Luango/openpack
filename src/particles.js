@@ -17,7 +17,10 @@
 //   p.emit(x, y, { count: 10, speed: 4, dir: angle, colors: ["#fff"], shape: "star" });
 
 const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-const MAX_PARTS = 260; // hard cap so a burst on a mid phone never tanks the frame
+// On a phone (coarse pointer) the additive canvas is the dominant fill-rate cost,
+// so cap its backing store to DPR 1 — soft glows don't need the extra resolution.
+const COARSE = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+const MAX_PARTS = COARSE ? 150 : 260; // hard cap so a burst never tanks a mid phone's frame
 
 export function createParticles(canvas) {
   const ctx = canvas.getContext("2d");
@@ -26,7 +29,7 @@ export function createParticles(canvas) {
   const sprites = new Map(); // "shape|color" → offscreen canvas (baked once, reused)
 
   function resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = COARSE ? 1 : Math.min(2, window.devicePixelRatio || 1); // halve mobile fill-rate
     const r = canvas.getBoundingClientRect();
     canvas.width = Math.max(1, r.width * dpr);
     canvas.height = Math.max(1, r.height * dpr);
