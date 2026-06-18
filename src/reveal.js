@@ -39,7 +39,7 @@ export function createReveal({ mountEl, onAgain }) {
   const againEl = host.querySelector(".reveal__again");
   const particles = createParticles(host.querySelector(".reveal__fx"));
 
-  let slots = []; // { slot, cardEl, card, spring }
+  let slots = []; // { slot, cardEl, card }
   let cards = [];
   let pos = 0; // index of the current front card
   let peeking = true; // true while still inside the pack (peeking through the gap)
@@ -49,9 +49,9 @@ export function createReveal({ mountEl, onAgain }) {
   // slide apart in PARALLEL (no rotation, same size) along your finger — each card
   // steps out by a fixed amount, so the front one stays on top and the rest reveal
   // only their side edge. The spread tracks your finger 1:1 (no spring); let go and
-  // it eases shut. A quick tap flips to the next card. Pressing first eases the front
-  // card into a holo tilt; once you drag, that tilt springs back to flat as the slide
-  // takes over (the tilt never tracks the finger mid-slide).
+  // it eases shut. A quick tap flips to the next card. The whole stack also tilts
+  // toward your finger (holo) — on press AND right through the slide, every card at
+  // once — then magnet-snaps flat when you let go.
   let sliding = false; // a press-drag spread is in progress
   let dirX = 0, dirY = 0; // unit cascade direction = the drag direction
 
@@ -82,6 +82,48 @@ export function createReveal({ mountEl, onAgain }) {
     slots.forEach((s) => { s.slot.style.transform = ""; });
   }
 
+  // The holo tilt — ONE spring shared across the whole visible stack, so every card
+  // leans the same way at once (each keeps its own foil). Stiff on purpose: it leans
+  // in fast on press, tracks your finger right through the slide, and magnet-snaps
+  // flat on release.
+  const tiltSpring = createSpring({
+    rest: { rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 },
+    stiffness: 0.35,
+    damping: 0.82,
+    onTick: (c) => {
+      const t = `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
+      for (let i = pos; i < slots.length; i++) {
+        const ce = slots[i].cardEl;
+        ce.style.transform = t;
+        ce.style.setProperty("--mx", c.mx.toFixed(1) + "%");
+        ce.style.setProperty("--my", c.my.toFixed(1) + "%");
+        ce.style.setProperty("--posx", c.px.toFixed(1) + "%");
+        ce.style.setProperty("--posy", c.py.toFixed(1) + "%");
+        ce.style.setProperty("--hyp", c.hyp.toFixed(3));
+      }
+    },
+  });
+
+  // lean the whole stack toward the finger (holo), measured against the deck centre
+  function tiltToward(px, py) {
+    const r = stackEl.getBoundingClientRect();
+    const cx = Math.max(-1, Math.min(1, (px - (r.left + r.width / 2)) / (r.width / 2)));
+    const cy = Math.max(-1, Math.min(1, (py - (r.top + r.height / 2)) / (r.height / 2)));
+    tiltSpring.set({
+      rx: cy * TILT,
+      ry: -cx * TILT,
+      mx: 50 + cx * 50,
+      my: 50 + cy * 50,
+      px: 50 + cx * FOIL_X,
+      py: 50 + cy * FOIL_Y,
+      hyp: Math.min(1, Math.hypot(cx, cy)),
+    });
+  }
+
+  function flat() {
+    tiltSpring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // magnet-snap every card flat
+  }
+
   // Render + load the whole stack UP FRONT, behind the still-sealed pack, so the
   // top card sits INSIDE the pack and peeks through the tear gap as you rip — and
   // there's nothing to fetch or build when the pack finally opens.
@@ -90,7 +132,7 @@ export function createReveal({ mountEl, onAgain }) {
     pos = 0;
     sliding = false;
     host.classList.remove("browsing");
-    slots.forEach((s) => s.spring.stop());
+    tiltSpring.stop();
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
     againEl.hidden = true;
@@ -127,8 +169,7 @@ export function createReveal({ mountEl, onAgain }) {
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
-    host.classList.remove("browsing");
-    slots.forEach((s) => s.spring.stop());
+    tiltSpring.stop();
   }
 
   function makeSlot(card) {
@@ -142,42 +183,9 @@ export function createReveal({ mountEl, onAgain }) {
     if (art && card.image) art.src = card.image;
     stackEl.appendChild(slot);
 
-    // The front card's tilt + holo. Stiff on purpose: the tilt leans in fast on
-    // press and, the moment you start sliding, snaps back to flat like a magnet —
-    // fast but still spring-eased — so there's no tilt drifting through the slide.
-    const spring = createSpring({
-      rest: { rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 },
-      stiffness: 0.35,
-      damping: 0.82,
-      onTick: (c) => {
-        cardEl.style.transform = `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
-        cardEl.style.setProperty("--mx", c.mx.toFixed(1) + "%");
-        cardEl.style.setProperty("--my", c.my.toFixed(1) + "%");
-        cardEl.style.setProperty("--posx", c.px.toFixed(1) + "%");
-        cardEl.style.setProperty("--posy", c.py.toFixed(1) + "%");
-        cardEl.style.setProperty("--hyp", c.hyp.toFixed(3));
-      },
-    });
-
-    const entry = { slot, cardEl, card, spring };
+    const entry = { slot, cardEl, card };
     let downX = 0, downY = 0, moved = false, holding = false;
-
     const isFront = () => slots[pos] === entry;
-    const tilt = (e) => {
-      const r = cardEl.getBoundingClientRect();
-      const cx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
-      const cy = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
-      spring.set({
-        rx: cy * TILT,
-        ry: -cx * TILT,
-        mx: 50 + cx * 50,
-        my: 50 + cy * 50,
-        px: 50 + cx * FOIL_X,
-        py: 50 + cy * FOIL_Y,
-        hyp: Math.min(1, Math.hypot(cx, cy)),
-      });
-    };
-    const flat = () => spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 });
 
     slot.addEventListener("pointerdown", (e) => {
       if (!isFront()) return;
@@ -187,21 +195,22 @@ export function createReveal({ mountEl, onAgain }) {
       downX = e.clientX;
       downY = e.clientY;
       try { slot.setPointerCapture?.(e.pointerId); } catch {} // never let a stray pointer id abort the gesture
-      tilt(e); // grab feel: the front card eases (spring) into a tilt toward where you press
+      tiltToward(e.clientX, e.clientY); // grab feel: the whole stack leans toward where you press
     });
     slot.addEventListener("pointermove", (e) => {
       if (!isFront()) return;
-      if (!holding) { tilt(e); return; } // hover (desktop): holo lean only, no press
+      if (!holding) { tiltToward(e.clientX, e.clientY); return; } // hover (desktop): lean only, no press
       const dx = e.clientX - downX, dy = e.clientY - downY, m = Math.hypot(dx, dy);
-      if (!sliding) {
-        if (m <= SLIDE_SLOP) { tilt(e); return; } // still pressing — the tilt tracks your finger
+      if (!sliding && m > SLIDE_SLOP) {
         sliding = true;
         moved = true;
-        flat(); // magnet-snap the tilt back to flat (fast spring) as the slide takes over
         host.classList.add("browsing"); // freeze the CSS transition so the spread tracks the finger 1:1
       }
-      dirX = dx / m; dirY = dy / m; // cascade follows the drag direction…
-      renderSlide(Math.min(m / SLIDE_DRAG, 1)); // …and how far it opens follows the distance
+      if (sliding) {
+        dirX = dx / m; dirY = dy / m; // cascade follows the drag direction, distance opens it…
+        renderSlide(Math.min(m / SLIDE_DRAG, 1));
+      }
+      tiltToward(e.clientX, e.clientY); // …and the whole stack tilts at the same time
     });
     const release = () => {
       if (!holding) return;
@@ -211,11 +220,11 @@ export function createReveal({ mountEl, onAgain }) {
       } else if (!moved) {
         advance(); // a quick tap flicks the card away to the next
       }
-      flat();
+      flat(); // magnet-snap every card flat
     };
     slot.addEventListener("pointerup", release);
     slot.addEventListener("pointercancel", release);
-    slot.addEventListener("pointerleave", () => { if (!holding) flat(); }); // end a hover tilt
+    slot.addEventListener("pointerleave", () => { if (!holding) flat(); }); // end a hover lean
     slot.addEventListener("contextmenu", (e) => e.preventDefault());
 
     return entry;
