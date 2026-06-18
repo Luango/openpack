@@ -94,6 +94,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       <path class="tear-zone" fill-rule="evenodd" d=""/>
 
     </svg>
+      <!-- tear-reference line: a horizontal "beam light" streak running along the
+           BOTTOM of the sealed crimp (the red-line spot the sparks root on). A
+           glowing anamorphic glint that marks where the tear runs. -->
+      <div class="crimp-streak" aria-hidden="true"></div>
       <!-- edge sparks (the widget design, reused): HTML so box-shadow gives the
            clear glow. The layer is pinned to the pack's TOP seal; each spark grows
            straight up FROM the seal (transform-origin: bottom) on a flick. -->

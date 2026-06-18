@@ -145,6 +145,28 @@
         opacity: 0;
         pointer-events: none;
       }
+
+      /* tear-reference line — a horizontal beam-light streak along the BOTTOM of the
+         sealed crimp (the same 14% line the sparks root on). Bright centre + warm
+         glow, spilling past the edges for an anamorphic glint; gently pulses. Fades
+         in only once the pack is armed (sibling of .pack.ready). */
+      .crimp-streak {
+        position: absolute;
+        top: 14%;
+        left: -6%; right: -6%;
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, transparent, rgba(255, 214, 168, 0.8) 22%, #fff 50%, rgba(255, 214, 168, 0.8) 78%, transparent);
+        box-shadow: 0 0 12px 1px rgba(255, 150, 70, 0.65);
+        transform-origin: center;
+        pointer-events: none;
+        opacity: 0;
+      }
+      .pack.ready ~ .crimp-streak { animation: crimpbeam 4.2s ease-in-out infinite; }
+      @keyframes crimpbeam {
+        0%, 100% { opacity: 0.4; transform: scaleX(0.82); }
+        50%      { opacity: 1; transform: scaleX(1); }
+      }
       @keyframes sheen {
         0%   { transform: translateX(-170px); opacity: 0; }
         8%   { opacity: 1; }
