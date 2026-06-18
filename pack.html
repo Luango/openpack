@@ -154,8 +154,9 @@
         position: absolute;
         top: 10%;                     /* the sealed line — bottom of the crimp */
         transform: translateY(-50%);  /* centre the thick line on it */
-        left: 0; right: 0;            /* exactly the pack width, edge to edge */
-        height: 18px;
+        left: 0; width: 100%;         /* span the full pack width, edge to edge
+                                         (width:100% overrides the SVG's intrinsic 300px) */
+        height: 24px;
         pointer-events: none;
         opacity: 0;
         overflow: visible;            /* let the beam's glow spill */
@@ -164,9 +165,9 @@
       .pack.ready ~ .crimp-streak { opacity: 1; }
       .pack-wrap.tearing .crimp-streak { opacity: 0; } /* disappears the moment a tear starts */
       .cs-base, .cs-beam { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; }
-      .cs-base { stroke: rgba(255, 205, 150, 0.45); stroke-width: 7; }       /* thick, steady guide */
+      .cs-base { stroke: rgba(255, 205, 150, 0.5); stroke-width: 9; }        /* thick, steady guide */
       .cs-beam {                                                            /* the rim-light beam */
-        stroke: #fff; stroke-width: 7;
+        stroke: #fff; stroke-width: 9;
         stroke-dasharray: 15 200;     /* one short bright segment */
         filter: drop-shadow(0 0 6px rgba(255, 175, 90, 0.95)) drop-shadow(0 0 2px #fff);
       }

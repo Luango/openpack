@@ -98,9 +98,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     </svg>
       <!-- tear-reference line: a thick, slightly hand-drawn guide line along the seal,
            with a rim-light beam sweeping left<->right. Hidden once a tear starts. -->
-      <svg class="crimp-streak" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true">
-        <path class="cs-base" d="M2 9 Q150 5 298 9" pathLength="100"/>
-        <path class="cs-beam" d="M2 9 Q150 5 298 9" pathLength="100"/>
+      <svg class="crimp-streak" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true">
+        <path class="cs-base" d="M0 12 C25 13.5 55 9.5 100 9 C145 8.5 162 15 200 14.5 C235 14 270 10.5 300 11.5" pathLength="100"/>
+        <path class="cs-beam" d="M0 12 C25 13.5 55 9.5 100 9 C145 8.5 162 15 200 14.5 C235 14 270 10.5 300 11.5" pathLength="100"/>
       </svg>
       <!-- edge sparks (the widget design, reused): HTML so box-shadow gives the
            clear glow. The layer is pinned to the pack's TOP seal; each spark grows
