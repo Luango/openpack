@@ -54,6 +54,39 @@ const CORNERS = [
 export function createPack({ mountEl, onOpen, onGrab }) {
   mountEl.innerHTML = `
     <div class="pack-wrap">
+    <!-- The opening light is the CARD'S glow (the bulb), so it lives in its OWN layer
+         BEHIND the foil — not inside it. The foil (.pack) renders on top and occludes
+         it, so light only shows through the opening + past the edges. Crucially, when
+         the pack exits this layer counter-slides (CSS, body.revealing) to stay put
+         with the card while the foil slides away — the light never travels with the box. -->
+    <svg class="pack-light" viewBox="0 0 ${VB.w} ${VB.h}" aria-hidden="true">
+      <defs>
+        <!-- soft warm core fading to gold then transparent -->
+        <radialGradient id="treasure" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stop-color="#fffdf3"/>
+          <stop offset="0.28" stop-color="#ffe48f"/>
+          <stop offset="0.65" stop-color="#ffba38" stop-opacity="0.55"/>
+          <stop offset="1" stop-color="#ff9e1f" stop-opacity="0"/>
+        </radialGradient>
+        <!-- light shafts: brightest at the apex, fading to nothing at the tips.
+             userSpaceOnUse so it sits at the apex and scales with the rays group. -->
+        <radialGradient id="rays" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="380">
+          <stop offset="0" stop-color="#fff8e6" stop-opacity="0.95"/>
+          <stop offset="0.32" stop-color="#ffde8a" stop-opacity="0.5"/>
+          <stop offset="0.68" stop-color="#ffb53e" stop-opacity="0.16"/>
+          <stop offset="1" stop-color="#ffa522" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="raysblur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.2"/>
+        </filter>
+        <!-- the OPEN side of the tear: light only escapes here, never the intact foil -->
+        <clipPath id="lightclip"><polygon points=""/></clipPath>
+      </defs>
+      <g class="open-light" clip-path="url(#lightclip)">
+        <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
+        <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
+      </g>
+    </svg>
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
       <defs>
         <g id="art">
@@ -64,30 +97,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
-        <!-- treasure light: a bright warm core fading to gold then transparent —
-             used for the glow that pours out of the tear as it opens -->
-        <radialGradient id="treasure" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stop-color="#fffdf3"/>
-          <stop offset="0.28" stop-color="#ffe48f"/>
-          <stop offset="0.65" stop-color="#ffba38" stop-opacity="0.55"/>
-          <stop offset="1" stop-color="#ff9e1f" stop-opacity="0"/>
-        </radialGradient>
         <!-- soft blur so the gold leaking along the crack reads as light, not a stripe -->
         <filter id="gapblur" x="-80%" y="-80%" width="260%" height="260%">
           <feGaussianBlur stdDeviation="4"/>
-        </filter>
-        <!-- light shafts fanning from the opening: brightest at the gap (apex),
-             fading to nothing at the tips. userSpaceOnUse so it sits at the apex
-             and scales with the rays group as it grows. -->
-        <radialGradient id="rays" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="380">
-          <stop offset="0" stop-color="#fff8e6" stop-opacity="0.95"/>
-          <stop offset="0.32" stop-color="#ffde8a" stop-opacity="0.5"/>
-          <stop offset="0.68" stop-color="#ffb53e" stop-opacity="0.16"/>
-          <stop offset="1" stop-color="#ffa522" stop-opacity="0"/>
-        </radialGradient>
-        <!-- a touch of blur softens the shaft edges into light, not hard wedges -->
-        <filter id="raysblur" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.2"/>
         </filter>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -100,25 +112,16 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
-        <!-- the OPEN side of the tear: light only escapes here, never through the
-             intact foil. A half-plane on the torn-off half's side of the seam. -->
-        <clipPath id="lightclip"><polygon points=""/></clipPath>
       </defs>
 
       <!-- No solid interior: behind the foil is the real card stack itself, so a
            tear (gap or a flown-off piece) opens straight onto the complete cards
-           — the rip only ever cuts the foil, never the cards behind it. -->
+           — the rip only ever cuts the foil, never the cards behind it. The opening
+           light (bloom + shafts) lives in the separate .pack-light layer BELOW, so
+           it can stay put while the foil slides off. -->
 
-      <!-- Treasure light = the card stack's glow, sitting BEHIND the foil so the
-           bag OCCLUDES it. Only what spills past the bag's edges and through the
-           opening shows, so the light reads as coming from inside the pack — never
-           painted on the front of the bag. .open-bloom is the soft core at the card
-           centre; .light-rays the fan of shafts radiating from it; .gap-glow the
-           gold along the crack while tearing. (Drawn first → furthest back.) -->
-      <g class="open-light" clip-path="url(#lightclip)">
-        <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
-        <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
-      </g>
+      <!-- gold along the crack while tearing — stays with the foil (gone by the time
+           the pack opens, so it has no exit-slide problem) -->
       <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
@@ -192,6 +195,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     CORNERS[3].y = VB.h;
     mid = { x: VB.w / 2, y: VB.h / 2 };
     svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
+    mountEl.querySelector(".pack-light").setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`); // keep the light overlay aligned
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
     mountEl.querySelector("#tearmask rect").setAttribute("height", VB.h);
     drawTearZone(); // re-fit the trigger-zone guide to the new size

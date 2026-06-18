@@ -54,6 +54,23 @@
         display: inline-block;
         animation: float 5s ease-in-out infinite;
         will-change: transform;
+        isolation: isolate; /* contain the light layer's negative z-index behind the foil */
+      }
+      /* The card's glow, in its OWN layer behind the foil (z-index:-1). It floats with
+         the pack, but on exit it counter-slides by the SAME amount #pack-stage moves,
+         so it stays put with the card (the bulb) while the foil (the box) slides off.
+         Same transition as #pack-stage → the two cancel exactly at every moment. It
+         still fades, since it inherits the stage's opacity:0. */
+      .pack-light {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: -1;
+        transition: transform 0.7s cubic-bezier(0.45, 0, 0.7, 0.45);
+      }
+      body.revealing .pack-light {
+        transform: translate(calc(var(--exit-x, 0px) * -1), calc(var(--exit-y, 0px) * -1));
       }
       .pack {
         display: block;
