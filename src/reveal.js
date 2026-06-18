@@ -30,6 +30,7 @@ export function createReveal({ mountEl, onAgain }) {
   const host = document.createElement("div");
   host.className = "reveal hidden";
   host.innerHTML = `
+    <div class="reveal__aura"></div>
     <canvas class="reveal__fx"></canvas>
     <div class="reveal__stack"></div>
     <p class="reveal__hint"></p>
@@ -169,7 +170,7 @@ export function createReveal({ mountEl, onAgain }) {
 
   function close() {
     host.classList.add("hidden");
-    host.classList.remove("browsing");
+    host.classList.remove("browsing", "iridescent");
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
@@ -252,12 +253,18 @@ export function createReveal({ mountEl, onAgain }) {
   function advance() {
     if (pos >= cards.length) return;
     sfx.flick();
+    // Start the iridescent build the instant the covering card is flicked away —
+    // so the aura is already washing in as the special card beneath is uncovered,
+    // not after it has settled. Keys off the card about to become front.
+    const next = slots[pos + 1];
+    host.classList.toggle("iridescent", !!next && rarityToTier(next.card) >= RARE_TIER);
     pos++;
     layout();
     if (pos < cards.length) {
       flourishIfRare();
       updateHint();
     } else {
+      host.classList.remove("iridescent"); // last card gone → fade the aura out
       hintEl.textContent = "That's the pack!";
       againEl.hidden = false;
     }
@@ -268,8 +275,11 @@ export function createReveal({ mountEl, onAgain }) {
     const s = slots[pos];
     if (!s) return;
     const tier = rarityToTier(s.card);
-    s.slot.classList.toggle("rare", tier >= RARE_TIER);
-    if (tier >= RARE_TIER) {
+    const isRare = tier >= RARE_TIER;
+    s.slot.classList.toggle("rare", isRare);
+    // iridescent backdrop while a Double Rare-or-above card is up front
+    host.classList.toggle("iridescent", isRare);
+    if (isRare) {
       const r = host.getBoundingClientRect();
       particles.emit(r.left + r.width / 2, r.top + r.height * 0.44, { // where the centered card sits
         count: 46,
