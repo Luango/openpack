@@ -487,12 +487,13 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     sparkTimer = setTimeout(flickSpark, 1800 + Math.random() * 2200);
     if (!armed || dragging || opened || document.hidden || !sparkEls.length) return;
     const el = sparkEls[(Math.random() * sparkEls.length) | 0];
+    const h = 0.8 + Math.random() * 1.0; // varied beam length per flick (some short, some tall)
     el.animate(
       [
         { opacity: 0, transform: "translateY(0) scaleY(0.15)" }, // a sliver at the seal
-        { opacity: 1, transform: "translateY(-2px) scaleY(1)", offset: 0.3 }, // shoots up out of the gap, full + bright
-        { opacity: 0.85, transform: "translateY(-6px) scaleY(1.2)", offset: 0.8 },
-        { opacity: 0, transform: "translateY(-12px) scaleY(1.35)" }, // fades, drifting up a touch
+        { opacity: 1, transform: `translateY(-2px) scaleY(${h.toFixed(2)})`, offset: 0.3 }, // shoots up out of the gap, full + bright
+        { opacity: 0.85, transform: `translateY(-6px) scaleY(${(h * 1.15).toFixed(2)})`, offset: 0.8 },
+        { opacity: 0, transform: `translateY(-12px) scaleY(${(h * 1.3).toFixed(2)})` }, // fades, drifting up a touch
       ],
       { duration: 600 + Math.random() * 220, easing: "cubic-bezier(.12,.6,.3,1)" }
     );
