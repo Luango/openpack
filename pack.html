@@ -152,19 +152,28 @@
          in only once the pack is armed (sibling of .pack.ready). */
       .crimp-streak {
         position: absolute;
-        top: 10%;            /* right at the bottom of the crimp — the sealed line */
-        left: 0; right: 0;   /* exactly the pack width, edge to edge */
-        height: 2px;
-        border-radius: 2px;
-        background: linear-gradient(90deg, transparent, rgba(255, 214, 168, 0.85) 9%, #fff 50%, rgba(255, 214, 168, 0.85) 91%, transparent);
-        box-shadow: 0 0 12px 1px rgba(255, 150, 70, 0.65);
+        top: 10%;                     /* the sealed line — bottom of the crimp */
+        transform: translateY(-50%);  /* centre the thick line on it */
+        left: 0; right: 0;            /* exactly the pack width, edge to edge */
+        height: 18px;
         pointer-events: none;
         opacity: 0;
+        overflow: visible;            /* let the beam's glow spill */
+        transition: opacity 0.35s ease;
       }
-      .pack.ready ~ .crimp-streak { animation: crimpbeam 4.2s ease-in-out infinite; }
-      @keyframes crimpbeam { /* glow pulse only — length stays full pack width */
-        0%, 100% { opacity: 0.45; }
-        50%      { opacity: 1; }
+      .pack.ready ~ .crimp-streak { opacity: 1; }
+      .pack-wrap.tearing .crimp-streak { opacity: 0; } /* disappears the moment a tear starts */
+      .cs-base, .cs-beam { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+      .cs-base { stroke: rgba(255, 205, 150, 0.45); stroke-width: 7; }       /* thick, steady guide */
+      .cs-beam {                                                            /* the rim-light beam */
+        stroke: #fff; stroke-width: 7;
+        stroke-dasharray: 15 200;     /* one short bright segment */
+        filter: drop-shadow(0 0 6px rgba(255, 175, 90, 0.95)) drop-shadow(0 0 2px #fff);
+      }
+      .pack.ready ~ .crimp-streak .cs-beam { animation: csbeam 2.8s ease-in-out infinite alternate; }
+      @keyframes csbeam { /* the beam sweeps left -> right, then back (alternate) */
+        0%   { stroke-dashoffset: 0; }
+        100% { stroke-dashoffset: -85; }
       }
       @keyframes sheen {
         0%   { transform: translateX(-170px); opacity: 0; }

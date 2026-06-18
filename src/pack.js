@@ -96,10 +96,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       <path class="tear-zone" fill-rule="evenodd" d=""/>
 
     </svg>
-      <!-- tear-reference line: a horizontal "beam light" streak running along the
-           BOTTOM of the sealed crimp (the red-line spot the sparks root on). A
-           glowing anamorphic glint that marks where the tear runs. -->
-      <div class="crimp-streak" aria-hidden="true"></div>
+      <!-- tear-reference line: a thick, slightly hand-drawn guide line along the seal,
+           with a rim-light beam sweeping left<->right. Hidden once a tear starts. -->
+      <svg class="crimp-streak" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true">
+        <path class="cs-base" d="M2 9 Q150 5 298 9" pathLength="100"/>
+        <path class="cs-beam" d="M2 9 Q150 5 298 9" pathLength="100"/>
+      </svg>
       <!-- edge sparks (the widget design, reused): HTML so box-shadow gives the
            clear glow. The layer is pinned to the pack's TOP seal; each spark grows
            straight up FROM the seal (transform-origin: bottom) on a flick. -->
@@ -130,7 +132,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
   // Pause/resume the idle float (CSS animation on .pack) — the pack steadies the
   // moment you grab it to tear, and floats again only when it's whole at rest.
-  const floatOn = (on) => { wrap.style.animationPlayState = on ? "running" : "paused"; };
+  const floatOn = (on) => {
+    wrap.style.animationPlayState = on ? "running" : "paused";
+    wrap.classList.toggle("tearing", !on); // hide the crimp guide line the moment a tear is underway
+  };
 
   // Reshape the whole pack to a given image aspect: re-derive VB.h, the border
   // corners the tear geometry rides on, and every height-bearing attribute. This
