@@ -236,16 +236,19 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           moverEl.setAttribute("transform", `rotate(${a.toFixed(2)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) translate(${(moverDir.x * d).toFixed(2)} ${(moverDir.y * d).toFixed(2)})`);
           moverEl.style.opacity = Math.max(0, 1 - c.sep * 1.15).toFixed(3);
         }
-        // treasure light pours from the opening — bigger + brighter as the halves part
-        const r = 32 + c.sep * VB.w * 0.7;
-        openBloom.setAttribute("cx", mid.x.toFixed(1));
-        openBloom.setAttribute("cy", mid.y.toFixed(1));
+        // The light is the CARD STACK glowing from its centre — the bag had kept it
+        // hidden; the opening just lets it out. So the glow + the fan of shafts are
+        // anchored at the CARD centre (not the tear), brightening as the gap parts.
+        // It rides inside #pack-stage, so it fades away with the bag when the pack exits.
+        const cardX = VB.w / 2;
+        const cardY = VB.h / 2;
+        const r = 40 + c.sep * VB.w * 0.7;
+        openBloom.setAttribute("cx", cardX.toFixed(1));
+        openBloom.setAttribute("cy", cardY.toFixed(1));
         openBloom.setAttribute("rx", r.toFixed(1));
-        openBloom.setAttribute("ry", (r * 0.78).toFixed(1));
-        openBloom.style.opacity = Math.min(0.8, c.sep).toFixed(3); // a soft core glow under the shafts
-        // light shafts fan out of the gap, unfurling + brightening as it parts —
-        // so the shine GROWS from the opening rather than popping out
-        lightRays.setAttribute("transform", `translate(${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
+        openBloom.setAttribute("ry", (r * 0.9).toFixed(1));
+        openBloom.style.opacity = Math.min(0.8, c.sep).toFixed(3); // soft core glow at the card
+        lightRays.setAttribute("transform", `translate(${cardX.toFixed(1)} ${cardY.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
         lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
       } else if (tearPath) {
         // open the dark gap through the sealed foil along the traced path
