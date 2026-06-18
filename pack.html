@@ -57,8 +57,10 @@
         -webkit-user-select: none;
         -webkit-touch-callout: none;
         -webkit-user-drag: none; /* never let a drag lift a ghost copy of the art */
-        filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.6));
-        animation: float 5s ease-in-out infinite;
+        filter:
+          drop-shadow(0 26px 52px rgba(0, 0, 0, 0.6))
+          drop-shadow(0 0 16px rgba(255, 200, 138, 0.4)); /* warm rim glow — breathes via @keyframes rim */
+        animation: float 5s ease-in-out infinite, rim 4.6s ease-in-out infinite;
         opacity: 0; /* stay hidden until the card stack is prepared (pack.js adds .ready) */
         transition: opacity 0.45s ease;
       }
@@ -101,6 +103,38 @@
       @keyframes float {
         0%, 100% { transform: translateY(-6px) rotate(-0.4deg); }
         50% { transform: translateY(6px) rotate(0.4deg); }
+      }
+      /* rim light — the warm glow hugging the pack swells and settles */
+      @keyframes rim {
+        0%, 100% { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(255,196,130,.28)); }
+        50%      { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 26px rgba(255,208,150,.55)); }
+      }
+
+      /* Specular sweep — a warm highlight band rolls across the foil every few
+         seconds. The rect + #sheen gradient live in the SVG (see pack.js); screen
+         blend brightens the foil it crosses, and the .sealed mask clips it to the pack. */
+      .pack-sheen { opacity: 0; pointer-events: none; animation: sheen 5.4s ease-in-out infinite; }
+      @keyframes sheen {
+        0%   { transform: translateX(-170px); opacity: 0; }
+        8%   { opacity: 1; }
+        30%  { transform: translateX(330px); opacity: 1; }
+        40%  { opacity: 0; }
+        100% { transform: translateX(330px); opacity: 0; }
+      }
+
+      /* Bokeh motes — soft warm out-of-focus dust drifting up through the dark,
+         behind the pack and cards. Ambient depth, à la the Triumph rips. */
+      .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+      .mote {
+        position: absolute; bottom: -8%; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,224,182,.85), rgba(255,200,150,0) 70%);
+        filter: blur(2px); opacity: 0; animation: drift linear infinite;
+      }
+      @keyframes drift {
+        0%   { transform: translateY(0); opacity: 0; }
+        12%  { opacity: .5; }
+        85%  { opacity: .3; }
+        100% { transform: translateY(-116vh); opacity: 0; }
       }
 
       .pack-fx {
@@ -228,6 +262,18 @@
     </style>
   </head>
   <body class="holo-on show-tear-zone">
+    <div class="scene-fx" aria-hidden="true">
+      <span class="mote" style="left:7%;width:7px;height:7px;animation-duration:21s;animation-delay:0s"></span>
+      <span class="mote" style="left:17%;width:12px;height:12px;animation-duration:17s;animation-delay:6s"></span>
+      <span class="mote" style="left:28%;width:5px;height:5px;animation-duration:25s;animation-delay:3s"></span>
+      <span class="mote" style="left:39%;width:9px;height:9px;animation-duration:19s;animation-delay:11s"></span>
+      <span class="mote" style="left:50%;width:6px;height:6px;animation-duration:23s;animation-delay:8s"></span>
+      <span class="mote" style="left:61%;width:11px;height:11px;animation-duration:16s;animation-delay:14s"></span>
+      <span class="mote" style="left:71%;width:7px;height:7px;animation-duration:22s;animation-delay:4s"></span>
+      <span class="mote" style="left:82%;width:13px;height:13px;animation-duration:18s;animation-delay:9s"></span>
+      <span class="mote" style="left:90%;width:6px;height:6px;animation-duration:24s;animation-delay:2s"></span>
+      <span class="mote" style="left:46%;width:8px;height:8px;animation-duration:20s;animation-delay:15s"></span>
+    </div>
     <nav class="app-nav app-nav--floating" aria-label="Sections">
       <a class="nav-link" href="index.html">Gallery</a>
       <a class="nav-link is-active" href="pack.html" aria-current="page">Open Pack</a>

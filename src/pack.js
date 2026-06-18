@@ -56,6 +56,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <g id="art">
           <image class="pack-img" x="0" y="0" width="${VB.w}" height="${VB.h}" href="${PACK_IMG}" preserveAspectRatio="xMidYMid slice"/>
         </g>
+        <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fff2e0" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
+          <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
+        </linearGradient>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
           <polygon class="gap" points="" fill="#000"/>
@@ -70,7 +75,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
            split shows each piece's own jagged torn edge — no drawn white line. -->
-      <g class="sealed" mask="url(#tearmask)"><use href="#art"/></g>
+      <g class="sealed" mask="url(#tearmask)">
+        <use href="#art"/>
+        <g transform="skewX(-9)"><rect class="pack-sheen" x="0" y="-200" width="130" height="1200" fill="url(#sheen)" style="mix-blend-mode:screen"/></g>
+      </g>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
 
