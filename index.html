@@ -8,6 +8,10 @@
     <link rel="stylesheet" href="src/card.css" />
     <!-- the pack art is the LCP — fetch it first, ahead of the JS modules -->
     <link rel="preload" as="image" href="assets/pack.webp" fetchpriority="high" />
+    <!-- three.js for the 3D pack-selection carousel (no build step → ESM via CDN) -->
+    <script type="importmap">
+      { "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js" } }
+    </script>
     <style>
       :root {
         color-scheme: dark;
@@ -461,6 +465,24 @@
         color: #9aa3b2;
         pointer-events: none;
       }
+
+      /* ---- 3D pack-selection carousel (see src/select3d.js) --------------
+       * Sits on top of everything (z 5) until you pick a pack. The three.js
+       * canvas fills it; an HTML overlay carries the set name + OPEN button so we
+       * don't pay for 3D text. On select the module fades this layer's opacity to
+       * cross-dissolve into the SVG tear-pack behind it, then adds .gone. */
+      #select-stage {
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        transition: opacity 0.45s ease;
+      }
+      #select-stage.gone { display: none; }
+      /* While the picker is up, the WebGL canvas is transparent — so the armed SVG
+         tear-pack (#pack-stage, z 2) would otherwise show THROUGH it. Hide it until
+         a pack is actually chosen (the handoff removes .picking just before the
+         cross-dissolve, so the tear-pack is there to fade into). */
+      body.picking #pack-stage { visibility: hidden; }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
        * The REAL card stack sits behind the pack (z-index 1) the whole time,
@@ -923,16 +945,21 @@
     <div id="pack-stage"></div>
     <p class="hint">Preparing pack…</p>
 
+    <!-- 3D pack picker — the three.js canvas mounts here (no text chrome; spin and
+         tap the front pack to open) -->
+    <div id="select-stage"></div>
+
     <script type="module">
       import { createPack } from "./src/pack.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
       import { rarityToTier } from "./src/rarity.js";
+      import { createSelector, DEFAULT_PACKS } from "./src/select3d.js";
       import * as sfx from "./src/sfx.js";
 
       const hintEl = document.querySelector(".hint");
       const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
-      let pack, reveal, ready;
+      let pack, reveal, ready, selector, chosenPack = DEFAULT_PACKS[0];
 
       // Sound control — mute toggle + volume slider. sfx.js loaded the persisted
       // volume/mute already; we just reflect it in the UI and write changes back
@@ -979,7 +1006,7 @@
         mountEl: document.body,
         onAgain: () => {
           pack.reset(); // reseal the pack
-          loadNextPack(); // and pre-load the next one
+          backToSelect(); // return to the 3D picker to choose the next pack
         },
       });
 
@@ -998,7 +1025,41 @@
         },
       });
 
-      loadNextPack(); // start loading the first pack immediately
+      // ---- 3D pack selection ------------------------------------------------
+      // The picker fronts everything (z 5). Choosing a pack hue-tints the SVG
+      // tear-pack to match, arms a fresh booster, then the picker cross-dissolves
+      // into it — so the pack you flew forward IS the pack you tear.
+      const stageEl = document.getElementById("pack-stage");
+
+      function reflectPack(p) {
+        chosenPack = p;
+        sfx.hover?.(); // soft ratchet tick as each pack clicks to the front
+      }
+
+      selector = createSelector({
+        mountEl: document.getElementById("select-stage"),
+        packs: DEFAULT_PACKS,
+        onChange: reflectPack,
+        onSelect: (p) => {
+          chosenPack = p;
+          document.body.classList.remove("picking"); // reveal the tear-pack for the dissolve
+          // hue-match the SVG tear-pack to the chosen variant (0 = the real art).
+          // Set ONCE here (not per-frame) so the mobile tear stays re-raster-free.
+          stageEl.style.filter = p.hue ? `hue-rotate(${p.hue}deg) saturate(1.08)` : "";
+          loadNextPack(); // arm a booster behind the dissolving picker
+        },
+      });
+
+      function backToSelect() {
+        stageEl.style.filter = ""; // clear the tint until the next choice
+        hintEl.textContent = ""; // the picker has its own hint; tear hint returns on select
+        document.body.classList.add("picking"); // hide the resealed tear-pack behind the canvas
+        selector.show();
+      }
+
+      hintEl.textContent = ""; // no "Preparing pack…" behind the picker
+      document.body.classList.add("picking"); // tear-pack stays hidden until a pack is chosen
+      selector.show(); // open straight into the picker
     </script>
   </body>
 </html>

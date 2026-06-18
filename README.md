@@ -98,11 +98,12 @@ foil is chosen by tier — all from one mapping in
 
 ```
 .
-├── index.html        the app — opens straight into the pack tear-to-open
+├── index.html        the app — opens into the 3D pack picker, then tear-to-open
 ├── serve.py          no-cache static server
 ├── docs/             design specs (e.g. the pack tear & exit)
 └── src/
     ├── api.js        Pokémon TCG API wrapper (paging + per-set cache)
+    ├── select3d.js   three.js pack-SELECTION carousel — swipe/tap, then hand off
     ├── rarity.js     rarity → tier mapping; the single source of truth
     ├── card.js       the Card component — one template, grid + detail variants
     ├── pack.js       OpenPack: SVG pack that tears open along a finger-drawn path
@@ -135,6 +136,30 @@ foil is chosen by tier — all from one mapping in
   lightbox (tilt/flip/scale) and the pack (tear fling + recombine) both drive
   their motion through it, so the feel stays consistent. The lightbox tuning is
   matched to [Simey's poke-holo](https://poke-holo.simey.me/).
+- **Pick, then tear.** The app opens into a 3D **pack carousel**
+  ([`select3d.js`](src/select3d.js), three.js via an import-map CDN) — a full ring
+  of ~16 sealed packs on a horizontal wheel that revolves around a vertical axis,
+  TCG-Pocket style: the pack at the FRONT faces you, large and clear; the rest curl
+  to the sides and round the back, receding with perspective and darkening into
+  distance fog. The focused pack **pops toward the lens** (bigger, with a gap) so it
+  clearly dominates the row. Each pack is a **procedural foil pouch** (not a box):
+  `makePackGeometry` builds a pillow whose front and back sheets bulge through the
+  body and press flat into crimped seal strips top and bottom, tapering to a thin
+  lip at the edges — the curved surface is what makes the glint slide across it like
+  real foil. No text chrome — swipe to spin with real **inertia** (a flick carries
+  through several packs, decelerates, then snaps to the nearest); tap a side pack to
+  spin it to the front, tap the front pack to choose; `flip()` turns the focused
+  pack to inspect its back. A canvas-gradient env map + a lens-side glint light give
+  the foil its sheen. On select the chosen pack **breaks away** — it rushes toward the lens with
+  an emissive flash and grows while the others recede, darken and fade — then the
+  canvas **cross-dissolves into the SVG tear-pack** behind it (same art → no seam).
+  "Open another" returns to the carousel. While the carousel is up the tear-pack is
+  hidden (`body.picking`) so it can't bleed through the transparent canvas; it's
+  unhidden a beat before the dissolve. The roster lives in `DEFAULT_PACKS` (sixteen
+  identical packs by default, one shared GPU texture) — give a pack its own art by
+  pointing `img` at a new file, or set `hue` to recolour the shared art on a canvas;
+  an optional one-shot `hue-rotate` filter then carries that tint onto the tear-pack
+  (set once, so the mobile tear stays re-raster-free).
 - **One pack, shared parts.** The OpenPack prototype ([`pack.js`](src/pack.js),
   hosted by [`index.html`](index.html)) is an SVG pack you tear open by dragging a
   path across it: the rip propagates along your finger, splits into two
