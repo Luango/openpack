@@ -20,6 +20,7 @@ import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import { TIER_HEX } from "./rarity.js";
 import * as sfx from "./sfx.js";
+import { createFlowLight } from "./flowlight.js";
 
 // Honour the OS "reduce motion" setting — the commit screen-shake (the one new
 // motion below that isn't already gated in CSS) is skipped when it's on.
@@ -171,6 +172,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <polygon class="gap-crack" points="" fill="#0a0a0d" opacity="0"/>
         <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" style="mix-blend-mode:screen"/>
       </svg>
+      <!-- the "流光" — a WebGL flowing light along the tear seam (flowlight.js). Its
+           width breathes + flows along the rip; sits over the foil like .pack-cut. If
+           WebGL is unavailable the SVG .gap-glow above is used instead. -->
+      <canvas class="gap-glow-gl" aria-hidden="true"></canvas>
       <!-- tear-reference line: a thick, slightly hand-drawn guide line along the seal,
            with a rim-light beam sweeping left<->right. Hidden once a tear starts. -->
       <svg class="crimp-streak" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true">
@@ -224,6 +229,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   const lightClipPoly = mountEl.querySelector("#lightclip polygon");
   const tearZone = mountEl.querySelector(".tear-zone");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
+  // The tear's gold "流光" is a WebGL flowing light (flowlight.js) — breathing,
+  // width-flowing. `flow` is null when WebGL is unavailable; the spring tick then
+  // falls back to the flat SVG .gap-glow polygon.
+  const flow = createFlowLight(mountEl.querySelector(".gap-glow-gl"));
+  flow?.setViewBox(VB.w, VB.h);
 
   // Draw the tear-trigger guide band; re-run whenever the pack is resized.
   const drawTearZone = () => tearZone.setAttribute("d", tearZonePath());
@@ -256,6 +266,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     mountEl.querySelector(".pack-cut").setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`); // …and the rip overlay
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
     mountEl.querySelector("#foilclip rect").setAttribute("height", VB.h); // keep the foil clip sized
+    flow?.setViewBox(VB.w, VB.h); // the flowing-light shader maps the tear path in this box
+    flow?.resize(); // match the GL backing store to the (now-sized) overlay
     ctm = ctmInv = null; // geometry changed — drop the cached matrix
     drawTearZone(); // re-fit the trigger-zone guide to the new size
   }
@@ -332,8 +344,14 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         const pts = poly ? poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") : "";
         gapCrack.setAttribute("points", pts);
         gapCrack.style.opacity = Math.min(1, (c.w / GAP_TEAR) * 1.1).toFixed(3);
-        gapGlow.setAttribute("points", pts);
-        gapGlow.style.opacity = Math.min(0.9, (c.w / GAP_TEAR) * 0.9).toFixed(3);
+        // the GOLD LIGHT is the WebGL flowing streak (breathing, width-flowing), fed
+        // the tear centreline + current gap width; SVG .gap-glow is the no-WebGL fallback
+        if (flow) {
+          flow.setPath(tearPath, c.w);
+        } else {
+          gapGlow.setAttribute("points", pts);
+          gapGlow.style.opacity = Math.min(0.9, (c.w / GAP_TEAR) * 0.9).toFixed(3);
+        }
       }
     },
   });
@@ -441,6 +459,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
     gapCrack.style.opacity = 0; gapCrack.setAttribute("points", ""); // the drawn slit gives way to the split
     gapGlow.style.opacity = 0; gapGlow.setAttribute("points", ""); // crack glow gives way to the opening bloom
+    flow?.stop(); // the flowing light hands off to the opening bloom/rays
     pieceA.style.display = "";
     pieceB.style.display = "";
   }
@@ -463,6 +482,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const s = q.matrixTransform(ctmInv);
     const inside = s.x >= 0 && s.x <= VB.w && s.y >= 0 && s.y <= VB.h;
     if (!inside) return; // not on the pack → ignore entirely
+    flow?.resize(); // the pack is laid out now — make sure the GL overlay matches its box
     // a tear can only START in the top or bottom crimp strip — deeper at the corners,
     // shallower across the middle. Never the side seams or the inner face.
     const nearCorner = s.x < VB.w * TEAR_CORNER_X || s.x > VB.w * (1 - TEAR_CORNER_X);
@@ -584,7 +604,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const eased = Math.pow(progress, 1.4);
     spring.set({ w: eased * GAP_TEAR * (1 + inten * 0.7) });
 
-    sfx.tearMove(inten);
+    sfx.tearMove(inten, progress); // intensity drives the rip; progress climbs the chime-up
     // spray flecks at the finger CLAMPED onto the pack (p is already clamped in
     // pack space) — a tear may start just outside the edge, and emitting at the
     // raw client point would scatter foil into the empty margin
@@ -620,6 +640,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
+    sfx.tearRelease(); // the small joyful "pop" — a bright resolve the chime-up built toward
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
     kick(power); // a short screen-kick — the foil giving way lands with weight
@@ -708,6 +729,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     gapCrack.style.opacity = 0;
     gapGlow.setAttribute("points", ""); // clear the gold leak too
     gapGlow.style.opacity = 0;
+    flow?.stop(); // halt + clear the flowing-light shader
     openBloom.style.opacity = 0;
     openBloom.setAttribute("rx", 0);
     openBloom.setAttribute("ry", 0);
@@ -732,7 +754,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
   mountEl.addEventListener("dragstart", (e) => e.preventDefault());
   // the pack scales with the viewport — a resize invalidates the cached matrix
-  window.addEventListener("resize", () => { ctm = ctmInv = null; });
+  window.addEventListener("resize", () => { ctm = ctmInv = null; flow?.resize(); });
 
   // Ambient edge sparks — while the pack sits sealed, a thin warm streak shines
   // straight up off the top crimp every few seconds (rise + stretch + fade), with a

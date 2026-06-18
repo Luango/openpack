@@ -98,25 +98,19 @@ foil is chosen by tier — all from one mapping in
 
 ```
 .
-├── index.html        host page — the DOM contract every module queries
-├── pack.html         OpenPack tear-to-open prototype (work in progress)
+├── index.html        the app — opens straight into the pack tear-to-open
 ├── serve.py          no-cache static server
 ├── docs/             design specs (e.g. the pack tear & exit)
 └── src/
-    ├── main.js       boot: load sets → load a set → wire gallery/filters/lightbox
     ├── api.js        Pokémon TCG API wrapper (paging + per-set cache)
     ├── rarity.js     rarity → tier mapping; the single source of truth
     ├── card.js       the Card component — one template, grid + detail variants
-    ├── gallery.js    owns the grid: render + rarity show/hide (delegated events)
-    ├── filters.js    rarity chips + All/Only mode; persists intent across sets
-    ├── lightbox.js   flip viewer: spring-driven tilt, glare, swipe-to-flip, full-res upgrade
     ├── pack.js       OpenPack: SVG pack that tears open along a finger-drawn path
     ├── booster.js    assembles one booster from the local pool (rarest last)
     ├── pool.js       LOCAL bundled card snapshot — the pack opens with no API fetch
     ├── reveal.js     card-stack reveal: cards rise from the opened pack
-    ├── motion.js     shared spring engine (rAF integrator) behind lightbox + pack
+    ├── motion.js     shared spring engine (rAF integrator) behind the pack tear
     ├── particles.js  tiny canvas particle system — foil flecks + sparks
-    ├── options.js    display toggles (e.g. Holo) → body class + localStorage
     ├── sfx.js        Web Audio engine + every cue: phone-tuned master bus, grab, tear, open burst, reveal impact, chime; volume/mute
     ├── util.js       escapeHtml / escapeAttr / delegated events
     ├── base.css      design tokens, layout, toolbar/chips/toggles chrome
@@ -142,7 +136,7 @@ foil is chosen by tier — all from one mapping in
   their motion through it, so the feel stays consistent. The lightbox tuning is
   matched to [Simey's poke-holo](https://poke-holo.simey.me/).
 - **One pack, shared parts.** The OpenPack prototype ([`pack.js`](src/pack.js),
-  hosted by [`pack.html`](pack.html)) is an SVG pack you tear open by dragging a
+  hosted by [`index.html`](index.html)) is an SVG pack you tear open by dragging a
   path across it: the rip propagates along your finger, splits into two
   complementary pieces, and the smaller one flies off while the body stays. It
   reuses the same `motion.js` spring, [`particles.js`](src/particles.js) flecks,

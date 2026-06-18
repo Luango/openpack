@@ -34,6 +34,7 @@ changes needed.
 | `grab` | you first touch the pack | a short muffled **foil crinkle / handle** (~80–150 ms) | round-robin + pitch jitter |
 | `tear_loop` | dragging the rip open | a **seamless looping** foil/paper tear crackle (1–2 s, loopable) | looped; gain **+ brightness + speed track your pull velocity** |
 | `tear_snap` | the rip completes | the **fibrous final snap** as it gives way | one-shot; gain scales with tear speed |
+| `open_release` | the instant it pops open | a small **joyful release** — a bright chime/pop resolve (the satisfying "ah") | one-shot, layered over `open_burst` |
 | `scratch` | dragging the middle (no tear) | a light dry **surface scuff** on foil | gain scales with drag speed; round-robin |
 | `open_burst` | the pack bursts open | the **chest-thump open** — a punchy whump (foil pop + body) | gain ↑ with power, pitch ↓ for rarer pulls |
 | `reveal_impact` | a rare card uncovers | the **money-moment downbeat** — a boom/cymbal-swell hit | gain ↑ / pitch ↓ with tier — the bigger the rarity, the bigger the hit |
@@ -53,6 +54,11 @@ changes needed.
 > Priority if you only do a few: the ones that sound most synthetic today are
 > **`chime`**, **`riser`**, **`open_burst`/`reveal_impact`**, and **`tear_loop`**.
 > Replacing those four moves the needle most.
+
+> The tear also has a built-in **musical layer** the engine always plays: a rising
+> "chime-up" pentatonic bell ladder that climbs with how far you've torn, resolving
+> into the `open_release` pop. It layers *over* whatever `tear_loop` you provide, so
+> your tear foley supplies the texture while the chime-up supplies the satisfaction.
 
 ## Example
 
