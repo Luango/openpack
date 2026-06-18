@@ -160,6 +160,11 @@
       .pack-wrap.tearing .pack-glow,
       .pack-wrap.tearing .crimp-streak .cs-beam { animation-play-state: paused; }
       .scene-fx.paused .float-card { animation-play-state: paused; visibility: hidden; }
+      /* the OPEN burst: kill the rim animation AND the drop-shadow filter on the
+         foil, so the two pieces flinging apart don't re-raster the whole foil
+         through a filter every frame (mobile jank). animation:none is required —
+         an animated `filter` would otherwise override any inline/static value. */
+      .pack-wrap.opening .pack { animation: none; filter: none; }
 
       /* The tear-trigger guide (drawn in pack.js as .tear-zone): the top & bottom
          crimp strips where a press starts a tear (not the sides or face). Hidden
@@ -341,8 +346,8 @@
           conic-gradient(from 0deg at 50% 50%,
             #ff5d8f, #ffd24a, #5fcf8e, #3fd6c8, #6ea8fe, #b072e6, #ff5d8f);
         background-blend-mode: screen;
-        filter: blur(40px) saturate(1.3);
-        will-change: opacity, transform, filter;
+        filter: blur(40px) saturate(1.3); /* STATIC — rastered once, then transform-only */
+        will-change: opacity, transform; /* NOT filter — animating a 40px blur per frame janks mobile */
       }
       .reveal.iridescent .reveal__aura {
         opacity: 0.85;
@@ -350,10 +355,13 @@
         transition: opacity 1.6s ease-in;
         animation: aura-drift 12s linear infinite;
       }
+      /* transform ONLY — the conic rotation still moves the colour; the blur/hue
+         changes that used to live here re-rastered a full-screen 40px filter every
+         frame (the reveal-effects jank on mobile). */
       @keyframes aura-drift {
-        0%   { transform: rotate(0deg)   scale(1.05); filter: blur(40px) saturate(1.3) hue-rotate(0deg); }
-        50%  { transform: rotate(180deg) scale(1.15); filter: blur(48px) saturate(1.5) hue-rotate(180deg); }
-        100% { transform: rotate(360deg) scale(1.05); filter: blur(40px) saturate(1.3) hue-rotate(360deg); }
+        0%   { transform: rotate(0deg)   scale(1.05); }
+        50%  { transform: rotate(180deg) scale(1.12); }
+        100% { transform: rotate(360deg) scale(1.05); }
       }
       @media (prefers-reduced-motion: reduce) {
         .reveal.iridescent .reveal__aura { animation: none; }
@@ -507,7 +515,7 @@
       .reveal__rays {
         position: absolute;
         left: 50%; top: 44%;
-        width: 165vmax; height: 165vmax;
+        width: 130vmax; height: 130vmax; /* the radial mask fades it out by 72% anyway — 165 was wasted blended area */
         transform: translate(-50%, -50%) rotate(0deg);
         pointer-events: none;
         opacity: 0;
@@ -536,6 +544,11 @@
       @keyframes ray-spin-rev {
         from { transform: translate(-50%, -50%) rotate(0deg); }
         to   { transform: translate(-50%, -50%) rotate(-360deg); }
+      }
+      /* mobile: a single ray layer — two rotating masked screen-blend layers is
+         double the per-frame composite a phone can't spare */
+      @media (pointer: coarse) {
+        .reveal__rays--fine { display: none; }
       }
 
       /* full-stage white→tier flash — the visceral "HIT" punctuation */

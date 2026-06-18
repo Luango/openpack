@@ -85,7 +85,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       </defs>
       <g class="open-light" clip-path="url(#lightclip)">
         <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
-        <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
+        <!-- no feGaussianBlur on the shafts: they scale every frame during the open,
+             and re-rastering an SVG blur per frame janks mobile. The #rays radial
+             gradient already fades them out softly, so they read fine crisp. -->
+        <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)"/></g>
       </g>
     </svg>
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
@@ -541,6 +544,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   function commitOpen() {
     if (opened) return;
     opened = true;
+    // Drop the .pack drop-shadow filter for the open: the two foil pieces fling
+    // every frame, and a CSS filter re-rasters the whole foil through the
+    // drop-shadow each frame (mobile jank). A class (not inline style) is required
+    // because the `rim` animation animates `filter` and would override an inline
+    // value. The shadow is invisible mid-burst anyway. Restored in clearTear.
+    wrap.classList.add("opening");
     makePieces();
     spring.set({ sep: 1 }); // pieces pull fully apart
     const power = Math.min(1, 0.6 + peakSpeed / 4);
@@ -617,6 +626,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     lightRays.removeAttribute("transform");
     lightRaysPath.setAttribute("d", "");
     lightClipPoly.setAttribute("points", ""); // drop the open-side clip until the next tear
+    wrap.classList.remove("opening"); // restore the drop-shadow rim (removed for the open burst)
     floatOn(true); // the pack is whole again — let it float
   }
 
