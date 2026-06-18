@@ -42,7 +42,9 @@
         --tell: #ffd49e;
         --idle-heat: 0;
         transition: transform 0.7s cubic-bezier(0.45, 0, 0.7, 0.45), opacity 0.6s;
-        will-change: transform, opacity; /* promote a layer so mobile composites the slide smoothly */
+        /* NB: will-change is NOT held at idle — promoting the whole pack layer
+           during the tear costs mobile texture memory. It's added only for the
+           exit slide (body.revealing below), a frame before the transform runs. */
       }
       /* once the pack is open, the remaining big half slides off — in the direction
          set by the tear (see pack.js: --exit-*, in px so iOS animates it), away from
@@ -51,6 +53,7 @@
         pointer-events: none;
         transform: translate(var(--exit-x, 0px), var(--exit-y, 0px)) rotate(var(--exit-rot, 0deg));
         opacity: 0;
+        will-change: transform, opacity; /* promote the layer just for the slide */
       }
 
       /* wraps the pack svg + the spark layer so both bob together on the idle float */
@@ -134,6 +137,21 @@
         -webkit-user-drag: none;
         pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
       }
+
+      /* the gold light leaking along the rip — a STATIC CSS blur (GPU, on a tiny
+         element) replaces the old per-frame SVG feGaussianBlur whose region grew
+         with the crack and re-blurred in software every frame (mobile jank). */
+      .gap-glow { filter: blur(3px); }
+
+      /* PERF: while a tear is underway (.pack-wrap.tearing, set in floatOn) freeze
+         every ambient animation so the whole mobile raster/composite budget goes to
+         the rip. They resume seamlessly on release. The .pack `rim` one matters
+         most — it animated the drop-shadow FILTER on the very foil being redrawn. */
+      .pack-wrap.tearing .pack,
+      .pack-wrap.tearing .pack-sheen,
+      .pack-wrap.tearing .pack-glow,
+      .pack-wrap.tearing .crimp-streak .cs-beam { animation-play-state: paused; }
+      .scene-fx.paused .float-card { animation-play-state: paused; visibility: hidden; }
 
       /* The tear-trigger guide (drawn in pack.js as .tear-zone): the top & bottom
          crimp strips where a press starts a tear (not the sides or face). Hidden

@@ -98,14 +98,6 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
-        <!-- soft blur so the gold leaking along the crack reads as light, not a stripe -->
-        <filter id="gapblur" x="-80%" y="-80%" width="260%" height="260%">
-          <feGaussianBlur stdDeviation="4"/>
-        </filter>
-        <mask id="tearmask">
-          <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
-          <polygon class="gap" points="" fill="#000"/>
-        </mask>
         <!-- the pack art's own alpha — clips the sheen so its screen-blend
              highlight never lands on the transparent background, only on foil. -->
         <mask id="artalpha" maskUnits="userSpaceOnUse" style="mask-type:alpha">
@@ -113,6 +105,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         </mask>
         <clipPath id="clipA"><polygon points=""/></clipPath>
         <clipPath id="clipB"><polygon points=""/></clipPath>
+        <!-- STATIC rounded-rect clip for the sealed foil (keeps the rx16 corners the
+             old tear-mask gave it). It never changes during a drag, so it's
+             rasterized once — unlike the old per-frame mask. -->
+        <clipPath id="foilclip"><rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16"/></clipPath>
       </defs>
 
       <!-- No solid interior: behind the foil is the real card stack itself, so a
@@ -121,16 +117,23 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            light (bloom + shafts) lives in the separate .pack-light layer BELOW, so
            it can stay put while the foil slides off. -->
 
-      <!-- gold along the crack while tearing — stays with the foil (gone by the time
-           the pack opens, so it has no exit-slide problem) -->
-      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
-
       <!-- Foil layers — free to fly off; each keeps only its own shape clip. The
-           split shows each piece's own jagged torn edge — no drawn white line. -->
-      <g class="sealed" mask="url(#tearmask)">
+           split shows each piece's own jagged torn edge — no drawn white line.
+           PERF: the foil is NOT masked during the live drag — re-masking this big
+           PNG every frame (twice: the tear mask + the nested #artalpha) was the
+           mobile jank. The rip is drawn as a thin dark crack ON TOP (.gap-crack)
+           with the gold light over it (.gap-glow); the only true cut-out is the
+           split, which already uses clipPath A/B. -->
+      <g class="sealed" clip-path="url(#foilclip)">
         <use href="#art"/>
         <g mask="url(#artalpha)"><g transform="skewX(-9)"><rect class="pack-sheen" x="0" y="-200" width="130" height="1200" fill="url(#sheen)" style="mix-blend-mode:screen"/></g></g>
       </g>
+
+      <!-- the rip, drawn OVER the foil: a thin dark slit + gold light leaking along
+           it. Both follow the ribbon path — cheap vector, no per-frame mask/filter
+           re-raster (the gold's soft glow is a static CSS blur on .gap-glow). -->
+      <polygon class="gap-crack" points="" fill="#0a0a0d" opacity="0"/>
+      <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" style="mix-blend-mode:screen"/>
       <g class="piece piece-a" style="display:none"><use href="#art" clip-path="url(#clipA)"/></g>
       <g class="piece piece-b" style="display:none"><use href="#art" clip-path="url(#clipB)"/></g>
 
@@ -166,8 +169,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
   const svg = mountEl.querySelector(".pack");
   const wrap = mountEl.querySelector(".pack-wrap");
+  const sceneFx = document.querySelector(".scene-fx"); // paused during the tear to free the compositor
   const sealed = mountEl.querySelector(".sealed");
-  const gap = mountEl.querySelector(".gap");
+  const gapCrack = mountEl.querySelector(".gap-crack");
   const clipPolyA = mountEl.querySelector("#clipA polygon");
   const clipPolyB = mountEl.querySelector("#clipB polygon");
   const pieceA = mountEl.querySelector(".piece-a");
@@ -188,8 +192,14 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // moment you grab it to tear, and floats again only when it's whole at rest.
   const floatOn = (on) => {
     wrap.style.animationPlayState = on ? "running" : "paused";
-    wrap.classList.toggle("tearing", !on); // hide the crimp guide line the moment a tear is underway
+    wrap.classList.toggle("tearing", !on); // pauses the rim/sheen/glow/crimp anims (CSS) the moment a tear is underway
+    sceneFx?.classList.toggle("paused", !on); // freeze the blurred backdrop cards — free the mobile compositor for the rip
   };
+
+  // The pack is static during a drag (the float is paused, the viewBox fixed), so
+  // its screen matrix is CONSTANT — cache it on pointerdown and reuse it, instead
+  // of calling getScreenCTM() (a forced synchronous layout) twice per move.
+  let ctm = null, ctmInv = null;
 
   // Reshape the whole pack to a given image aspect: re-derive VB.h, the border
   // corners the tear geometry rides on, and every height-bearing attribute. This
@@ -203,7 +213,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     svg.setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`);
     mountEl.querySelector(".pack-light").setAttribute("viewBox", `0 0 ${VB.w} ${VB.h}`); // keep the light overlay aligned
     mountEl.querySelector(".pack-img").setAttribute("height", VB.h);
-    mountEl.querySelector("#tearmask rect").setAttribute("height", VB.h);
+    mountEl.querySelector("#foilclip rect").setAttribute("height", VB.h); // keep the foil clip sized
+    ctm = ctmInv = null; // geometry changed — drop the cached matrix
     drawTearZone(); // re-fit the trigger-zone guide to the new size
   }
 
@@ -271,11 +282,13 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         lightRays.setAttribute("transform", `translate(${cardX.toFixed(1)} ${cardY.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
         lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
       } else if (tearPath) {
-        // open the dark gap through the sealed foil along the traced path
+        // draw the rip along the traced path — a thin dark slit OVER the foil
+        // (no mask re-raster) with gold light leaking over it, brightening as the
+        // gap widens. Both are small vector polygons → cheap per frame on mobile.
         const poly = ribbon(tearPath, c.w);
         const pts = poly ? poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") : "";
-        gap.setAttribute("points", pts);
-        // gold light leaks from the crack, brightening as the gap widens
+        gapCrack.setAttribute("points", pts);
+        gapCrack.style.opacity = Math.min(1, (c.w / GAP_TEAR) * 1.1).toFixed(3);
         gapGlow.setAttribute("points", pts);
         gapGlow.style.opacity = Math.min(0.9, (c.w / GAP_TEAR) * 0.9).toFixed(3);
       }
@@ -285,10 +298,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // pointer → pack coords, clamped onto the pack rect so a tear can START just
   // outside the edge and still anchor cleanly where it crosses in
   function toSvg(e) {
+    const inv = ctmInv || svg.getScreenCTM().inverse(); // cached during a drag; live fallback otherwise
     const p = svg.createSVGPoint();
     p.x = e.clientX;
     p.y = e.clientY;
-    const q = p.matrixTransform(svg.getScreenCTM().inverse());
+    const q = p.matrixTransform(inv);
     return { x: Math.max(0, Math.min(VB.w, q.x)), y: Math.max(0, Math.min(VB.h, q.y)) };
   }
 
@@ -382,8 +396,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
-    gapGlow.style.opacity = 0; // crack glow gives way to the opening bloom
-    gapGlow.setAttribute("points", "");
+    gapCrack.style.opacity = 0; gapCrack.setAttribute("points", ""); // the drawn slit gives way to the split
+    gapGlow.style.opacity = 0; gapGlow.setAttribute("points", ""); // crack glow gives way to the opening bloom
     pieceA.style.display = "";
     pieceB.style.display = "";
   }
@@ -392,13 +406,18 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (opened) return reset();
     if (!armed) return; // cards aren't loaded yet — hold the tear until they are
 
+    // cache the (constant-for-this-drag) screen matrix once — every later move
+    // reuses it instead of forcing a layout flush with getScreenCTM()
+    ctm = svg.getScreenCTM();
+    ctmInv = ctm.inverse();
+
     // A tear can only begin while TOUCHING the pack — a press off the pack does
     // nothing (no line is ever drawn in the empty stage). On the pack, only the
     // top/bottom crimp strips start a tear; the sides and inner face scuff the foil.
     const q = svg.createSVGPoint();
     q.x = e.clientX;
     q.y = e.clientY;
-    const s = q.matrixTransform(svg.getScreenCTM().inverse());
+    const s = q.matrixTransform(ctmInv);
     const inside = s.x >= 0 && s.x <= VB.w && s.y >= 0 && s.y <= VB.h;
     if (!inside) return; // not on the pack → ignore entirely
     // a tear can only START in the top or bottom crimp strip — deeper at the corners,
@@ -501,7 +520,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // spray flecks at the finger CLAMPED onto the pack (p is already clamped in
     // pack space) — a tear may start just outside the edge, and emitting at the
     // raw client point would scatter foil into the empty margin
-    const sp = new DOMPoint(p.x, p.y).matrixTransform(svg.getScreenCTM());
+    const sp = new DOMPoint(p.x, p.y).matrixTransform(ctm || svg.getScreenCTM());
     particles.emit(sp.x, sp.y, { count: 1 + Math.round(inten * 4), speed: 2 + inten * 5, colors: FOIL, life: 36 });
     if (navigator.vibrate && inten > 0.5) navigator.vibrate(4);
   }
@@ -546,7 +565,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   }
 
   function burstAlongTear() {
-    const m = svg.getScreenCTM();
+    const m = ctm || svg.getScreenCTM();
     for (const p of seam || []) {
       const c = new DOMPoint(p.x, p.y).matrixTransform(m);
       particles.emit(c.x, c.y, { count: 3, speed: 4.5, colors: FOIL, life: 50, size: 2.6 });
@@ -578,8 +597,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     pieceA.removeAttribute("transform");
     pieceB.removeAttribute("transform");
     pieceA.style.opacity = pieceB.style.opacity = ""; // restore (the mover faded as it flew)
-    gap.setAttribute("points", "");
-    gapGlow.setAttribute("points", ""); // clear the treasure light too
+    gapCrack.setAttribute("points", ""); // clear the drawn crack
+    gapCrack.style.opacity = 0;
+    gapGlow.setAttribute("points", ""); // clear the gold leak too
     gapGlow.style.opacity = 0;
     openBloom.style.opacity = 0;
     openBloom.setAttribute("rx", 0);
@@ -602,6 +622,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // a press-and-drag on the SVG <image> would otherwise start a NATIVE image
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
   mountEl.addEventListener("dragstart", (e) => e.preventDefault());
+  // the pack scales with the viewport — a resize invalidates the cached matrix
+  window.addEventListener("resize", () => { ctm = ctmInv = null; });
 
   // Ambient edge sparks — while the pack sits sealed, a thin warm streak shines
   // straight up off the top crimp every few seconds (rise + stretch + fade), with a
