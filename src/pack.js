@@ -76,6 +76,19 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <filter id="gapblur" x="-80%" y="-80%" width="260%" height="260%">
           <feGaussianBlur stdDeviation="4"/>
         </filter>
+        <!-- light shafts fanning from the opening: brightest at the gap (apex),
+             fading to nothing at the tips. userSpaceOnUse so it sits at the apex
+             and scales with the rays group as it grows. -->
+        <radialGradient id="rays" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="380">
+          <stop offset="0" stop-color="#fff8e6" stop-opacity="0.95"/>
+          <stop offset="0.32" stop-color="#ffde8a" stop-opacity="0.5"/>
+          <stop offset="0.68" stop-color="#ffb53e" stop-opacity="0.16"/>
+          <stop offset="1" stop-color="#ffa522" stop-opacity="0"/>
+        </radialGradient>
+        <!-- a touch of blur softens the shaft edges into light, not hard wedges -->
+        <filter id="raysblur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.2"/>
+        </filter>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
           <polygon class="gap" points="" fill="#000"/>
@@ -107,6 +120,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            seam like light pouring from inside. Both screen-blend so they ADD light
            over the foil and the cards behind. -->
       <ellipse class="open-bloom" cx="-100" cy="-100" rx="0" ry="0" fill="url(#treasure)" opacity="0" style="mix-blend-mode:screen"/>
+      <!-- fan of light shafts shining out of the opening (built + aimed in makePieces),
+           grown + brightened by the spring as the gap widens -->
+      <g class="light-rays" opacity="0" style="mix-blend-mode:screen"><path fill="url(#rays)" filter="url(#raysblur)"/></g>
       <polygon class="gap-glow" points="" fill="#ffd874" opacity="0" filter="url(#gapblur)" style="mix-blend-mode:screen"/>
 
       <!-- Guide overlay: the top & bottom crimp strips where a press STARTS a tear
@@ -144,6 +160,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   const pieceB = mountEl.querySelector(".piece-b");
   const gapGlow = mountEl.querySelector(".gap-glow");
   const openBloom = mountEl.querySelector(".open-bloom");
+  const lightRays = mountEl.querySelector(".light-rays");
+  const lightRaysPath = lightRays.querySelector("path");
   const tearZone = mountEl.querySelector(".tear-zone");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
 
@@ -219,12 +237,16 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           moverEl.style.opacity = Math.max(0, 1 - c.sep * 1.15).toFixed(3);
         }
         // treasure light pours from the opening — bigger + brighter as the halves part
-        const r = 32 + c.sep * VB.w * 0.75;
+        const r = 32 + c.sep * VB.w * 0.7;
         openBloom.setAttribute("cx", mid.x.toFixed(1));
         openBloom.setAttribute("cy", mid.y.toFixed(1));
         openBloom.setAttribute("rx", r.toFixed(1));
         openBloom.setAttribute("ry", (r * 0.78).toFixed(1));
-        openBloom.style.opacity = Math.min(0.95, c.sep * 1.25).toFixed(3);
+        openBloom.style.opacity = Math.min(0.8, c.sep).toFixed(3); // a soft core glow under the shafts
+        // light shafts fan out of the gap, unfurling + brightening as it parts —
+        // so the shine GROWS from the opening rather than popping out
+        lightRays.setAttribute("transform", `translate(${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
+        lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
       } else if (tearPath) {
         // open the dark gap through the sealed foil along the traced path
         const poly = ribbon(tearPath, c.w);
@@ -313,6 +335,10 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     mountEl.style.setProperty("--exit-x", Math.round(exitX * reach) + "px");
     mountEl.style.setProperty("--exit-y", Math.round(exitY * reach) + "px");
     mountEl.style.setProperty("--exit-rot", "0deg"); // straight slide — no tilt
+
+    // the light shafts fan OUT of the opening — aim them in the direction the
+    // gap faces (where the torn-off half pulls away from)
+    lightRaysPath.setAttribute("d", sunburst(Math.atan2(moverDir.y, moverDir.x)));
 
     split = true;
     sealed.style.display = "none"; // the dark gap/crack is gone; the two pieces take over
@@ -516,6 +542,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     openBloom.style.opacity = 0;
     openBloom.setAttribute("rx", 0);
     openBloom.setAttribute("ry", 0);
+    lightRays.style.opacity = 0; // the fan of shafts goes dark with the rest
+    lightRays.removeAttribute("transform");
+    lightRaysPath.setAttribute("d", "");
     floatOn(true); // the pack is whole again — let it float
   }
 
@@ -659,6 +688,31 @@ function cwCorners(a, b) {
     .filter((o) => o.d > 1e-4 && o.d < span - 1e-4)
     .sort((x, y) => x.d - y.d)
     .map((o) => o.c);
+}
+
+// A fan of light shafts radiating from the origin (0,0), centred on `base` (the
+// direction the gap faces). Each shaft is a thin triangle of slightly varied
+// length and width, so it reads as uneven god-rays — light peeking out of the
+// opening — rather than a tidy mechanical sunburst. Drawn in the rays group's
+// local space; the group's transform places it at the gap and scales it as it grows.
+function sunburst(base) {
+  const N = 11; // number of shafts across the fan
+  const SPREAD = 2.55; // fan width (~146°) opening out of the gap
+  const L = 380; // reach of the longest shaft (matches the #rays gradient radius)
+  let d = "";
+  for (let i = 0; i < N; i++) {
+    const a = base - SPREAD / 2 + SPREAD * (i / (N - 1));
+    const jL = Math.abs((Math.sin(i * 12.9 + 1.7) * 4391) % 1); // 0..1, deterministic
+    const jW = Math.abs((Math.sin(i * 7.31 + 0.4) * 2719) % 1);
+    const len = L * (0.66 + 0.34 * jL); // uneven shaft lengths
+    const hw = 0.018 + 0.03 * jW; // uneven shaft widths (radians of half-angle)
+    const x1 = (Math.cos(a - hw) * len).toFixed(1);
+    const y1 = (Math.sin(a - hw) * len).toFixed(1);
+    const x2 = (Math.cos(a + hw) * len).toFixed(1);
+    const y2 = (Math.sin(a + hw) * len).toFixed(1);
+    d += `M0 0L${x1} ${y1}L${x2} ${y2}Z`;
+  }
+  return d;
 }
 
 // Gap ribbon while tearing: half-width maxW/2 along the path, pinching to a point
