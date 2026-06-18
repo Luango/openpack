@@ -49,6 +49,7 @@ export function createReveal({ mountEl, onAgain }) {
     <div class="reveal__dim"></div>
     <div class="reveal__aura"></div>
     <div class="reveal__interior"></div>
+    <div class="reveal__shadow"></div>
     <div class="reveal__rays"></div>
     <div class="reveal__rays reveal__rays--fine"></div>
     <div class="reveal__tell"></div>
@@ -56,7 +57,11 @@ export function createReveal({ mountEl, onAgain }) {
     <canvas class="reveal__fx"></canvas>
     <div class="reveal__flash"></div>
     <p class="reveal__stamp" aria-hidden="true"></p>
-    <p class="reveal__hint"></p>
+    <div class="reveal__status">
+      <div class="reveal__pips" aria-hidden="true"></div>
+      <p class="reveal__hint"></p>
+    </div>
+    <p class="reveal__sr" aria-live="polite"></p>
     <button class="reveal__again" type="button" hidden>Open another</button>`;
   mountEl.appendChild(host);
 
@@ -64,11 +69,25 @@ export function createReveal({ mountEl, onAgain }) {
   const hintEl = host.querySelector(".reveal__hint");
   const againEl = host.querySelector(".reveal__again");
   const interiorEl = host.querySelector(".reveal__interior");
+  const shadowEl = host.querySelector(".reveal__shadow");
   const raysEl = host.querySelector(".reveal__rays:not(.reveal__rays--fine)");
   const raysFineEl = host.querySelector(".reveal__rays--fine");
   const flashEl = host.querySelector(".reveal__flash");
   const stampEl = host.querySelector(".reveal__stamp");
+  const pipsEl = host.querySelector(".reveal__pips");
+  const srEl = host.querySelector(".reveal__sr");
   const particles = createParticles(host.querySelector(".reveal__fx"));
+
+  // The post-tear payoff window. Every impact cue (set-down sound, haptic,
+  // landing-shadow peak) locks to the card-enter overshoot DIP so the "thunk"
+  // reads as one contact, not three smeared landings.
+  const CONTACT_MS = 250; // ≈ 55% of the 0.46s card-enter (the dip past rest)
+  const GLEAM_DELAY = 240; // the gleam sweeps just AFTER the card plants
+  let peakTier = 0; // rarest tier in the pack — colours the arrival glow/embers
+  let enterTimers = []; // entrance cues for the CURRENT card (cleared if it's flicked early)
+  let enteringEl = null; // the slot currently mid-entrance (for cleanup)
+  let arrivalTimers = []; // one-shot arrival cues (cleared on close)
+  let interiorAnim = null, shadowAnim = null; // arrival glow + landing-shadow WAAPI handles
 
   let slots = []; // { slot, cardEl, card }
   let cards = [];
@@ -170,15 +189,22 @@ export function createReveal({ mountEl, onAgain }) {
     sliding = false;
     anticipating = false;
     clearTimeout(anticTimer);
-    host.classList.remove("browsing", "iridescent", "telling", "held");
+    clearArrival();
+    clearEnter();
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status");
     tiltSpring.stop();
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
     againEl.hidden = true;
     hintEl.textContent = ""; // no hint until the cards are out
-    // the interior glow (cards rise out of light) reads the rarest card's colour
-    const peak = cards.length ? Math.max(...cards.map(rarityToTier)) : 0;
-    host.style.setProperty("--tell", TIER_HEX[peak] || TIER_HEX[0]);
+    // a count pip per card — built up front so the haul size is structural
+    pipsEl.innerHTML = cards.map(() => `<span class="pip"></span>`).join("");
+    srEl.textContent = "";
+    // the arrival glow + embers read the rarest card's colour
+    peakTier = cards.length ? Math.max(...cards.map(rarityToTier)) : 0;
+    host.style.setProperty("--tell", TIER_HEX[peakTier] || TIER_HEX[0]);
+    interiorEl.style.opacity = "0";
+    shadowEl.style.opacity = "0";
     clearHit();
     // NOTE: stay hidden. The cards (images) still load while display:none, but the
     // stack isn't shown until the pack is grabbed (wake) — so it's never exposed
@@ -195,6 +221,14 @@ export function createReveal({ mountEl, onAgain }) {
   // Open the prepared stack — instant. The pack drops away (CSS, body.revealing),
   // uncovering the SAME stack that was inside it, in place — no card springs or
   // pops out; the top card is simply there once the foil is gone.
+  // THE ARRIVAL — the few seconds after the tear opens. The pack slides off and
+  // the pre-rendered stack is uncovered IN PLACE, but instead of a lone card
+  // popping onto a dark stage, the haul is PRESENTED: a warm afterglow bridges the
+  // handoff (no dark trough), the deeper cards riffle into their step so you SEE
+  // it's a hand of N, the hero LANDS with weight (overshoot + set-down + haptic +
+  // shadow on one contact frame), a gleam sweeps the fresh card, embers settle,
+  // and the count pips fade in once it's planted. Humble for a common; the rare
+  // build is layered on top by flourishIfRare (unchanged).
   function show() {
     if (!slots.length) return;
     host.classList.remove("hidden"); // ensure visible (normally already woken on grab)
@@ -202,41 +236,131 @@ export function createReveal({ mountEl, onAgain }) {
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
     peeking = false;
     layout(); // the top card is now interactive (it never moved — just uncovered)
-    // the opening glows so the first card rises out of light, then settles low
-    interiorEl.animate(
-      [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0.22 }],
-      { duration: 720, easing: "ease-out", fill: "forwards" }
+
+    // AFTERGLOW — the opening blooms warm then settles to a PARKED low glow, so
+    // the stage never cuts to black. It's the sole settle owner and overlaps the
+    // treasure-light's ~600ms fade, bridging the foil-exit handoff (no trough).
+    interiorAnim?.cancel();
+    interiorAnim = interiorEl.animate(
+      [{ opacity: 0 }, { opacity: 0.7, offset: 0.16 }, { opacity: 0.16 }],
+      { duration: 760, easing: "ease-out", fill: "forwards" }
     );
-    enter(slots[pos]); // the hero rises + scales in instead of just being "there"
+
+    dealIn(); // the deeper cards riffle in → the haul reads as N cards
+    landingShadow(); // a floor shadow punches on the contact frame → weight
+    embers(); // a few warm motes settle from the burst (modest — never out-sparkles a rare)
+    enter(slots[pos], true); // the hero lands with weight (arrival → fire the contact cues)
     updateHint();
     flourishIfRare();
+    // the count + teach line fade in AFTER the card lands (the eye hits the card first)
+    arrivalTimers.push(setTimeout(() => host.classList.add("show-status"), 380));
   }
 
-  // Play the rise+scale entrance on a slot's card (CSS keyframe; reduced-motion
-  // falls back to a plain fade). Self-cleans so a later layout isn't stuck mid-anim.
-  function enter(entry) {
+  // Riffle the deeper cards (depth ≥ 1) from flush-behind-the-front into their
+  // resting step, staggered — like a dealer laying down the hand, so the player
+  // sees how many they got. The front card is owned by card-enter, not this. Each
+  // ends on the CSS resting transform, so cancelling on finish hands back to CSS
+  // with no jump.
+  function dealIn() {
+    if (REDUCED) return; // reduced motion: the cards just sit at their resting step
+    for (let i = pos + 1; i < slots.length; i++) {
+      const d = i - pos;
+      if (d > 4) continue; // only the visible front few read
+      const sc = (1 - 0.02 * d).toFixed(3);
+      const slot = slots[i].slot;
+      const a = slot.animate(
+        [
+          { transform: `translateY(0px) scale(${sc})` }, // flush behind the front
+          { transform: `translateY(${(5 * d).toFixed(1)}px) scale(${sc})` }, // resting step (= CSS rest)
+        ],
+        { duration: 175, delay: 26 * d, easing: "cubic-bezier(0.2,0.8,0.3,1)", fill: "both" }
+      );
+      a.onfinish = () => a.cancel(); // drop to CSS rest (identical value → no jump)
+    }
+  }
+
+  // A soft floor shadow under the stack that darkens + tightens on the contact
+  // frame, then settles faint — weight on arrival. Transform/opacity only.
+  function landingShadow() {
+    if (REDUCED) return;
+    shadowAnim?.cancel();
+    shadowAnim = shadowEl.animate(
+      [
+        { opacity: 0, transform: "translate(-50%,-50%) scaleX(1.3) scaleY(0.72)" },
+        { opacity: 0.5, transform: "translate(-50%,-50%) scaleX(0.92) scaleY(0.6)", offset: 0.55 }, // contact
+        { opacity: 0.18, transform: "translate(-50%,-50%) scaleX(1) scaleY(0.62)" },
+      ],
+      { duration: 460, easing: "cubic-bezier(0.22,1.16,0.32,1)", fill: "forwards" }
+    );
+  }
+
+  // A handful of warm motes drifting up + settling from the opening — the dust
+  // after the burst. Modest by design so a common never approaches the rare hit's
+  // particle shower (escalation stays monotonic).
+  function embers() {
+    const r = host.getBoundingClientRect();
+    const hex = TIER_HEX[peakTier] || TIER_HEX[0];
+    particles.emit(r.left + r.width / 2, r.top + r.height * 0.44, {
+      count: 14, speed: 1.6, spread: Math.PI * 2,
+      colors: ["#ffffff", lighten(hex, 0.5), hex],
+      gravity: 0.05, life: 72, size: 2.2, bloom: true,
+    });
+  }
+
+  // Play the land-and-settle entrance on a slot's card. `arrival` fires the
+  // multi-sensory contact (set-down + haptic) on the overshoot dip — the "thunk".
+  // A gleam sweeps just after the plant. All cues are tracked so a fast tap-advance
+  // can't fire a set-down/gleam on a card that's already been flicked away.
+  function enter(entry, arrival = false) {
     if (!entry) return;
+    clearEnter(); // cancel any in-flight cues from the previous card
     const el = entry.slot;
-    el.classList.remove("entering");
-    void el.offsetWidth; // restart the animation if it was mid-play
+    enteringEl = el;
+    el.classList.remove("entering", "gleaming");
+    void el.offsetWidth; // restart the keyframe if it was mid-play
     el.classList.add("entering");
-    const done = () => {
-      el.classList.remove("entering");
-      el.removeEventListener("animationend", done);
-    };
-    el.addEventListener("animationend", done);
-    setTimeout(done, 900); // safety net if animationend is missed
+    enterTimers.push(setTimeout(() => el.classList.remove("entering"), 480));
+    enterTimers.push(setTimeout(() => el.classList.add("gleaming"), GLEAM_DELAY));
+    enterTimers.push(setTimeout(() => el.classList.remove("gleaming"), GLEAM_DELAY + 640));
+    if (arrival) {
+      enterTimers.push(setTimeout(() => {
+        sfx.setDown();
+        if (!REDUCED && navigator.vibrate) navigator.vibrate(12);
+      }, CONTACT_MS));
+    }
+  }
+
+  // cancel the current card's entrance cues (on a fast advance, close, or replay)
+  function clearEnter() {
+    enterTimers.forEach(clearTimeout);
+    enterTimers = [];
+    if (enteringEl) enteringEl.classList.remove("entering", "gleaming");
+    enteringEl = null;
+  }
+
+  // cancel the one-shot arrival cues + glow/shadow (on close/replay)
+  function clearArrival() {
+    arrivalTimers.forEach(clearTimeout);
+    arrivalTimers = [];
+    interiorAnim?.cancel();
+    interiorAnim = null;
+    shadowAnim?.cancel();
+    shadowAnim = null;
   }
 
   function close() {
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent", "telling", "held");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status");
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
     anticipating = false;
     clearTimeout(anticTimer);
+    clearArrival();
+    clearEnter();
     clearHit();
+    interiorEl.style.opacity = "0";
+    shadowEl.style.opacity = "0";
     tiltSpring.stop();
   }
 
@@ -362,7 +486,13 @@ export function createReveal({ mountEl, onAgain }) {
   function endOfPack() {
     host.classList.remove("iridescent");
     clearHit();
+    const pips = pipsEl.children;
+    for (let i = 0; i < pips.length; i++) {
+      pips[i].classList.remove("is-current");
+      pips[i].classList.add("is-seen");
+    }
     hintEl.textContent = "That's the pack!";
+    srEl.textContent = "That's the pack. Open another?";
     againEl.hidden = false;
   }
 
@@ -459,8 +589,17 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.remove("telling", "held");
   }
 
+  // Drive the count pips (current + seen), the teach sub-line, and the SR status.
+  // Pips are the primary, glanceable count/position read; the text is secondary.
   function updateHint() {
-    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · drag to spread`;
+    const pips = pipsEl.children;
+    for (let i = 0; i < pips.length; i++) {
+      pips[i].classList.toggle("is-current", i === pos);
+      pips[i].classList.toggle("is-seen", i < pos);
+    }
+    hintEl.textContent = "tap to flip · drag to spread";
+    const card = slots[pos]?.card;
+    if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap to flip.`;
   }
 
   againEl.addEventListener("click", () => {

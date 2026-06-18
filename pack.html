@@ -392,16 +392,50 @@
           0 40px 80px rgba(0, 0, 0, 0.6);
       }
 
-      .reveal__hint {
+      /* status block — count PIPS (primary, glanceable) + a teach sub-line. Fades
+         in after the card lands; rides above the stage with a legibility floor so
+         it survives the flash + iridescent aura. */
+      .reveal__status {
         position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 30px;
+        left: 0; right: 0; bottom: 26px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        z-index: 330;
+      }
+      .reveal.show-status .reveal__status { opacity: 1; }
+      .reveal__pips { display: flex; gap: 7px; }
+      .pip {
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.28);
+        transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+      }
+      .pip.is-seen { background: color-mix(in srgb, var(--tier-color, #fff) 45%, rgba(255, 255, 255, 0.22)); }
+      .pip.is-current {
+        background: #fff;
+        transform: scale(1.45);
+        box-shadow: 0 0 8px color-mix(in srgb, var(--tier-color, #fff) 80%, #fff);
+      }
+      .reveal__hint {
         margin: 0;
         text-align: center;
-        font-size: 13px;
-        color: #9aa3b2;
-        pointer-events: none;
+        font-size: 12px;
+        font-weight: 500;
+        color: #e7ebf2;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); /* legibility over a bright stage */
+      }
+      /* visually-hidden live region — announces the card to screen readers */
+      .reveal__sr {
+        position: fixed;
+        width: 1px; height: 1px;
+        margin: -1px; padding: 0; border: 0;
+        overflow: hidden; clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
       .reveal__again {
         position: fixed;
@@ -535,18 +569,57 @@
 
       /* card ENTRANCE — the uncovered hero rises + scales in with a hair of
          overshoot, ending exactly on the resting front-card transform (no jump). */
-      .reveal__slot.front.entering { animation: card-enter 0.55s cubic-bezier(0.18, 0.9, 0.3, 1.12) both; }
+      /* the hero LANDS — rises, overshoots PAST rest (the contact dip at ~55% =
+         ~250ms, which every impact cue in reveal.js syncs to: set-down sound,
+         haptic, shadow peak), then settles exactly on the resting front transform
+         (no jump when CSS takes back over). */
+      .reveal__slot.front.entering { animation: card-enter 0.46s cubic-bezier(0.22, 1.16, 0.32, 1) both; }
       @keyframes card-enter {
-        0%   { transform: translateY(30px) scale(0.9); opacity: 0; }
-        55%  { opacity: 1; }
-        100% { transform: translateY(0) scale(1); opacity: 1; }
+        0%   { transform: translateY(34px) scale(0.9);   opacity: 0; }
+        55%  { transform: translateY(-6px) scale(1.015); opacity: 1; } /* contact dip, past rest */
+        78%  { transform: translateY(2px)  scale(0.997); opacity: 1; }
+        100% { transform: translateY(0)    scale(1);     opacity: 1; }
+      }
+
+      /* a one-pass specular gleam sweeps the FRESH front card just after it lands
+         — a "newly revealed" gleam even on a common. Clipped to the card face
+         (overflow:hidden there) so the screen-blend band never lights the stage. */
+      .reveal__slot.gleaming .card__face::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.5) 50%, transparent 58%);
+        mix-blend-mode: screen;
+        animation: card-gleam 0.6s ease-out both;
+      }
+      @keyframes card-gleam {
+        0%   { transform: translateX(-130%); opacity: 0; }
+        25%  { opacity: 1; }
+        100% { transform: translateX(130%);  opacity: 0; }
+      }
+
+      /* landing shadow — a soft floor ellipse under the stack that punches darker
+         + tighter on the contact frame, then settles faint. Weight on arrival.
+         Transform + opacity only (static blur), driven by a WAAPI keyframe. */
+      .reveal__shadow {
+        position: absolute;
+        left: 50%; top: 60%;
+        width: 56%; height: 13%;
+        transform: translate(-50%, -50%) scaleX(1.3) scaleY(0.7);
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(0, 0, 0, 0.5), transparent 72%);
+        filter: blur(7px); /* STATIC */
+        opacity: 0;
+        pointer-events: none;
+        will-change: transform, opacity;
       }
 
       /* stacking order inside the reveal host: backdrop → rays → cards → sparkles
          → flash → stamp */
       .reveal__dim { z-index: 0; }
       .reveal__aura, .reveal__interior { z-index: 1; }
-      .reveal__rays, .reveal__tell { z-index: 2; }
+      .reveal__rays, .reveal__tell, .reveal__shadow { z-index: 2; }
       .reveal__stack { z-index: 10; }
       .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
       .reveal__flash { z-index: 300; }
@@ -556,6 +629,8 @@
         .reveal__rays.spin, .reveal__rays--fine.spin { animation: none; }
         .reveal__slot.front.entering { animation: card-fade 0.4s ease both; }
         @keyframes card-fade { from { opacity: 0; } to { opacity: 1; } }
+        .reveal__slot.gleaming .card__face::after { animation: none; display: none; } /* no gleam */
+        .reveal__shadow { display: none; } /* no landing-shadow pulse */
       }
     </style>
   </head>

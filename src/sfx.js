@@ -405,6 +405,44 @@ export function flick() {
   src.stop(t + dur);
 }
 
+// A soft padded "set-down" — the card hand landing when the reveal arrives. A
+// short lowpassed noise "pap" + a little low sine body so it reads on a phone
+// speaker. Deliberately HUMBLE: quieter than the flick (airy) and the burst
+// (sub-drop), so a common pull feels handled, not celebrated.
+export function setDown() {
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  const dur = 0.09;
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
+  const lp = c.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.setValueAtTime(440, t);
+  lp.frequency.exponentialRampToValueAtTime(160, t + dur); // felt "pap", not a click
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.15, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(lp).connect(g).connect(master);
+  send(g, 0.12); // share the room
+  src.start(t);
+  src.stop(t + dur);
+
+  // a touch of low body so it lands on a small speaker
+  const osc = c.createOscillator();
+  const og = c.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(120, t);
+  osc.frequency.exponentialRampToValueAtTime(58, t + 0.08);
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.1, t + 0.008);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  osc.connect(og).connect(master);
+  osc.start(t);
+  osc.stop(t + 0.1);
+}
+
 // A tiny bright glint for an edge spark: a short high sine blip + a whisper of
 // bright fizz, with a hair of reverb so it has air. Soft — peppers the idle pack.
 export function spark() {
