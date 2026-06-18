@@ -1,35 +1,15 @@
 // booster.js — assemble ONE booster pack from a set's card pool.
 //
-// Reuses the gallery's API wrapper (api.js) and the rarity tiers (rarity.js):
+// The pool is a LOCAL snapshot bundled in pool.js (no realtime API fetch — that
+// round-trip was the "Preparing pack…" delay), plus the rarity tiers (rarity.js):
 // mostly low-rarity cards plus one guaranteed "hit", ordered rarest-LAST so the
-// reveal builds suspense. If the API can't be reached, falls back to offline
-// "mystery" placeholders so the open still works.
+// reveal builds suspense. If the local pool is somehow empty, falls back to
+// offline "mystery" placeholders so the open still works.
 
-import { fetchSetPool } from "./api.js";
+import { POOL } from "./pool.js";
 import { rarityToTier, TIER_HEX } from "./rarity.js";
 
-const DEFAULT_SET = "sv8"; // Surging Sparks — modern foils + illustration rares
 const PACK_SIZE = 5;
-
-const FETCH_TIMEOUT = 12000; // per attempt; the "Preparing…" gate covers the wait
-const FETCH_TRIES = 3; // retry a slow/failed fetch before falling back to placeholders
-
-const withTimeout = (p, ms) =>
-  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
-
-// Get the set's cards, retrying a few times. A rejected fetch is no longer
-// cached (see api.js), so each retry starts fresh; a slow one is re-raced. Only
-// after all tries fail do we return [] (→ placeholder pack).
-async function fetchPool(setId) {
-  for (let i = 0; i < FETCH_TRIES; i++) {
-    try {
-      return await withTimeout(fetchSetPool(setId), FETCH_TIMEOUT);
-    } catch {
-      /* slow or failed — try again */
-    }
-  }
-  return [];
-}
 
 const pick = (a) => a[(Math.random() * a.length) | 0];
 function sample(a, n) {
@@ -39,9 +19,11 @@ function sample(a, n) {
   return out;
 }
 
-export async function buildBooster(setId = DEFAULT_SET, size = PACK_SIZE) {
-  const pool = await fetchPool(setId);
-  const withImg = pool.filter((c) => c.image);
+// Build a booster from the bundled local pool. Async only to keep the call
+// site's `buildBooster().then(...)` contract — it resolves immediately (no fetch),
+// so the pack is ready to tear almost instantly.
+export async function buildBooster(size = PACK_SIZE) {
+  const withImg = POOL.filter((c) => c.image);
   if (!withImg.length) return mysteryPack(size);
 
   const tier = (c) => rarityToTier(c);
