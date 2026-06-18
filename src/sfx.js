@@ -185,6 +185,47 @@ export function flick() {
   src.stop(t + dur);
 }
 
+// A tiny bright glint for an edge spark: a short high sine blip + a whisper of
+// bright fizz. Very soft — meant to pepper the idle pack, not demand attention.
+export function spark() {
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  if (c.state !== "running") return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(2400 + Math.random() * 1500, t);
+  osc.frequency.exponentialRampToValueAtTime(5400, t + 0.05);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05, t + 0.006); // soft
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+  osc.connect(g).connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.14);
+
+  const dur = 0.07; // a brief bright fizz under the blip
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let n = 0; n < d.length; n++) d[n] = (Math.random() * 2 - 1) * (1 - n / d.length);
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 5200;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.0001, t);
+  ng.gain.exponentialRampToValueAtTime(0.022, t + 0.004);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(hp).connect(ng).connect(c.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
 // A bright rising sparkle when a rare card surfaces — higher + fuller for a
 // bigger pull (tier 5–9). A little arpeggio of triangle notes.
 export function chime(tier = 5) {

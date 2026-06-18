@@ -463,6 +463,30 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
   mountEl.addEventListener("dragstart", (e) => e.preventDefault());
 
+  // Ambient edge sparks — while the pack sits sealed, a tiny shower of warm foil
+  // sparks flicks up off the top crimp every few seconds, with a soft glint (sfx).
+  // Reuses the fleck canvas (emits at screen coords like the tear); paused while
+  // the pack is grabbed, torn, opened, or the tab is hidden.
+  const SPARK_COLORS = ["#ffe7c0", "#ffd49a", "#fff4e2"];
+  function flickSpark() {
+    sparkTimer = setTimeout(flickSpark, 2400 + Math.random() * 2800);
+    if (!armed || dragging || opened || document.hidden) return;
+    const sx = 24 + Math.random() * (VB.w - 48); // a random spot along the top crimp
+    const p = new DOMPoint(sx, 2).matrixTransform(svg.getScreenCTM());
+    particles.emit(p.x, p.y, {
+      count: 3 + ((Math.random() * 3) | 0),
+      speed: 3.4,
+      dir: -Math.PI / 2, // straight up off the edge
+      spread: 1.0,
+      colors: SPARK_COLORS,
+      gravity: 0.13,
+      life: 38,
+      size: 1.9,
+    });
+    sfx.spark();
+  }
+  let sparkTimer = setTimeout(flickSpark, 1400);
+
   return {
     reset,
     // The host arms the pack once its cards are prepared. Arming also REVEALS the

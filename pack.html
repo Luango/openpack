@@ -59,7 +59,7 @@
         -webkit-user-drag: none; /* never let a drag lift a ghost copy of the art */
         filter:
           drop-shadow(0 26px 52px rgba(0, 0, 0, 0.6))
-          drop-shadow(0 0 16px rgba(255, 200, 138, 0.4)); /* warm rim glow — breathes via @keyframes rim */
+          drop-shadow(0 0 13px rgba(255, 210, 156, 0.22)); /* light warm rim glow — breathes via @keyframes rim */
         animation: float 5s ease-in-out infinite, rim 4.6s ease-in-out infinite;
         opacity: 0; /* stay hidden until the card stack is prepared (pack.js adds .ready) */
         transition: opacity 0.45s ease;
@@ -106,8 +106,8 @@
       }
       /* rim light — the warm glow hugging the pack swells and settles */
       @keyframes rim {
-        0%, 100% { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(255,196,130,.28)); }
-        50%      { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 26px rgba(255,208,150,.55)); }
+        0%, 100% { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,212,158,.15)); }
+        50%      { filter: drop-shadow(0 26px 52px rgba(0,0,0,.6)) drop-shadow(0 0 19px rgba(255,216,166,.32)); }
       }
 
       /* Specular sweep — a warm highlight band rolls across the foil every few
@@ -122,19 +122,26 @@
         100% { transform: translateX(330px); opacity: 0; }
       }
 
-      /* Bokeh motes — soft warm out-of-focus dust drifting up through the dark,
-         behind the pack and cards. Ambient depth, à la the Triumph rips. */
+      /* Floating card backs — the booster's card back (assets/card-back.jpg)
+         drifting up through the dark at different depths and angles, behind the
+         pack and the reveal. Ambient "cards in the vault" backdrop. */
       .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-      .mote {
-        position: absolute; bottom: -8%; border-radius: 50%;
-        background: radial-gradient(circle, rgba(255,224,182,.85), rgba(255,200,150,0) 70%);
-        filter: blur(2px); opacity: 0; animation: drift linear infinite;
+      .float-card {
+        position: absolute; bottom: -32%;
+        width: 150px; aspect-ratio: 63 / 88;
+        border-radius: 9px;
+        background: #1f3a8a url("assets/card-back.jpg") center / cover no-repeat;
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.55);
+        opacity: 0;
+        filter: blur(var(--b, 0px)); /* far cards = blurrier (depth of field) */
+        will-change: transform, opacity;
+        animation: floatcard linear infinite;
       }
-      @keyframes drift {
-        0%   { transform: translateY(0); opacity: 0; }
-        12%  { opacity: .5; }
-        85%  { opacity: .3; }
-        100% { transform: translateY(-116vh); opacity: 0; }
+      @keyframes floatcard {
+        0%   { transform: translateY(40px) rotate(var(--r, 0deg)) scale(var(--s, .5)); opacity: 0; }
+        14%  { opacity: var(--o, .4); }
+        86%  { opacity: var(--o, .4); }
+        100% { transform: translateY(-132vh) rotate(var(--r, 0deg)) scale(var(--s, .5)); opacity: 0; }
       }
 
       .pack-fx {
@@ -263,16 +270,12 @@
   </head>
   <body class="holo-on show-tear-zone">
     <div class="scene-fx" aria-hidden="true">
-      <span class="mote" style="left:7%;width:7px;height:7px;animation-duration:21s;animation-delay:0s"></span>
-      <span class="mote" style="left:17%;width:12px;height:12px;animation-duration:17s;animation-delay:6s"></span>
-      <span class="mote" style="left:28%;width:5px;height:5px;animation-duration:25s;animation-delay:3s"></span>
-      <span class="mote" style="left:39%;width:9px;height:9px;animation-duration:19s;animation-delay:11s"></span>
-      <span class="mote" style="left:50%;width:6px;height:6px;animation-duration:23s;animation-delay:8s"></span>
-      <span class="mote" style="left:61%;width:11px;height:11px;animation-duration:16s;animation-delay:14s"></span>
-      <span class="mote" style="left:71%;width:7px;height:7px;animation-duration:22s;animation-delay:4s"></span>
-      <span class="mote" style="left:82%;width:13px;height:13px;animation-duration:18s;animation-delay:9s"></span>
-      <span class="mote" style="left:90%;width:6px;height:6px;animation-duration:24s;animation-delay:2s"></span>
-      <span class="mote" style="left:46%;width:8px;height:8px;animation-duration:20s;animation-delay:15s"></span>
+      <div class="float-card" style="left:4%;  --s:.30; --r:-15deg; --o:.20; --b:3px;   animation-duration:36s; animation-delay:0s"></div>
+      <div class="float-card" style="left:23%; --s:.52; --r:7deg;   --o:.42; --b:.4px;  animation-duration:27s; animation-delay:9s"></div>
+      <div class="float-card" style="left:42%; --s:.36; --r:-6deg;  --o:.28; --b:1.6px; animation-duration:31s; animation-delay:4s"></div>
+      <div class="float-card" style="left:64%; --s:.58; --r:13deg;  --o:.46; --b:0px;   animation-duration:24s; animation-delay:14s"></div>
+      <div class="float-card" style="left:84%; --s:.33; --r:-19deg; --o:.23; --b:2.3px; animation-duration:34s; animation-delay:6s"></div>
+      <div class="float-card" style="left:52%; --s:.44; --r:20deg;  --o:.34; --b:1px;   animation-duration:29s; animation-delay:19s"></div>
     </div>
     <nav class="app-nav app-nav--floating" aria-label="Sections">
       <a class="nav-link" href="index.html">Gallery</a>
