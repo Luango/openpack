@@ -51,6 +51,7 @@ const CORNERS = [
 
 export function createPack({ mountEl, onOpen, onGrab }) {
   mountEl.innerHTML = `
+    <div class="pack-wrap">
     <svg class="pack" viewBox="0 0 ${VB.w} ${VB.h}" aria-label="Sealed pack — tear it open">
       <defs>
         <g id="art">
@@ -60,11 +61,6 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="0" stop-color="#fff2e0" stop-opacity="0"/>
           <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
-        </linearGradient>
-        <linearGradient id="sparkgrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
-          <stop offset="0.3" stop-color="#ffffff" stop-opacity="0.95"/>
-          <stop offset="1" stop-color="#fff3df" stop-opacity="0.95"/>
         </linearGradient>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -92,20 +88,22 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            is set (the "Tear zone" toggle). pointer-events:none — never blocks the slash. -->
       <path class="tear-zone" fill-rule="evenodd" d=""/>
 
-      <!-- edge sparks: thin warm streaks that shine STRAIGHT UP off the top crimp;
-           pack.js flicks one every few seconds (rise + fade). pointer-events:none.
-           Above the foil at y<0 — shown by the pack's overflow:visible. -->
-      <g class="sparks" aria-hidden="true">
-        <rect class="spark" x="38"  y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="95"  y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="150" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="205" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="262" y="-26" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
-      </g>
     </svg>
+      <!-- edge sparks (the widget design, reused): HTML so box-shadow gives the
+           clear glow. The layer is pinned to the pack's TOP seal; each spark grows
+           straight up FROM the seal (transform-origin: bottom) on a flick. -->
+      <div class="spark-layer" aria-hidden="true">
+        <span class="spark" style="left:13%"></span>
+        <span class="spark" style="left:32%"></span>
+        <span class="spark" style="left:50%"></span>
+        <span class="spark" style="left:68%"></span>
+        <span class="spark" style="left:87%"></span>
+      </div>
+    </div>
     <canvas class="pack-fx"></canvas>`;
 
   const svg = mountEl.querySelector(".pack");
+  const wrap = mountEl.querySelector(".pack-wrap");
   const sealed = mountEl.querySelector(".sealed");
   const gap = mountEl.querySelector(".gap");
   const clipPolyA = mountEl.querySelector("#clipA polygon");
@@ -121,7 +119,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
   // Pause/resume the idle float (CSS animation on .pack) — the pack steadies the
   // moment you grab it to tear, and floats again only when it's whole at rest.
-  const floatOn = (on) => { svg.style.animationPlayState = on ? "running" : "paused"; };
+  const floatOn = (on) => { wrap.style.animationPlayState = on ? "running" : "paused"; };
 
   // Reshape the whole pack to a given image aspect: re-derive VB.h, the border
   // corners the tear geometry rides on, and every height-bearing attribute. This
@@ -482,20 +480,19 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // Ambient edge sparks — while the pack sits sealed, a thin warm streak shines
   // straight up off the top crimp every few seconds (rise + stretch + fade), with a
   // soft glint (sfx). Paused while grabbed, torn, opened, or the tab is hidden.
-  const sparkEls = [...svg.querySelectorAll(".spark")];
+  const sparkEls = [...mountEl.querySelectorAll(".spark")];
   function flickSpark() {
     sparkTimer = setTimeout(flickSpark, 1800 + Math.random() * 2200);
     if (!armed || dragging || opened || document.hidden || !sparkEls.length) return;
     const el = sparkEls[(Math.random() * sparkEls.length) | 0];
-    const h = 0.8 + Math.random() * 1.0; // varied beam length per flick (some short, some tall)
+    const h = 0.85 + Math.random() * 0.9; // varied beam length per flick (some short, some tall)
     el.animate(
       [
-        { opacity: 0, transform: "translateY(0) scaleY(0.15)" }, // a sliver at the seal
-        { opacity: 1, transform: `translateY(-2px) scaleY(${h.toFixed(2)})`, offset: 0.3 }, // shoots up out of the gap, full + bright
-        { opacity: 0.85, transform: `translateY(-6px) scaleY(${(h * 1.15).toFixed(2)})`, offset: 0.8 },
-        { opacity: 0, transform: `translateY(-12px) scaleY(${(h * 1.3).toFixed(2)})` }, // fades, drifting up a touch
+        { opacity: 0, transform: "translateY(0) scaleY(0.4)" }, // a sliver at the seal
+        { opacity: 1, transform: `translateY(-7px) scaleY(${h.toFixed(2)})`, offset: 0.3 }, // grows up out of the seal, bright
+        { opacity: 0, transform: `translateY(-30px) scaleY(${(h * 0.6).toFixed(2)})` }, // shoots up and fades (widget flick)
       ],
-      { duration: 600 + Math.random() * 220, easing: "cubic-bezier(.12,.6,.3,1)" }
+      { duration: 620 + Math.random() * 220, easing: "ease-out" }
     );
     sfx.spark();
   }
