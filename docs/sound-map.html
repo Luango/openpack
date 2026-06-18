@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenPack — Pack-Opening Sound Map</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #141821;
+    --panel-2: #1a1f2b;
+    --line: #2a313f;
+    --text: #eef1f6;
+    --dim: #9aa3b2;
+    --gold: #ffd49e;
+    --new: #5fcf8e;
+    --tuned: #6ea8fe;
+    --hit: #ef5e92;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(900px 600px at 50% -10%, rgba(155,140,255,0.12), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  header h1 { font-size: clamp(22px, 4vw, 32px); margin: 0 0 6px; letter-spacing: -0.01em; }
+  header .sub { color: var(--dim); font-size: 15px; max-width: 76ch; margin: 0 0 8px; }
+  .verdict {
+    margin: 18px 0 30px; padding: 16px 18px;
+    background: linear-gradient(180deg, rgba(255,212,158,0.08), transparent);
+    border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 12px; font-size: 14.5px; color: #dfe4ee;
+  }
+  .verdict b { color: var(--gold); font-weight: 700; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 22px; font-size: 12.5px; color: var(--dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); margin: 34px 0 14px; font-weight: 700; }
+
+  /* the scored timeline */
+  .rail { position: relative; }
+  .rail::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 18px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--line) 6%, var(--line) 94%, transparent);
+  }
+  .track { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; }
+  .beat {
+    position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 30px 13px 13px; min-width: 0;
+  }
+  .beat::before {
+    content: ""; position: absolute; left: 14px; top: 12px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--panel-2); border: 2px solid var(--gold);
+  }
+  .beat.hit::before { border-color: var(--hit); box-shadow: 0 0 10px var(--hit); }
+  .beat .ph { font-size: 13px; font-weight: 700; margin: 0 0 2px; }
+  .beat .moment { font-size: 11px; color: var(--dim); margin: 0 0 10px; }
+  .cue { display: block; font-size: 12px; padding: 5px 8px; margin: 5px 0; border-radius: 7px;
+         background: var(--panel-2); border: 1px solid var(--line); }
+  .cue code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: #cfe0ff; }
+  .cue .d { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
+  .cue.n { border-color: rgba(95,207,142,0.5); }
+  .cue.n code { color: #aef0c8; }
+  .cue.t { border-color: rgba(110,168,254,0.45); }
+  .tag { float: right; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 4px; text-transform: uppercase; }
+  .tag.new { background: rgba(95,207,142,0.18); color: var(--new); }
+  .tag.tuned { background: rgba(110,168,254,0.18); color: var(--tuned); }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 17px; }
+  .card h3 { margin: 0 0 10px; font-size: 14px; }
+  .card ul { margin: 0; padding-left: 18px; }
+  .card li { font-size: 13px; color: #d5dbe6; margin: 7px 0; }
+  .card li b { color: var(--text); }
+  .card li code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: #cfe0ff; }
+  .num { color: var(--gold); font-weight: 700; }
+  footer { margin-top: 36px; color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 16px; }
+  footer b { color: #c9d0dc; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>OpenPack — Pack-Opening Sound Map</h1>
+    <p class="sub">A senior sound-design review &amp; polish pass over the pack-opening experience. Every cue is <b>synthesized</b> in Web Audio — no audio files. Targeted to a premium Pokémon-TCG-Pocket-grade open, tuned for a phone speaker.</p>
+  </header>
+
+  <div class="verdict">
+    The engine was already well-built — a real master bus, a sustained speed-tracked tear, a tier-escalating chime. Two things held it back: <b>gain-staging that fought itself on a phone</b> (a −10&nbsp;dB limiter crushing everything, plus an inaudible 58&nbsp;Hz sub pumping the mix) and <b>a payoff curve that visually escalated but audibly settled</b> (the riser dissolved into dead air; rarity never reached the tear or the open). Fixed both, then closed the silent gaps and the real bugs. <b>23 cues, 6 of them new.</b>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--gold)"></i> existing, kept</span>
+    <span><i class="dot" style="background:var(--tuned)"></i> tuned / re-mixed</span>
+    <span><i class="dot" style="background:var(--new)"></i> new cue</span>
+    <span><i class="dot" style="background:var(--hit)"></i> the money moment</span>
+  </div>
+
+  <h2>The scored timeline — sealed pack → the hit → reseal</h2>
+  <div class="rail">
+    <div class="track">
+
+      <div class="beat">
+        <p class="ph">Idle</p>
+        <p class="moment">sealed pack floating</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>spark()</code><span class="d">edge glints — coherent tuned pair now, not a drone</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Grab</p>
+        <p class="moment">you touch the foil</p>
+        <span class="cue n"><span class="tag new">new</span><code>grab()</code><span class="d">a muffled foil crinkle — the tactile "handle"</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Tear</p>
+        <p class="moment">dragging the rip</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>tearStart/Move</code><span class="d">foil-crinkle attack; brightness tracks pull speed <b>and</b> rarity</span></span>
+        <span class="cue"><code>scratch()</code><span class="d">middle scuff — pitch-jittered</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Void</p>
+        <p class="moment">tear hooks back</p>
+        <span class="cue n"><span class="tag new">new</span><code>rejectTone()</code><span class="d">a dull descending "nope" — it can't open</span></span>
+      </div>
+
+      <div class="beat hit">
+        <p class="ph">Open</p>
+        <p class="moment">the pack bursts</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>burst(power, tier)</code><span class="d">chest-thump — sub re-aimed to be <b>felt on a phone</b>; deeper &amp; brighter for a chase</span></span>
+        <span class="cue t"><code>tearEnd()</code><span class="d">the fibrous snap + shred</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Arrival</p>
+        <p class="moment">the hand lands</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>setDown()</code><span class="d">humble landing + a glossy contact click</span></span>
+        <span class="cue n"><span class="tag new">new</span><code>cardTap()</code><span class="d">soft riffle as each card lays down → reads as N</span></span>
+        <span class="cue n"><span class="tag new">new</span><code>pipTone()</code><span class="d">a tick per card — the haul size, aurally</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Browse</p>
+        <p class="moment">tap to the next</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>flick()</code><span class="d">airy whoosh — jittered so taps don't machine-gun</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Anticipation</p>
+        <p class="moment">a rare is coming</p>
+        <span class="cue t"><span class="tag tuned">tuned</span><code>riser(tier, hold)</code><span class="d">now <b>holds its peak</b> into the hit — no dead air</span></span>
+      </div>
+
+      <div class="beat hit">
+        <p class="ph">The Hit</p>
+        <p class="moment">the chase uncovers</p>
+        <span class="cue n"><span class="tag new">new</span><code>revealImpact(tier)</code><span class="d">the downbeat the riser lands on — boom + crash-swell + crack, scaled hard by tier</span></span>
+        <span class="cue t"><code>chime(tier)</code><span class="d">struck-bell arpeggio, locked to the landing beat</span></span>
+        <span class="cue t"><code>sparkleDust()</code><span class="d">now genuinely fuller at the top tiers</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">End</p>
+        <p class="moment">that's the pack</p>
+        <span class="cue n"><span class="tag new">new</span><code>concludeChime()</code><span class="d">a resolving cadence — closes on a chord, not silence</span></span>
+      </div>
+
+      <div class="beat">
+        <p class="ph">Reseal</p>
+        <p class="moment">open another</p>
+        <span class="cue n"><span class="tag new">new</span><code>reseal()</code><span class="d">a descending whoosh as the halves slide shut</span></span>
+      </div>
+
+    </div>
+  </div>
+
+  <h2>Engine &amp; mix — re-tuned for a phone speaker</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>Loudness that actually lands</h3>
+      <ul>
+        <li>Limiter raised <code>−10 → −3 dB</code> so it catches stacked peaks instead of crushing every hit, plus a post-limiter <b>makeup gain</b>. The mix is loud again.</li>
+        <li>Open-burst sub re-aimed <code>58→34 Hz</code> → <code>~90→55 Hz</code> — <b>felt on a phone</b> instead of inaudibly pumping the limiter.</li>
+        <li>A <b>24 dB/oct high-pass at 45 Hz</b> on the bus scrubs rumble a phone can't reproduce.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>A reverb that rings, not washes</h3>
+      <ul>
+        <li>Reverb return <b>band-limited</b> (~240&nbsp;Hz–10&nbsp;kHz) — the tail is air, not mud.</li>
+        <li>Chime sends made drier and <b>tier-ramped</b>, so a rare-pull chime is a distinct ringing hit on a small speaker.</li>
+        <li>Struck-bell envelopes — octave sparkles decay faster than the fundamentals, so it rings like glass.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Rarity reaches the big moments</h3>
+      <ul>
+        <li>The two longest/loudest moments — the <b>tear</b> and the <b>open burst</b> — now escalate with the rarest card inside (<code>tellTier</code>).</li>
+        <li><code>revealImpact</code> scales from a gentle Double-Rare thump to a sub-reinforced Hyper takeover — a monotonic crescendo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Accessibility &amp; robustness</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>A real volume / mute control</h3>
+      <ul>
+        <li>Top-right <b>mute toggle + volume slider</b>, <b>persisted</b> (shared with the gallery). Collapses to a mute button on a phone so it clears the nav.</li>
+        <li>Audio is now <b>decoupled from <code>prefers-reduced-motion</code></b> — a motion preference no longer silences the jackpot. The volume control owns quieting.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Bugs fixed</h3>
+      <ul>
+        <li>Split the shared <code>hover</code>/<code>scratch</code> throttle — hovering the grid no longer starves the foil scratch mid-drag.</li>
+        <li><b>Per-cue pitch/level variation</b> on every repeated cue (flick, set-down, spark, hover, sparkle) — no more machine-gun.</li>
+        <li>Capture-phase unlock + tab-hide <code>suspend()</code> for a clean cold-start and battery.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    Implemented in <b>src/sfx.js</b> (engine + all cues), wired through <b>src/pack.js</b> &amp; <b>src/reveal.js</b>, with the control + CSS in <b>pack.html</b>. Verified in-browser: the full lifecycle (tear → open → rare-hit reveal → end-of-pack → reseal) runs with <b>zero console errors</b>, all 23 cues build their audio graphs cleanly, and the control persists. <b>Note:</b> sound can't be judged by ear in a headless preview — the final mix calls are yours to confirm on a device.
+  </footer>
+</div>
+</body>
+</html>

@@ -2,3 +2,5 @@
 serve.py
 docs
 .claude
+# the 2.7MB source PNG — runtime uses the downscaled assets/pack.webp (kept local as the editable source)
+assets/pack.png

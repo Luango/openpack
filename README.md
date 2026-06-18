@@ -63,8 +63,13 @@ to the `openpack` project).
   the pointer with momentum (so the near corner grows in perspective), with a
   tracking glare and a tier-appropriate foil that shifts as you move. Hold and
   swipe to flip it over to the card back.
-- **Hover SFX** — a soft synthesized tick on card hover (Web Audio, no audio
-  files; unlocked on first interaction).
+- **Sound design** — the whole experience is scored with **synthesized** Web Audio
+  (no audio files; unlocked on first interaction): a foil crinkle as you grab the
+  pack, a speed-tracked rip, a chest-thump open, an anticipation riser that lands on
+  a tier-scaled **reveal impact** before the rare chime, plus the gallery's hover
+  tick. It runs through a phone-tuned master bus (soft limiter + makeup, sub
+  high-passed, a band-limited reverb) and rarity threads the loudest moments (the
+  tear, the open, the hit). A **volume + mute** control sits top-right and persists.
 
 ## How rarity works
 
@@ -112,7 +117,7 @@ foil is chosen by tier — all from one mapping in
     ├── motion.js     shared spring engine (rAF integrator) behind lightbox + pack
     ├── particles.js  tiny canvas particle system — foil flecks + sparks
     ├── options.js    display toggles (e.g. Holo) → body class + localStorage
-    ├── sfx.js        Web Audio: hover tick, foil scratch, tear, flick, rare chime
+    ├── sfx.js        Web Audio engine + every cue: phone-tuned master bus, grab, tear, open burst, reveal impact, chime; volume/mute
     ├── util.js       escapeHtml / escapeAttr / delegated events
     ├── base.css      design tokens, layout, toolbar/chips/toggles chrome
     └── card.css      the Card component: grid tiles, detail card, holo VFX

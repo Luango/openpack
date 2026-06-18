@@ -158,6 +158,33 @@ Quick map from behavior → code (all in [`src/pack.js`](../src/pack.js) unless 
 
 ### Changelog
 
+- **2026-06-18** — **Recorded-sample layer** ([`src/sfx.js`](../src/sfx.js),
+  [`assets/sfx/`](../assets/sfx/)). Pure synthesis is the root cause of the "fake"
+  sound, so every cue now **prefers a recorded foley sample** and falls back to its
+  synthesized version when none is present. Samples are declared in
+  [`assets/sfx/manifest.json`](../assets/sfx/manifest.json) (`{ "<cue>": ["file", …] }`,
+  multiple files = round-robin) and decoded on first gesture; a missing/empty manifest
+  = pure synthesis with **no console errors**, so cues migrate one at a time. The engine
+  maps gameplay onto playback (tear loop tracks pull velocity; burst/impact gain+pitch
+  scale with power/tier; riser time-stretches to the hold; sparkle scatters grains).
+  See [`assets/sfx/README.md`](../assets/sfx/README.md) for the cue list + format. The
+  decode→play path is verified end-to-end; **drop in foil/card foley to replace the
+  synth.**
+- **2026-06-18** — Sound-design polish pass ([`src/sfx.js`](../src/sfx.js)). **Engine:**
+  the master bus is re-tuned for a phone speaker — a soft-catch limiter (-3 dB) + makeup
+  gain so the mix is actually loud, a 24 dB/oct high-pass at 45 Hz, and a band-limited
+  reverb tail so rare chimes ring instead of washing. The open burst's sub is re-aimed
+  from an inaudible 58→34 Hz to a felt-on-a-phone ~90→55 Hz. **Coverage:** new cues fill
+  the silent moments — `grab` (foil crinkle when you grab the pack, `onGrab`), `rejectTone`
+  (a "nope" on a voided tear), `reseal` (whoosh as the halves close, `reset`), `cardTap`
+  (deal-in riffle), `concludeChime` (end-of-pack cadence), `pipTone` (count articulation).
+  **Payoff:** a tier-scaled `revealImpact` downbeat now lands the anticipation riser (which
+  holds its peak into the hit) just before the chime, and rarity threads the tear + open
+  burst (`tellTier`). **Fixes:** audio decoupled from `prefers-reduced-motion` (a motion
+  preference no longer mutes the jackpot — the new volume/mute control owns that),
+  separate hover/scratch throttles, per-cue pitch/level variation against repetition
+  fatigue, capture-phase unlock + tab-hide suspend. A persisted **volume + mute** control
+  lives top-right in [`pack.html`](../pack.html).
 - **2026-06-18** — Premium VFX layer added on top of the opening-light work.
   **Idle:** a rarity *tell* — `pack.setTell(peak)` lights a breathing halo
   (`.pack-glow`) + tints the edge sparks toward the rarest hidden tier (`--tell` /

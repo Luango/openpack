@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>OpenPack · slash prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>OpenPack — tear it open</title>
     <link rel="stylesheet" href="src/base.css" />
     <link rel="stylesheet" href="src/card.css" />
+    <!-- the pack art is the LCP — fetch it first, ahead of the JS modules -->
+    <link rel="preload" as="image" href="assets/pack.webp" fetchpriority="high" />
     <style>
       :root {
         color-scheme: dark;
@@ -17,7 +19,10 @@
           radial-gradient(900px 600px at 50% -10%, rgba(155, 140, 255, 0.12), transparent 60%),
           #0b0d12;
         overflow: hidden;
-        font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        /* Native system stack — no webfont is loaded, so lead with each platform's
+           own UI face (SF on iOS, Roboto on Android, Segoe on Windows): zero network
+           weight and intentional type on the very first frame. */
+        font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         color: #eef1f6;
         /* iOS ignores user-scalable=no, so kill the gestures that zoom/blow up the
            cards: double-tap-to-zoom, the long-press image preview, and selection. */
@@ -133,9 +138,61 @@
       @media (prefers-reduced-motion: reduce) {
         .pack.ready ~ .pack-glow { animation: none; opacity: calc(var(--idle-heat, 0) * 0.6); }
       }
+      /* CHASE idle — a top-tier card is sealed inside (#pack-stage.chase, set by
+         pack.setTell for Secret/Hyper): the breathing halo quickens and the crimp
+         beam sweeps faster, so the sealed pack feels restless before you even tear. */
+      #pack-stage.chase .pack.ready ~ .pack-glow { animation-duration: 3.1s; }
+      #pack-stage.chase .pack.ready ~ .crimp-streak .cs-beam { animation-duration: 1.9s; }
       .pack image {
         -webkit-user-drag: none;
         pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
+      }
+
+      /* FIRST-RUN gesture hint — a glowing dot rides a dashed path down the foil to
+         DEMONSTRATE the tear drag. Shown only on the first-ever pack (.pack-wrap.guide,
+         set in pack.js setArmed) and removed the instant the player grabs to tear. It's
+         a single tiny element, idle-only, and never runs during a tear, so the `top`
+         animation here costs nothing that matters. */
+      .tear-guide {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.45s ease;
+        z-index: 2;
+      }
+      .pack-wrap.guide .tear-guide { opacity: 1; }
+      .pack-wrap.tearing .tear-guide,
+      .pack-wrap.opening .tear-guide { opacity: 0; }
+      .tg-line {
+        position: absolute;
+        left: 50%; top: 12%;
+        width: 3px; height: 70%;
+        transform: translateX(-50%);
+        border-radius: 3px;
+        background: repeating-linear-gradient(to bottom,
+          rgba(255, 240, 215, 0.6) 0 6px, transparent 6px 13px);
+        opacity: 0.7;
+      }
+      .tg-dot {
+        position: absolute;
+        left: 50%; top: 12%;
+        width: 16px; height: 16px;
+        margin-left: -8px; margin-top: -8px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #fff 0%, rgba(255, 222, 150, 0.95) 42%, transparent 72%);
+        box-shadow: 0 0 16px 5px rgba(255, 210, 150, 0.7);
+        animation: tg-travel 2.4s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      }
+      @keyframes tg-travel {
+        0%   { top: 12%; opacity: 0; transform: scale(0.6); }
+        12%  { opacity: 1; transform: scale(1); }
+        55%  { top: 82%; opacity: 1; transform: scale(1); }
+        72%  { top: 82%; opacity: 0; transform: scale(0.9); }
+        100% { top: 82%; opacity: 0; transform: scale(0.9); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .tg-dot { animation: none; opacity: 0.85; top: 32%; }
       }
 
       /* the rip overlay — sits OVER the foil but OUTSIDE the drop-shadow-filtered
@@ -180,18 +237,77 @@
       }
       body.show-tear-zone .tear-zone { opacity: 1; }
 
-      /* the on/off switch sits opposite the nav and bows out during a reveal */
-      .app-toggle--floating {
+      /* SOUND control — a mute toggle + volume slider, top-right. Unlike the other
+         floating controls it stays available through the reveal, so you can quiet a
+         loud chime mid-celebration. Volume + mute persist (see src/sfx.js keys). */
+      .audio-ctrl {
         position: fixed;
-        top: 14px;
-        right: 14px;
-        z-index: 10;
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        right: calc(14px + env(safe-area-inset-right, 0px));
+        z-index: 11;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 12px 5px 6px;
+        border-radius: 999px;
+        background: rgba(20, 24, 33, 0.72);
+        border: 1px solid var(--line, #2a313f);
         backdrop-filter: blur(6px);
       }
-      body.revealing .app-toggle--floating {
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
+      .audio-btn {
+        appearance: none;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #cfd6e2;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .audio-btn:hover { color: #fff; }
+      .audio-btn svg { width: 18px; height: 18px; }
+      .audio-btn .ic-off { display: none; }
+      .audio-ctrl.muted .audio-btn { color: #8b93a2; }
+      .audio-ctrl.muted .audio-btn .ic-on { display: none; }
+      .audio-ctrl.muted .audio-btn .ic-off { display: block; }
+      .audio-vol {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 78px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--line, #2a313f);
+        outline: none;
+        cursor: pointer;
+      }
+      .audio-vol::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 0 6px rgba(255, 210, 156, 0.55);
+      }
+      .audio-vol::-moz-range-thumb {
+        width: 13px;
+        height: 13px;
+        border: 0;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 0 6px rgba(255, 210, 156, 0.55);
+      }
+      .audio-ctrl.muted .audio-vol { opacity: 0.4; }
+      /* On a phone the top nav is centred and the screen is narrow, so the slider
+         would collide with it — collapse to just the mute button (hardware volume
+         covers level on mobile). The pill then tucks clear into the top-right. */
+      @media (max-width: 520px) {
+        .audio-vol { display: none; }
+        .audio-ctrl { padding: 5px 6px; }
       }
 
       @keyframes float {
@@ -208,6 +324,28 @@
          seconds. The rect + #sheen gradient live in the SVG (see pack.js); screen
          blend brightens the foil it crosses, and the .sealed mask clips it to the pack. */
       .pack-sheen { opacity: 0; pointer-events: none; animation: sheen 5.4s ease-in-out infinite; }
+
+      /* reactive specular gloss — a soft highlight that tracks the pointer (--gx/--gy
+         set in pack.js), clipped to the foil by the pack art's own alpha (PNG mask),
+         so the sealed pack reads as a HELD, reflective object. Desktop hover in
+         practice; screen-blend brightens the foil. Frozen + hidden during a tear
+         (it's a pure overlay — never affects the rip geometry).
+         NB: the mask url MUST track PACK_IMG in pack.js if the art file is swapped. */
+      .pack-gloss {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        background: radial-gradient(circle at var(--gx, 50%) var(--gy, 40%),
+          rgba(255, 255, 255, 0.34), rgba(255, 246, 224, 0.08) 28%, transparent 52%);
+        mix-blend-mode: screen;
+        -webkit-mask: url("assets/pack.webp") center / 100% 100% no-repeat;
+        mask: url("assets/pack.webp") center / 100% 100% no-repeat;
+      }
+      .pack-wrap.glossing .pack-gloss { opacity: 1; }
+      .pack-wrap.tearing .pack-gloss,
+      .pack-wrap.opening .pack-gloss { opacity: 0; }
 
       /* edge sparks — REUSED verbatim from the light-study widget. The layer is
          pinned to the pack's TOP seal; each .spark is a white→transparent streak
@@ -305,7 +443,7 @@
         position: fixed;
         left: 0;
         right: 0;
-        bottom: 26px;
+        bottom: calc(26px + env(safe-area-inset-bottom, 0px));
         text-align: center;
         font-size: 13px;
         color: #9aa3b2;
@@ -405,7 +543,9 @@
           scale(calc(1 - var(--d, 0) * 0.02));
       }
       .reveal__slot.flung {
-        transform: translateY(-135%) rotate(-6deg) scale(1.02); /* flicked away to the next */
+        /* flicked away to the next — direction + spin come from reveal.js so each
+           flick throws a little differently (left/right), with weight */
+        transform: translateY(-135%) translateX(var(--fling-x, 0px)) rotate(var(--fling-rot, -6deg)) scale(1.02);
         opacity: 0;
       }
       /* while you drag the deck into a fanned hand (reveal.js), the spring writes
@@ -431,7 +571,7 @@
          it survives the flash + iridescent aura. */
       .reveal__status {
         position: fixed;
-        left: 0; right: 0; bottom: 26px;
+        left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom, 0px));
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -474,9 +614,10 @@
       .reveal__again {
         position: fixed;
         left: 50%;
-        bottom: 54px;
+        bottom: calc(54px + env(safe-area-inset-bottom, 0px));
         transform: translateX(-50%);
-        padding: 11px 24px;
+        min-height: 44px; /* comfortable thumb target */
+        padding: 12px 26px;
         border-radius: 999px;
         border: 1px solid var(--line, #2a313f);
         background: var(--bg-elev, #141821);
@@ -612,12 +753,16 @@
          ~250ms, which every impact cue in reveal.js syncs to: set-down sound,
          haptic, shadow peak), then settles exactly on the resting front transform
          (no jump when CSS takes back over). */
+      /* duration is FIXED so the contact dip stays at ~55% (≈250ms) — every impact
+         cue in reveal.js syncs to it. Only the AMPLITUDE scales by tier (the vars,
+         set in reveal.js enter()): a common sets down gently; a chase drops harder
+         and overshoots more. The end is always rest (0 / scale 1) → no jump. */
       .reveal__slot.front.entering { animation: card-enter 0.46s cubic-bezier(0.22, 1.16, 0.32, 1) both; }
       @keyframes card-enter {
-        0%   { transform: translateY(34px) scale(0.9);   opacity: 0; }
-        55%  { transform: translateY(-6px) scale(1.015); opacity: 1; } /* contact dip, past rest */
-        78%  { transform: translateY(2px)  scale(0.997); opacity: 1; }
-        100% { transform: translateY(0)    scale(1);     opacity: 1; }
+        0%   { transform: translateY(var(--enter-rise, 34px)) scale(var(--enter-from, 0.9)); opacity: 0; }
+        55%  { transform: translateY(var(--enter-dip, -6px))  scale(var(--enter-pop, 1.015)); opacity: 1; } /* contact dip, past rest */
+        78%  { transform: translateY(2px) scale(0.997); opacity: 1; }
+        100% { transform: translateY(0)   scale(1);     opacity: 1; }
       }
 
       /* a one-pass specular gleam sweeps the FRESH front card just after it lands
@@ -654,13 +799,80 @@
         will-change: transform, opacity;
       }
 
+      /* SHOCKWAVE — a quick expanding tier-coloured ring on the hit, so even the
+         lowest chase (Double Rare, which gets no rays) lands with a punch. Driven by
+         WAAPI in reveal.js (scale + opacity only; the ring's glow is a STATIC
+         box-shadow, rastered once then transform-scaled — never animated). */
+      .reveal__shock {
+        position: absolute;
+        left: 50%; top: 44%;
+        width: 42vmax; height: 42vmax;
+        transform: translate(-50%, -50%) scale(0.2);
+        border-radius: 50%;
+        border: 3px solid color-mix(in srgb, var(--tier-color, #fff) 80%, #fff);
+        box-shadow:
+          0 0 26px color-mix(in srgb, var(--tier-color, #fff) 70%, transparent),
+          inset 0 0 26px color-mix(in srgb, var(--tier-color, #fff) 45%, transparent);
+        pointer-events: none;
+        opacity: 0;
+        mix-blend-mode: screen;
+        will-change: transform, opacity;
+      }
+
+      /* HAUL SUMMARY — once the last card is seen, the spent cards fan back into a
+         hand so the pull reads as N cards, the rarest popped forward + glowing.
+         Each slot's fan transform is computed in reveal.js (showHaul); here we only
+         set the eased transition + the hero glow. */
+      .reveal.haul .reveal__slot {
+        transition: transform 0.6s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.45s ease;
+        opacity: 1;
+        pointer-events: none;
+      }
+      .reveal.haul .reveal__slot.haul-hero .card--detail {
+        box-shadow:
+          0 0 64px 6px color-mix(in srgb, var(--tier-color) 78%, transparent),
+          0 30px 70px rgba(0, 0, 0, 0.6);
+      }
+      /* the haul caption — a quiet kicker + the rarest pull's tier, up top */
+      .reveal__haul-cap {
+        position: fixed;
+        left: 0; right: 0;
+        top: calc(64px + env(safe-area-inset-top, 0px));
+        text-align: center;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition: opacity 0.5s ease 0.2s, transform 0.5s ease 0.2s;
+        z-index: 320;
+      }
+      .reveal.haul .reveal__haul-cap { opacity: 1; transform: translateY(0); }
+      .reveal__haul-cap .hc-kicker {
+        margin: 0;
+        font-size: 12px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: #9aa3b2;
+        font-weight: 700;
+      }
+      .reveal__haul-cap .hc-best {
+        margin: 7px 0 0;
+        font-size: clamp(18px, 5.4vw, 27px);
+        font-weight: 800;
+        color: #fff;
+        text-shadow: 0 0 16px var(--tier-color, #fff), 0 2px 10px rgba(0, 0, 0, 0.6);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal__haul-cap { transition: opacity 0.4s ease; transform: none; }
+      }
+
       /* stacking order inside the reveal host: backdrop → rays → cards → sparkles
-         → flash → stamp */
+         → shock → flash → stamp */
       .reveal__dim { z-index: 0; }
       .reveal__aura, .reveal__interior { z-index: 1; }
       .reveal__rays, .reveal__tell, .reveal__shadow { z-index: 2; }
       .reveal__stack { z-index: 10; }
       .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
+      .reveal__shock { z-index: 160; } /* ring reads just in front of the sparkles */
       .reveal__flash { z-index: 300; }
       .reveal__stamp { z-index: 320; }
 
@@ -673,7 +885,7 @@
       }
     </style>
   </head>
-  <body class="holo-on show-tear-zone">
+  <body class="holo-on">
     <div class="scene-fx" aria-hidden="true">
       <div class="float-card" style="left:4%;  --s:.30; --r:-15deg; --o:.20; --b:3px;   animation-duration:36s; animation-delay:0s"></div>
       <div class="float-card" style="left:23%; --s:.52; --r:7deg;   --o:.42; --b:.4px;  animation-duration:27s; animation-delay:9s"></div>
@@ -686,10 +898,20 @@
       <a class="nav-link" href="index.html">Gallery</a>
       <a class="nav-link is-active" href="pack.html" aria-current="page">Open Pack</a>
     </nav>
-    <button id="tear-zone-toggle" class="toggle app-toggle--floating on" role="switch" aria-checked="true" aria-label="Highlight the tear-trigger zone">
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-      Tear zone
-    </button>
+    <div class="audio-ctrl" id="audio-ctrl">
+      <button id="mute-btn" class="audio-btn" type="button" aria-label="Mute sound" aria-pressed="false">
+        <svg class="ic-on" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 9v6h4l5 5V4L7 9H3z" fill="currentColor"/>
+          <path d="M15.5 8.5a4.5 4.5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M18.2 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <svg class="ic-off" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 9v6h4l5 5V4L7 9H3z" fill="currentColor"/>
+          <path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <input id="vol-slider" class="audio-vol" type="range" min="0" max="100" step="1" value="85" aria-label="Volume" />
+    </div>
     <div id="pack-stage"></div>
     <p class="hint">Preparing pack…</p>
 
@@ -698,18 +920,36 @@
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
       import { rarityToTier } from "./src/rarity.js";
+      import * as sfx from "./src/sfx.js";
 
       const hintEl = document.querySelector(".hint");
       const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
       let pack, reveal, ready;
 
-      // "Tear zone" switch — show/hide the highlighted band where a tear can start.
-      const tzToggle = document.getElementById("tear-zone-toggle");
-      tzToggle.addEventListener("click", () => {
-        const on = document.body.classList.toggle("show-tear-zone");
-        tzToggle.classList.toggle("on", on);
-        tzToggle.setAttribute("aria-checked", String(on));
+      // Sound control — mute toggle + volume slider. sfx.js loaded the persisted
+      // volume/mute already; we just reflect it in the UI and write changes back
+      // (sfx persists them itself, shared with the gallery page).
+      const audioCtrl = document.getElementById("audio-ctrl");
+      const muteBtn = document.getElementById("mute-btn");
+      const volSlider = document.getElementById("vol-slider");
+      function syncAudioUI() {
+        const m = sfx.isMuted();
+        audioCtrl.classList.toggle("muted", m);
+        muteBtn.setAttribute("aria-pressed", String(m));
+        muteBtn.setAttribute("aria-label", m ? "Unmute sound" : "Mute sound");
+        volSlider.value = String(Math.round(sfx.getVolume() * 100));
+      }
+      muteBtn.addEventListener("click", () => {
+        sfx.setMute(!sfx.isMuted());
+        syncAudioUI();
       });
+      volSlider.addEventListener("input", () => {
+        const v = Number(volSlider.value) / 100;
+        sfx.setVolume(v);
+        if (v > 0 && sfx.isMuted()) sfx.setMute(false); // dragging up unmutes
+        syncAudioUI();
+      });
+      syncAudioUI();
 
       // Build a booster AND render its card stack (hidden) up front, then ARM the
       // pack. The pack can't be torn until its cards are ready, so the reveal is

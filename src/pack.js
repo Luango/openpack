@@ -21,12 +21,29 @@ import { createParticles } from "./particles.js";
 import { TIER_HEX } from "./rarity.js";
 import * as sfx from "./sfx.js";
 
+// Honour the OS "reduce motion" setting — the commit screen-shake (the one new
+// motion below that isn't already gated in CSS) is skipped when it's on.
+const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+// First-run gesture hint: shown until the player has opened their first pack, then
+// never again (persisted; falls back to in-session if storage is blocked).
+const TORE_KEY = "openpack.toreOnce";
+let toredSession = false;
+function hasToredBefore() {
+  if (toredSession) return true;
+  try { return localStorage.getItem(TORE_KEY) === "1"; } catch { return false; }
+}
+function markTored() {
+  toredSession = true;
+  try { localStorage.setItem(TORE_KEY, "1"); } catch { /* private mode — session flag still holds */ }
+}
+
 // Internal coordinate box. The width is a fixed unit; the HEIGHT is re-derived
 // from whatever pack image loads (see applyAspect), so dropping a pack of any
 // size/shape at PACK_IMG just works — the viewBox, art, mask, and tear geometry
 // all follow. 554 is only the placeholder until the real image reports its size.
 const VB = { w: 300, h: 554 };
-const PACK_IMG = "assets/pack.png"; // the pack art — swap this file to reskin the pack
+const PACK_IMG = "assets/pack.webp"; // the pack art (downscaled WebP w/ alpha — ~134KB vs 2.7MB PNG; pack.png kept as the source). Swap to reskin; keep the .pack-gloss mask url in pack.html in sync.
 const GAP_TEAR = 10; // crack width while mid-tear — kept thin so it reads as a crack, not a gap
 const SEP_MAX = 130; // how far the smaller half flies off once split (the body stays put)
 const ROT = 18; // degrees the flying half tilts/flings as it tears away — dynamic motion
@@ -170,16 +187,29 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <span class="spark" style="left:68%"></span>
         <span class="spark" style="left:87%"></span>
       </div>
+      <!-- reactive specular gloss — a soft highlight that tracks the pointer across
+           the foil (desktop hover), clipped to the foil silhouette by a PNG mask, so
+           the sealed pack reads as a HELD, reflective object. Idle-only: hidden the
+           moment a tear starts (it's an overlay; never touches the tear geometry). -->
+      <div class="pack-gloss" aria-hidden="true"></div>
       <!-- rarity TELL: a breathing halo behind the pack that only lights up when a
            rare card is hidden inside (opacity scales with --idle-heat), tinted to
            that tier via --tell. Sibling after .pack so ".pack.ready ~ .pack-glow"
            starts its heartbeat. -->
       <div class="pack-glow" aria-hidden="true"></div>
+      <!-- first-run gesture hint: a glowing dot rides a dashed path down the pack to
+           SHOW the tear drag. Only on a user's first-ever pack (.pack-wrap.guide,
+           set in setArmed); removed the instant they grab to tear (onDown). -->
+      <div class="tear-guide" aria-hidden="true">
+        <span class="tg-line"></span>
+        <span class="tg-dot"></span>
+      </div>
     </div>
     <canvas class="pack-fx"></canvas>`;
 
   const svg = mountEl.querySelector(".pack");
   const wrap = mountEl.querySelector(".pack-wrap");
+  const glossEl = mountEl.querySelector(".pack-gloss");
   const sceneFx = document.querySelector(".scene-fx"); // paused during the tear to free the compositor
   const sealed = mountEl.querySelector(".sealed");
   const gapCrack = mountEl.querySelector(".gap-crack");
@@ -258,6 +288,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let lastClient = null;
   let lastT = 0;
   let peakSpeed = 0;
+  let lastBuzzLen = 0; // pathLen at the last haptic tick — drives the distance-quantized ratchet
   let tellTier = 0; // the rarest tier hidden inside — colours the idle tell
 
   // `w` = gap width while tearing; `sep` = how far the two pieces have parted.
@@ -439,6 +470,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     scratchOnly = s.y > depth && s.y < VB.h - depth;
 
     floatOn(false); // steady the pack while it's being handled — stop the idle float
+    wrap.classList.remove("guide"); // they've engaged — drop the gesture hint
+    sfx.grab(); // a muffled foil crinkle — the tactile "handle" the moment you grab it
     onGrab?.(); // pack grabbed (sealed, covering) → safe to bring the card stack in behind it
     dragging = true;
     tearing = false;
@@ -452,11 +485,27 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     lastClient = { x: e.clientX, y: e.clientY };
     lastT = performance.now();
     peakSpeed = 0;
+    lastBuzzLen = 0;
     try { mountEl.setPointerCapture?.(e.pointerId); } catch { /* stray/released pointer id — fine */ }
   }
 
+  // Idle specular: while NOT tearing, a soft highlight tracks the pointer across the
+  // foil so the sealed pack reads as a held, reflective object. Pure overlay — never
+  // touches the tear geometry. Off once opened or before the pack is armed.
+  function hoverGloss(e) {
+    if (!glossEl || opened || !armed) return;
+    const r = svg.getBoundingClientRect();
+    if (!r.width) return;
+    const gx = ((e.clientX - r.left) / r.width) * 100;
+    const gy = ((e.clientY - r.top) / r.height) * 100;
+    if (gx < -8 || gx > 108 || gy < -8 || gy > 108) { wrap.classList.remove("glossing"); return; }
+    glossEl.style.setProperty("--gx", gx.toFixed(1) + "%");
+    glossEl.style.setProperty("--gy", gy.toFixed(1) + "%");
+    wrap.classList.add("glossing");
+  }
+
   function onMove(e) {
-    if (!dragging) return;
+    if (!dragging) { hoverGloss(e); return; }
 
     // started in the middle → just scuff the foil (scratch sfx + a little dust), no tear
     if (scratchOnly) {
@@ -476,7 +525,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
 
     if (!tearing && pathLen(path) > START_DIST) {
       tearing = true;
-      sfx.tearStart();
+      sfx.tearStart(tellTier); // rarer pack inside → brighter, more energetic foil rip
     }
     if (!tearing) return;
 
@@ -495,6 +544,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           if (Math.abs(turn) > TURN_KINK_RAD || Math.abs(cumTurn) > TURN_CUM_RAD) {
             invalid = true;
             sfx.tearEnd(false); // cut the rip sound short
+            sfx.rejectTone(); // a dull descending "nope" — the tear voided, can't open
             if (navigator.vibrate) navigator.vibrate(24);
           }
         }
@@ -511,30 +561,44 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // fully crosses the pack, at which point the tear is DONE and it splits open
     // right then (finger still on the screen, no need to lift). Before crossing
     // it reads as a small crack, not a gaping hole parting open as you drag.
-    const progress = Math.min(1, pathLen(path) / (VB.h * 0.6));
-    rebuildGap(); // updates the `crossed` flag + the crack path
-    if (crossed) {
-      dragging = false; // the tear completes the instant it crosses the body
-      commitOpen();
-      return;
-    }
-    spring.set({ w: progress * GAP_TEAR });
-
+    // Speed FIRST — the crack now answers the HAND, not just the clock: a hard yank
+    // rips a wider, more violent slit; a slow pull barely parts the foil.
     const now = performance.now();
     const dt = Math.max(1, now - lastT);
     const speed = Math.hypot(e.clientX - lastClient.x, e.clientY - lastClient.y) / dt;
     peakSpeed = Math.max(peakSpeed, speed);
     lastClient = { x: e.clientX, y: e.clientY };
     lastT = now;
-
     const inten = Math.min(1, speed / 2.5);
+
+    const len = pathLen(path);
+    const progress = Math.min(1, len / (VB.h * 0.6));
+    rebuildGap(); // updates the `crossed` flag + the crack path
+    if (crossed) {
+      dragging = false; // the tear completes the instant it crosses the body
+      commitOpen();
+      return;
+    }
+    // RESISTANCE: ease-in (progress^1.4) so the foil HOLDS at first then gives — the
+    // early drag barely opens it; the pull SPEED then widens the slit on a hard rip.
+    const eased = Math.pow(progress, 1.4);
+    spring.set({ w: eased * GAP_TEAR * (1 + inten * 0.7) });
+
     sfx.tearMove(inten);
     // spray flecks at the finger CLAMPED onto the pack (p is already clamped in
     // pack space) — a tear may start just outside the edge, and emitting at the
     // raw client point would scatter foil into the empty margin
     const sp = new DOMPoint(p.x, p.y).matrixTransform(ctm || svg.getScreenCTM());
-    particles.emit(sp.x, sp.y, { count: 1 + Math.round(inten * 4), speed: 2 + inten * 5, colors: FOIL, life: 36 });
-    if (navigator.vibrate && inten > 0.5) navigator.vibrate(4);
+    // torn foil reads as PAPER: mostly matte chips (the flat fillRect sprite) with
+    // the odd bright glint on a fast pull — ~3:1, so it's debris, not a sparkle shower
+    particles.emit(sp.x, sp.y, { count: 1 + Math.round(inten * 3), speed: 2 + inten * 5, colors: FOIL, life: 36, shape: "chip", size: 1.9 });
+    if (inten > 0.5) particles.emit(sp.x, sp.y, { count: 1, speed: 3 + inten * 4, colors: ["#fff", "#ffe7b0"], life: 24, size: 1.3 });
+    // HAPTIC RATCHET — one tick per ~22px of tear travel (speed-independent), so the
+    // rip feels like teeth giving way under the finger, not a single distant buzz.
+    if (navigator.vibrate && len - lastBuzzLen >= 22) {
+      lastBuzzLen = len;
+      navigator.vibrate(5);
+    }
   }
 
   // The tear has crossed the whole pack body → split it into two pieces and fling
@@ -544,6 +608,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   function commitOpen() {
     if (opened) return;
     opened = true;
+    markTored(); // a successful open — the gesture hint never needs to show again
     // Drop the .pack drop-shadow filter for the open: the two foil pieces fling
     // every frame, and a CSS filter re-rasters the whole foil through the
     // drop-shadow each frame (mobile jank). A class (not inline style) is required
@@ -554,12 +619,32 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     spring.set({ sep: 1 }); // pieces pull fully apart
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
-    sfx.burst(power); // chest-thump under the open — sub-bass + body + crack
+    sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
+    kick(power); // a short screen-kick — the foil giving way lands with weight
     // let the torn-off top FULLY fly away first, THEN hand off to the reveal
     // (which drops the pack body and springs the cards up)
     setTimeout(() => onOpen?.(), 750);
+  }
+
+  // A brief, decaying screen-kick on the burst (a hair of scale-pop + jitter). On
+  // #pack-stage via WAAPI so it overrides the exit transition while it runs and
+  // lands back on identity — the stage's resting transform — well before the exit
+  // slide (750 ms later). Skipped under reduced motion.
+  function kick(power) {
+    if (REDUCED || !mountEl.animate) return;
+    const amp = 5 + power * 9; // px
+    const N = 7;
+    const frames = [{ transform: `translate(0px, 0px) scale(${(1 + 0.05 * power).toFixed(3)})` }];
+    for (let i = 1; i <= N; i++) {
+      const decay = 1 - i / N;
+      const dx = (Math.random() * 2 - 1) * amp * decay;
+      const dy = (Math.random() * 2 - 1) * amp * decay;
+      frames.push({ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(1)` });
+    }
+    frames.push({ transform: "translate(0px, 0px) scale(1)" });
+    mountEl.animate(frames, { duration: 260 + power * 80, easing: "ease-out", fill: "none" });
   }
 
   function onUp() {
@@ -586,14 +671,18 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const m = ctm || svg.getScreenCTM();
     for (const p of seam || []) {
       const c = new DOMPoint(p.x, p.y).matrixTransform(m);
-      particles.emit(c.x, c.y, { count: 3, speed: 4.5, colors: FOIL, life: 50, size: 2.6 });
+      particles.emit(c.x, c.y, { count: 3, speed: 4.5, colors: FOIL, life: 50, size: 2.6, shape: "chip" }); // paper shreds
+      particles.emit(c.x, c.y, { count: 1, speed: 5.5, colors: ["#fff", "#ffe7b0"], life: 30, size: 1.6 }); // a glint riding the burst
     }
   }
 
   // Tap an opened pack: the two pieces slide back together into one pack, then reset.
   function reset() {
     opened = false;
-    if (split) spring.set({ sep: 0 });
+    if (split) {
+      spring.set({ sep: 0 });
+      sfx.reseal(); // a descending foil whoosh as the two halves slide back into one pack
+    }
     setTimeout(clearTear, 400);
   }
 
@@ -637,6 +726,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   mountEl.addEventListener("pointermove", onMove);
   mountEl.addEventListener("pointerup", onUp);
   mountEl.addEventListener("pointercancel", onUp);
+  mountEl.addEventListener("pointerleave", () => wrap.classList.remove("glossing")); // drop the idle gloss when the pointer leaves
   mountEl.addEventListener("contextmenu", (e) => e.preventDefault());
   // a press-and-drag on the SVG <image> would otherwise start a NATIVE image
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
@@ -673,6 +763,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     setArmed: (v) => {
       armed = v;
       svg.classList.toggle("ready", v);
+      // first-ever pack → ride the drag-gesture hint down the foil; once they've
+      // opened one, it never shows again
+      wrap.classList.toggle("guide", v && !hasToredBefore());
     },
     // The host whispers what the pack is hiding (the rarest tier inside) so the
     // idle ambience can foreshadow it: a rarity-tinted breathing halo + tinted
@@ -680,10 +773,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     setTell: (peak) => {
       tellTier = peak | 0;
       const hex = TIER_HEX[tellTier] || TIER_HEX[0];
-      const heat = tellTier <= 3 ? 0 : Math.min(1, (tellTier - 3) / 6); // 0 below Holo → 1 at Hyper
+      // 0 below Double Rare (a dud pack stays dark — no false promise), then a clear
+      // FLOOR so a real chase actually reads: 0.4 at Double Rare → 1.0 at Hyper.
+      const heat = tellTier <= 3 ? 0 : Math.min(1, 0.4 + (tellTier - 4) * 0.12);
       mountEl.style.setProperty("--tell", hex);
       mountEl.style.setProperty("--idle-heat", heat.toFixed(2));
-      mountEl.classList.toggle("chase", tellTier >= 8);
+      mountEl.classList.toggle("chase", tellTier >= 8); // top-tier sealed → urgent idle (see .chase CSS)
     },
   };
 }

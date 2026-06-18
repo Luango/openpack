@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenPack · Max-Polish Plan</title>
+<style>
+  :root{
+    --bg:#0b0d12; --elev:#141821; --elev2:#1c212c; --line:#2a313f;
+    --text:#eef1f6; --dim:#9aa3b2; --faint:#5e6675;
+    --accent:#6ea8fe; --accent2:#9b8cff;
+    --hi:#ff6fd8; --gold:#ffd24a; --teal:#3fd6c8; --green:#5fcf8e; --orange:#f59247;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 700px at 75% -10%, rgba(110,168,254,.12), transparent 60%),
+      radial-gradient(900px 600px at 10% 0%, rgba(155,140,255,.10), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:clamp(20px,5vw,56px) clamp(16px,5vw,40px) 80px;
+  }
+  .wrap{max-width:1040px;margin:0 auto}
+  .kicker{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 10px}
+  h1{font-size:clamp(28px,6vw,46px);line-height:1.05;margin:0 0 18px;font-weight:800;letter-spacing:-.5px}
+  h1 .grad{background:linear-gradient(100deg,var(--hi),var(--gold) 40%,var(--teal) 70%,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .verdict{font-size:clamp(15px,2.4vw,18px);color:var(--dim);max-width:74ch;margin:0 0 14px}
+  .verdict strong{color:var(--text);font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 36px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--dim);
+    background:var(--elev);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+
+  .tier{margin:0 0 30px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(28,33,44,.55),rgba(20,24,33,.35));overflow:hidden}
+  .tier__head{display:flex;align-items:flex-start;gap:16px;padding:20px clamp(16px,3vw,26px);border-bottom:1px solid var(--line);
+    background:linear-gradient(90deg,var(--barA,rgba(110,168,254,.14)),transparent 70%)}
+  .tier__num{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--bg);background:var(--barC,var(--accent));
+    border-radius:8px;padding:6px 10px;white-space:nowrap;margin-top:2px}
+  .tier__t{font-size:clamp(18px,3vw,23px);font-weight:750;margin:0 0 4px;letter-spacing:-.2px}
+  .tier__s{font-size:13.5px;color:var(--dim);margin:0}
+  .items{list-style:none;margin:0;padding:6px 0}
+  .item{display:grid;grid-template-columns:1fr auto;gap:6px 16px;align-items:start;padding:14px clamp(16px,3vw,26px);border-top:1px solid rgba(42,49,63,.5)}
+  .item:first-child{border-top:0}
+  .item__t{font-size:15px;font-weight:650;margin:0}
+  .item__d{grid-column:1/2;font-size:13.5px;color:var(--dim);margin:4px 0 0}
+  .item__d em{color:var(--teal);font-style:normal;font-weight:600}
+  .item__d code{font-size:12px;color:var(--faint);background:rgba(0,0,0,.3);padding:1px 5px;border-radius:5px}
+  .tags{display:flex;flex-direction:column;gap:6px;align-items:flex-end;white-space:nowrap}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:6px;padding:3px 8px;text-transform:uppercase}
+  .imp-high{background:rgba(255,111,216,.16);color:#ff9ee2;border:1px solid rgba(255,111,216,.3)}
+  .imp-med{background:rgba(110,168,254,.14);color:#a9c8ff;border:1px solid rgba(110,168,254,.28)}
+  .eff{background:var(--elev2);color:var(--dim);border:1px solid var(--line)}
+  .guard{border:1px dashed rgba(255,210,74,.35);border-radius:16px;padding:18px 22px;background:rgba(255,210,74,.04);margin-top:8px}
+  .guard h3{margin:0 0 10px;font-size:15px;color:var(--gold);letter-spacing:.02em}
+  .guard ul{margin:0;padding-left:18px;color:var(--dim);font-size:13.5px}
+  .guard li{margin:5px 0}
+  .foot{margin-top:34px;color:var(--faint);font-size:12.5px;text-align:center}
+  @media(max-width:560px){
+    .item{grid-template-columns:1fr}
+    .tags{flex-direction:row;align-items:center;margin-top:8px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Senior art / UX / VFX review → plan</p>
+  <h1>Polish the rip to its <span class="grad">maximum</span></h1>
+  <p class="verdict"><strong>Where it stands:</strong> already a high-polish prototype — two-stage paper tear, contact-synced landing, a monotonic per-tier HIT table, synthesized audio with a reverb bus, and serious mobile perf work. <strong>So "max polish" = closing the felt extremes and removing the demo-credibility blockers</strong> — not rebuilding. Every new effect stays transform/opacity-only and reduced-motion-safe (see guardrails).</p>
+  <div class="legend">
+    <span class="pill"><span class="dot" style="color:#ff6fd8"></span>High impact</span>
+    <span class="pill"><span class="dot" style="color:#6ea8fe"></span>Medium impact</span>
+    <span class="pill">S / M / L = effort</span>
+  </div>
+
+  <!-- TIER 0 -->
+  <section class="tier" style="--barA:rgba(95,207,142,.16);--barC:#5fcf8e">
+    <div class="tier__head">
+      <span class="tier__num">TIER 0</span>
+      <div>
+        <h2 class="tier__t">Credibility &amp; the first frame</h2>
+        <p class="tier__s">Quick wins. These are what makes a judge trust the build in the first second. Do first.</p>
+      </div>
+    </div>
+    <ul class="items">
+      <li class="item"><div><p class="item__t">Kill the debug chrome</p><p class="item__d">Ship <code>body class="holo-on"</code> only — the dashed <em>tear-zone overlay</em> and its dev toggle are on by default right now. The crimp beam already guides the eye.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">S</span></div></li>
+      <li class="item"><div><p class="item__t">Real title, intentional type</p><p class="item__d">Title → “OpenPack”; lead the font stack with <code>-apple-system</code> (or self-host Inter woff2) so frame-one type isn't an accident.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">S</span></div></li>
+      <li class="item"><div><p class="item__t">Honest interaction copy</p><p class="item__d">“tap to flip” is a lie — tap <em>advances</em> the card. Fix to “tap · next card / drag · spread”, and wire a real long-press flip-to-back as a bonus.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">S</span></div></li>
+      <li class="item"><div><p class="item__t">Mute / volume toggle</p><p class="item__d">An audio-forward experience needs a mute. Speaker glyph on <code>master.gain</code>, persisted to localStorage.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">S</span></div></li>
+      <li class="item"><div><p class="item__t">Safe-area insets</p><p class="item__d"><code>viewport-fit=cover</code> + <code>env(safe-area-inset-*)</code> on the fixed nav / hint / button so nothing tucks under a notch or home indicator.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">S</span></div></li>
+      <li class="item"><div><p class="item__t">Loose ends</p><p class="item__d">Wire or remove the dead <code>.chase</code> hook; bump controls to 44px touch targets.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">S</span></div></li>
+    </ul>
+  </section>
+
+  <!-- TIER 1 -->
+  <section class="tier" style="--barA:rgba(255,111,216,.16);--barC:#ff6fd8">
+    <div class="tier__head">
+      <span class="tier__num" style="background:#ff6fd8">TIER 1</span>
+      <div>
+        <h2 class="tier__t">The felt extremes — the heart of it</h2>
+        <p class="tier__s">Weight of the rip, size of the hit, length of the suspense, payoff of the haul. This is where “polish” is won.</p>
+      </div>
+    </div>
+    <ul class="items">
+      <li class="item"><div><p class="item__t">Heavier tear</p><p class="item__d">Pre-tear foil <em>resistance</em> (the pack bulges a touch under the finger before it gives); crack width keys off <em>pull speed</em>; a commit <em>pop</em> (scale punch + micro screen-shake); a distance-quantized <em>haptic ratchet</em> every ~20px + a crackle accent — so the rip answers the hand, not the clock.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">The HIT punches the card, not just the backdrop</p><p class="item__d">Today <code>card-enter</code> is identical for a Common and a Hyper. Make the entrance <em>tier-scaled</em>: gentle set-down for a common → hard contact-dip + shake for a chase, layered on the existing rays/flash/stamp.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Land the riser on a downbeat</p><p class="item__d">The anticipation riser climbs then dies into silence. Fire a <em>tier-scaled impact boom</em> (reuse the burst voice) synced to the uncover frame + a brief mix duck — the suspense finally <em>lands</em>.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Longer, deeper suspense</p><p class="item__d">Pulse the colour leak behind the next card, dim the world further, and hold the top-tier beat a little longer before the flash. Add a faint shockwave so a Double Rare isn't a flat shimmer.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Haul-summary payoff</p><p class="item__d">“That's the pack!” throws away the collection dopamine. Fan all 5 cards out, the rarest glowing, with a tiny rarity tally — <em>then</em> “Open another”. This is what rewards the loop.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">L</span></div></li>
+      <li class="item"><div><p class="item__t">Weight on every advance</p><p class="item__d">A flicked common flings <em>in the drag direction</em> with a deck recoil + a soft contact sound + a small haptic — not a silent straight-up slide.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+    </ul>
+  </section>
+
+  <!-- TIER 2 -->
+  <section class="tier" style="--barA:rgba(63,214,200,.16);--barC:#3fd6c8">
+    <div class="tier__head">
+      <span class="tier__num" style="background:#3fd6c8">TIER 2</span>
+      <div>
+        <h2 class="tier__t">Depth &amp; atmosphere</h2>
+        <p class="tier__s">The layer that turns “nice” into “alive”. Magnetism before the tear, air around the sound.</p>
+      </div>
+    </div>
+    <ul class="items">
+      <li class="item"><div><p class="item__t">Quiet reactive ambient bed</p><p class="item__d">A sub-perceptual drone on unlock that lifts with <code>idle-heat</code> and ducks under hits. Silence→tear contrast is what makes the rip <em>punch</em>.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Reactive sealed pack</p><p class="item__d">Idle pointer / device-tilt drives the foil sheen + a slight parallax — the pack feels held, not photographed. Pauses cleanly on <code>.tearing</code>.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">L</span></div></li>
+      <li class="item"><div><p class="item__t">First-run gesture hint</p><p class="item__d">A one-shot ghost stroke tracing the tear along the crimp after the pack arms, so a first-timer <em>sees</em> the drag. Self-dismisses on first touch.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Living audio + foreshadow</p><p class="item__d">Humanize repeated cues (detune/gain jitter so the chime never machine-guns); raise the rarity-tell heat floor + scale spark intensity by heat so a chase whispers before it shouts.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Matte paper flecks</p><p class="item__d">The foil debris currently glows like sparks. Mix in the (already-built but unused) matte <code>chip</code> sprite ~3:1 so torn paper reads as paper.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">S</span></div></li>
+    </ul>
+  </section>
+
+  <!-- TIER 3 -->
+  <section class="tier" style="--barA:rgba(245,146,71,.14);--barC:#f59247">
+    <div class="tier__head">
+      <span class="tier__num" style="background:#f59247">TIER 3</span>
+      <div>
+        <h2 class="tier__t">Mobile delivery &amp; perf hardening</h2>
+        <p class="tier__s">The brief is mobile-first. Pay down the last weights so it loads fast and never drops a frame.</p>
+      </div>
+    </div>
+    <ul class="items">
+      <li class="item"><div><p class="item__t">Shrink the hero asset</p><p class="item__d">The 2.7MB <code>pack.png</code> is the LCP and the wrong codec. Downscale to display size as WebP/AVIF + <code>fetchpriority=high</code>. Biggest mobile load win.</p></div><div class="tags"><span class="tag imp-high">High</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Pre-warm audio off the hot path</p><p class="item__d">Build the reverb impulse in <code>requestIdleCallback</code> (shorter, mono) so the first tear doesn't hitch while it synthesizes.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">M</span></div></li>
+      <li class="item"><div><p class="item__t">Trim idle cost</p><p class="item__d">Drop <code>will-change</code> on the idle pack + the six float-cards at rest; throttle <code>tearMove</code> sfx to ~60Hz and reuse a cached point.</p></div><div class="tags"><span class="tag imp-med">Med</span><span class="tag eff">S</span></div></li>
+    </ul>
+  </section>
+
+  <div class="guard">
+    <h3>⚙ Guardrails — don't regress the careful work</h3>
+    <ul>
+      <li>New VFX = transform/opacity only. <strong>No animated <code>filter</code></strong> (the documented mobile slice-lag).</li>
+      <li><code>prefers-reduced-motion</code> honored on every new cue (shake, pop, ambient, gesture hint).</li>
+      <li>Reactive idle specular must pause on <code>.tearing</code>; no new idle <code>will-change</code>.</li>
+      <li>Exit distances stay in <strong>pixels</strong> (iOS won't animate vmax/vh targets).</li>
+      <li>HIT escalation stays <strong>monotonic</strong> — a tier never out-punches the one above it.</li>
+      <li>Mind audio headroom (limiter −10 / ratio 12); duck under the chime so layers don't clip.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Drawn from an 8-lens senior review (idle · tear · stack · hit · sound · art-direction · mobile-perf · loop) + synthesis. Verify in the live preview after each tier.</p>
+</div>
+</body>
+</html>

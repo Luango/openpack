@@ -55,8 +55,13 @@ export function createReveal({ mountEl, onAgain }) {
     <div class="reveal__tell"></div>
     <div class="reveal__stack"></div>
     <canvas class="reveal__fx"></canvas>
+    <div class="reveal__shock"></div>
     <div class="reveal__flash"></div>
     <p class="reveal__stamp" aria-hidden="true"></p>
+    <div class="reveal__haul-cap" aria-hidden="true">
+      <p class="hc-kicker">Your pull</p>
+      <p class="hc-best"></p>
+    </div>
     <div class="reveal__status">
       <div class="reveal__pips" aria-hidden="true"></div>
       <p class="reveal__hint"></p>
@@ -73,7 +78,9 @@ export function createReveal({ mountEl, onAgain }) {
   const raysEl = host.querySelector(".reveal__rays:not(.reveal__rays--fine)");
   const raysFineEl = host.querySelector(".reveal__rays--fine");
   const flashEl = host.querySelector(".reveal__flash");
+  const shockEl = host.querySelector(".reveal__shock");
   const stampEl = host.querySelector(".reveal__stamp");
+  const haulCapEl = host.querySelector(".reveal__haul-cap");
   const pipsEl = host.querySelector(".reveal__pips");
   const srEl = host.querySelector(".reveal__sr");
   const particles = createParticles(host.querySelector(".reveal__fx"));
@@ -191,7 +198,7 @@ export function createReveal({ mountEl, onAgain }) {
     clearTimeout(anticTimer);
     clearArrival();
     clearEnter();
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul");
     tiltSpring.stop();
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
@@ -254,6 +261,10 @@ export function createReveal({ mountEl, onAgain }) {
     flourishIfRare();
     // the count + teach line fade in AFTER the card lands (the eye hits the card first)
     arrivalTimers.push(setTimeout(() => host.classList.add("show-status"), 380));
+    // …and the pips articulate the haul size with a soft ascending tick per card
+    for (let i = 0; i < cards.length; i++) {
+      arrivalTimers.push(setTimeout(() => sfx.pipTone(i), 420 + i * 70));
+    }
   }
 
   // Riffle the deeper cards (depth ≥ 1) from flush-behind-the-front into their
@@ -276,6 +287,7 @@ export function createReveal({ mountEl, onAgain }) {
         { duration: 175, delay: 26 * d, easing: "cubic-bezier(0.2,0.8,0.3,1)", fill: "both" }
       );
       a.onfinish = () => a.cancel(); // drop to CSS rest (identical value → no jump)
+      setTimeout(() => sfx.cardTap(d), 26 * d); // a soft riffle tap as each card lays down → the haul reads as N cards
     }
   }
 
@@ -316,6 +328,15 @@ export function createReveal({ mountEl, onAgain }) {
     clearEnter(); // cancel any in-flight cues from the previous card
     const el = entry.slot;
     enteringEl = el;
+    // Scale the entrance AMPLITUDE by tier (the card itself punches, not just the
+    // backdrop): a common sets down gently on the defaults; a chase drops from
+    // higher, overshoots deeper, and pops larger. Timing is fixed (see the CSS) so
+    // the contact dip stays locked to the impact cues. punch: 0 below Double Rare → 1 at Hyper.
+    const punch = Math.max(0, Math.min(1, (rarityToTier(entry.card) - 3) / 6));
+    el.style.setProperty("--enter-rise", (34 + punch * 26).toFixed(0) + "px");
+    el.style.setProperty("--enter-dip", (-(6 + punch * 12)).toFixed(0) + "px");
+    el.style.setProperty("--enter-pop", (1.015 + punch * 0.05).toFixed(3));
+    el.style.setProperty("--enter-from", (0.9 - punch * 0.06).toFixed(3));
     el.classList.remove("entering", "gleaming");
     void el.offsetWidth; // restart the keyframe if it was mid-play
     el.classList.add("entering");
@@ -350,7 +371,7 @@ export function createReveal({ mountEl, onAgain }) {
 
   function close() {
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul");
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
@@ -443,6 +464,7 @@ export function createReveal({ mountEl, onAgain }) {
     const next = slots[pos + 1];
     const nextTier = next ? rarityToTier(next.card) : -1;
     sfx.flick();
+    flingCurrent(); // throw the leaving card with direction + spin, and recoil the deck
 
     if (nextTier >= RARE_TIER) {
       // ANTICIPATION BEAT — fling the current card, then HOLD on a rising tell
@@ -456,9 +478,9 @@ export function createReveal({ mountEl, onAgain }) {
       cur.slot.style.pointerEvents = "none";
       host.style.setProperty("--tier-color", TIER_HEX[nextTier]);
       host.classList.add("telling");
-      sfx.riser(nextTier, cfg.antic);
-      if (navigator.vibrate) navigator.vibrate(8);
       const wait = REDUCED ? Math.min(220, cfg.antic) : cfg.antic;
+      sfx.riser(nextTier, wait); // duration = the actual hold, so the climax lands on the uncover
+      if (navigator.vibrate) navigator.vibrate(8);
       anticTimer = setTimeout(() => {
         host.classList.remove("telling");
         anticipating = false;
@@ -472,6 +494,7 @@ export function createReveal({ mountEl, onAgain }) {
     }
 
     // common card — uncover immediately
+    if (navigator.vibrate) navigator.vibrate(6); // a small tick — the card has weight leaving the hand
     pos++;
     layout();
     if (pos < cards.length) {
@@ -483,6 +506,62 @@ export function createReveal({ mountEl, onAgain }) {
     }
   }
 
+  // Throw the CURRENT front card off with a little direction + spin (alternating
+  // side per advance for variety), and recoil the deck a hair — so a flick has
+  // weight instead of every card sliding straight up the same way. The .flung CSS
+  // reads the --fling-* vars; layout()/the anticipation path then add the class.
+  function flingCurrent() {
+    const slot = slots[pos]?.slot;
+    if (!slot) return;
+    const dir = pos % 2 === 0 ? 1 : -1;
+    slot.style.setProperty("--fling-rot", (dir * (5 + Math.random() * 6)).toFixed(1) + "deg");
+    slot.style.setProperty("--fling-x", (dir * (8 + Math.random() * 10)).toFixed(0) + "px");
+    deckRecoil();
+  }
+
+  // The deck dips + settles as a card leaves it — a tiny reactive recoil.
+  function deckRecoil() {
+    if (REDUCED || !stackEl.animate) return;
+    stackEl.animate(
+      [{ transform: "translateY(0)" }, { transform: "translateY(4px)", offset: 0.4 }, { transform: "translateY(0)" }],
+      { duration: 220, easing: "ease-out" }
+    );
+  }
+
+  // An expanding tier-coloured ring on the hit. Scale + opacity only (the ring's
+  // glow is a static box-shadow, transform-scaled, never re-rastered). Bigger +
+  // longer for rarer pulls; even a Double Rare (which gets no rays) gets this punch.
+  function shockwave(tier) {
+    if (REDUCED) return;
+    const punch = Math.max(0, Math.min(1, (tier - 3) / 6));
+    const end = 1.1 + punch * 0.8;
+    shockEl.animate(
+      [
+        { transform: "translate(-50%,-50%) scale(0.18)", opacity: 0 },
+        { transform: `translate(-50%,-50%) scale(${(end * 0.5).toFixed(2)})`, opacity: 0.5 + punch * 0.3, offset: 0.25 },
+        { transform: `translate(-50%,-50%) scale(${end.toFixed(2)})`, opacity: 0 },
+      ],
+      { duration: 520 + punch * 280, easing: "cubic-bezier(0.15,0.7,0.3,1)" }
+    );
+  }
+
+  // The card hand JOLTS on the hit — a short decaying shake, amplitude by tier.
+  // On the stack container (composes over the card-enter on the slot + holo tilt on
+  // the card, which are separate elements). Skipped under reduced motion.
+  function shakeStack(tier) {
+    if (REDUCED || !stackEl.animate) return;
+    const punch = Math.max(0, Math.min(1, (tier - 3) / 6));
+    const amp = 3 + punch * 9;
+    const N = 6;
+    const frames = [{ transform: "translate(0px,0px)" }];
+    for (let i = 1; i <= N; i++) {
+      const decay = 1 - i / N;
+      frames.push({ transform: `translate(${((Math.random() * 2 - 1) * amp * decay).toFixed(1)}px, ${((Math.random() * 2 - 1) * amp * decay).toFixed(1)}px)` });
+    }
+    frames.push({ transform: "translate(0px,0px)" });
+    stackEl.animate(frames, { duration: 200 + punch * 160, easing: "ease-out" });
+  }
+
   function endOfPack() {
     host.classList.remove("iridescent");
     clearHit();
@@ -491,9 +570,57 @@ export function createReveal({ mountEl, onAgain }) {
       pips[i].classList.remove("is-current");
       pips[i].classList.add("is-seen");
     }
-    hintEl.textContent = "That's the pack!";
-    srEl.textContent = "That's the pack. Open another?";
+    showHaul(); // fan the spent cards back into a hand, rarest popped forward + glowing
     againEl.hidden = false;
+    sfx.concludeChime(); // a gentle resolving cadence — the haul closes on a chord, not silence
+  }
+
+  // THE HAUL — the payoff that rewards the loop. Instead of a lone last card on a
+  // dark stage, every card in the pack fans back out as a hand so the pull reads as
+  // a SET, with the rarest popped forward + glowing and named up top. Each slot's
+  // fan transform is computed here (deterministic, no fragile CSS math); the eased
+  // transition + hero glow live in CSS (.reveal.haul …).
+  function showHaul() {
+    if (!slots.length) return;
+    tiltSpring.stop(); // no more holo tilt writing to the cards
+    host.classList.add("haul");
+    const n = slots.length;
+    // hero = the rarest card (rarest-LAST, so >= keeps the last among ties)
+    let hero = 0;
+    for (let i = 0; i < n; i++) {
+      if (rarityToTier(slots[i].card) >= rarityToTier(slots[hero].card)) hero = i;
+    }
+    // Visual order: the hero takes the CENTRE of the fan (the prize), the rest fan
+    // out around it in their natural order — so the eye lands on the best pull, not
+    // on whichever index it happened to be.
+    const rest = [];
+    for (let i = 0; i < n; i++) if (i !== hero) rest.push(i);
+    const order = rest.slice();
+    order.splice(Math.floor(rest.length / 2), 0, hero);
+    const mid = (n - 1) / 2;
+    const w = stackEl.getBoundingClientRect().width || 240;
+    const step = w * 0.33; // px between fanned card centres — a readable overlap on mobile
+    order.forEach((cardIdx, v) => {
+      const s = slots[cardIdx];
+      const isHero = cardIdx === hero;
+      s.slot.classList.remove("flung", "front", "entering", "gleaming", "rare");
+      s.slot.classList.toggle("haul-hero", isHero);
+      s.slot.style.pointerEvents = "none";
+      s.cardEl.style.transform = ""; // drop any leftover holo tilt on the card
+      const off = v - mid;
+      const tx = off * step;
+      const ty = Math.abs(off) * (w * 0.085) - (isHero ? w * 0.12 : 0); // arc dip + hero lift
+      const rot = off * 8;
+      const sc = isHero ? 0.6 : 0.48;
+      s.slot.style.zIndex = String(isHero ? 200 : 100 - Math.abs(Math.round(off)));
+      s.slot.style.transform =
+        `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${rot.toFixed(1)}deg) scale(${sc})`;
+    });
+    const heroCard = slots[hero].card;
+    host.style.setProperty("--tier-color", TIER_HEX[rarityToTier(heroCard)]);
+    haulCapEl.querySelector(".hc-best").textContent = tierOf(heroCard).label;
+    hintEl.textContent = ""; // the caption + glowing hero carry it now
+    srEl.textContent = `That's your pack. Best pull: ${tierOf(heroCard).label}. Open another?`;
   }
 
   // THE HIT — when the current front card is a chase pull, fire the full payoff
@@ -528,6 +655,8 @@ export function createReveal({ mountEl, onAgain }) {
     );
     // the rarity label punches in
     stampHit(tier);
+    shockwave(tier);  // an expanding tier ring — even a Double Rare (no rays) lands a punch
+    shakeStack(tier); // the hand JOLTS on the hit — tactile weight, scaled by tier
 
     // a glowing burst around the card — soft bokeh + 4-point sparkles, additive
     const r = host.getBoundingClientRect();
@@ -544,8 +673,16 @@ export function createReveal({ mountEl, onAgain }) {
       shape: "star", bloom: true, trail: true,
     });
 
-    sfx.chime(tier);
-    sfx.sparkleDust(8 + tier, 0.7);
+    // Land the downbeat the anticipation built to, THEN ride the chime + glitter on
+    // top: impact → arpeggio → shimmer reads as one rising arc instead of three loose
+    // sounds. The chime is nudged off the impact (a hair longer for the held tiers) so
+    // it sits in the impact's tail, near the card-enter contact dip.
+    sfx.revealImpact(tier);
+    const chimeDelay = cfg.slow ? 150 : 80;
+    setTimeout(() => {
+      sfx.chime(tier);
+      sfx.sparkleDust(Math.round(12 + tier * 3), 0.4 + tier * 0.06); // genuinely fuller at the top
+    }, chimeDelay);
     if (navigator.vibrate) navigator.vibrate(cfg.vibe);
 
     // the top tiers HOLD the moment — freeze taps so the reveal can be savoured
@@ -597,9 +734,9 @@ export function createReveal({ mountEl, onAgain }) {
       pips[i].classList.toggle("is-current", i === pos);
       pips[i].classList.toggle("is-seen", i < pos);
     }
-    hintEl.textContent = "tap to flip · drag to spread";
+    hintEl.textContent = "tap for next · drag to spread";
     const card = slots[pos]?.card;
-    if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap to flip.`;
+    if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap for the next card.`;
   }
 
   againEl.addEventListener("click", () => {
