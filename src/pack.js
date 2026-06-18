@@ -61,6 +61,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="0.5" stop-color="#fff2e0" stop-opacity="0.5"/>
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
+        <linearGradient id="sparkgrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff4e2" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="#fff8ee" stop-opacity="0.95"/>
+          <stop offset="1" stop-color="#ffdca0" stop-opacity="0"/>
+        </linearGradient>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
           <polygon class="gap" points="" fill="#000"/>
@@ -86,6 +91,17 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            — never the sides or face (see onDown). Shown only when body.show-tear-zone
            is set (the "Tear zone" toggle). pointer-events:none — never blocks the slash. -->
       <path class="tear-zone" fill-rule="evenodd" d=""/>
+
+      <!-- edge sparks: thin warm streaks that shine STRAIGHT UP off the top crimp;
+           pack.js flicks one every few seconds (rise + fade). pointer-events:none.
+           Above the foil at y<0 — shown by the pack's overflow:visible. -->
+      <g class="sparks" aria-hidden="true">
+        <rect class="spark" x="38"  y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="95"  y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="150" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="205" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="262" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+      </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
 
@@ -463,26 +479,22 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // drag (a ghost copy of the pack stuck to the cursor), hijacking the tear
   mountEl.addEventListener("dragstart", (e) => e.preventDefault());
 
-  // Ambient edge sparks — while the pack sits sealed, a tiny shower of warm foil
-  // sparks flicks up off the top crimp every few seconds, with a soft glint (sfx).
-  // Reuses the fleck canvas (emits at screen coords like the tear); paused while
-  // the pack is grabbed, torn, opened, or the tab is hidden.
-  const SPARK_COLORS = ["#ffe7c0", "#ffd49a", "#fff4e2"];
+  // Ambient edge sparks — while the pack sits sealed, a thin warm streak shines
+  // straight up off the top crimp every few seconds (rise + stretch + fade), with a
+  // soft glint (sfx). Paused while grabbed, torn, opened, or the tab is hidden.
+  const sparkEls = [...svg.querySelectorAll(".spark")];
   function flickSpark() {
     sparkTimer = setTimeout(flickSpark, 2400 + Math.random() * 2800);
-    if (!armed || dragging || opened || document.hidden) return;
-    const sx = 24 + Math.random() * (VB.w - 48); // a random spot along the top crimp
-    const p = new DOMPoint(sx, 2).matrixTransform(svg.getScreenCTM());
-    particles.emit(p.x, p.y, {
-      count: 3 + ((Math.random() * 3) | 0),
-      speed: 3.4,
-      dir: -Math.PI / 2, // straight up off the edge
-      spread: 1.0,
-      colors: SPARK_COLORS,
-      gravity: 0.13,
-      life: 38,
-      size: 1.9,
-    });
+    if (!armed || dragging || opened || document.hidden || !sparkEls.length) return;
+    const el = sparkEls[(Math.random() * sparkEls.length) | 0];
+    el.animate(
+      [
+        { opacity: 0, transform: "translateY(3px) scaleY(0.4)" },
+        { opacity: 1, offset: 0.28 },
+        { opacity: 0, transform: "translateY(-24px) scaleY(1.3)" },
+      ],
+      { duration: 520 + Math.random() * 220, easing: "cubic-bezier(.15,.6,.3,1)" }
+    );
     sfx.spark();
   }
   let sparkTimer = setTimeout(flickSpark, 1400);

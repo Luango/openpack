@@ -114,6 +114,17 @@
          seconds. The rect + #sheen gradient live in the SVG (see pack.js); screen
          blend brightens the foil it crosses, and the .sealed mask clips it to the pack. */
       .pack-sheen { opacity: 0; pointer-events: none; animation: sheen 5.4s ease-in-out infinite; }
+
+      /* edge sparks — thin warm streaks that shine straight up off the top crimp;
+         pack.js flicks one every few seconds (rise + fade via the Web Animations
+         API). Origin at the base so the stretch grows upward; soft warm glow. */
+      .spark {
+        opacity: 0;
+        pointer-events: none;
+        transform-box: fill-box;
+        transform-origin: 50% 100%;
+        filter: drop-shadow(0 0 2.5px rgba(255, 205, 150, 0.85));
+      }
       @keyframes sheen {
         0%   { transform: translateX(-170px); opacity: 0; }
         8%   { opacity: 1; }
