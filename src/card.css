@@ -322,6 +322,41 @@ body.holo-on .card--detail .card__vfx[data-vfx="special"] {
   opacity: calc(0.35 + var(--hyp, 0) * 0.6);
 }
 
+/* Moving GLITTER DUST — a field of tiny specular points laid OVER the foil band
+   (tiers 3+). It parallaxes with --posx/--posy at its own rate and twinkles on a
+   short loop, so the surface sparkles like real holo instead of a flat gradient.
+   Opacity rides --hyp via the parent .card__vfx, so it only sparkles as you tilt.
+   Animates opacity ONLY (compositor-cheap) — never the filter property. */
+body.holo-on .card--detail .card__vfx[data-vfx="holo"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="double"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="ultra"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="illustration"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="special"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="secret"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="hyper"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 0, rgba(255, 255, 255, 0) 45%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.7) 0, rgba(255, 255, 255, 0) 42%);
+  background-size: 6px 6px, 11px 11px;
+  background-position:
+    var(--posx, 50%) var(--posy, 50%),
+    calc(var(--posx, 50%) * -0.7) calc(var(--posy, 50%) * 0.6);
+  mix-blend-mode: color-dodge;
+  pointer-events: none;
+  animation: glitter 1.5s ease-in-out infinite;
+}
+@keyframes glitter {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.holo-on .card--detail .card__vfx::after { animation: none; opacity: 0.7; }
+}
+
 /* tiers 8–9 secret / hyper — denser cross-hatched rainbow + scanlines */
 body.holo-on .card--detail .card__vfx[data-vfx="secret"],
 body.holo-on .card--detail .card__vfx[data-vfx="hyper"] {

@@ -11,7 +11,7 @@
 import { renderCard } from "./card.js";
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
-import { rarityToTier } from "./rarity.js";
+import { rarityToTier, tierOf, TIER_HEX, lighten } from "./rarity.js";
 import * as sfx from "./sfx.js";
 
 const TILT = 12; // max pointer tilt on the front card (deg)
@@ -26,13 +26,36 @@ const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — th
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
 
+// Per-tier HIT escalation — the ONE dial that keeps a crescendo: a Double Rare
+// is a shimmer, only a Hyper is a screen-takeover. burst = particle count,
+// flash = full-stage flash opacity, rays = sunburst opacity (0 = no rays),
+// fine = add the counter-rotating fine ray layer, fast = faster spin, antic =
+// anticipation-tell hold (ms) before the card uncovers, slow = held beat,
+// vibe = haptic pattern. Read once per reveal in flourishIfRare().
+const HIT = {
+  4: { burst: 28,  flash: 0.32, rays: 0,    fine: false, fast: false, antic: 280, slow: false, vibe: [10, 30, 10] },
+  5: { burst: 46,  flash: 0.5,  rays: 0.4,  fine: false, fast: false, antic: 360, slow: false, vibe: [12, 36, 12] },
+  6: { burst: 64,  flash: 0.62, rays: 0.55, fine: false, fast: false, antic: 450, slow: false, vibe: [14, 40, 16] },
+  7: { burst: 86,  flash: 0.74, rays: 0.7,  fine: true,  fast: false, antic: 560, slow: true,  vibe: [16, 44, 18, 60, 24] },
+  8: { burst: 106, flash: 0.86, rays: 0.85, fine: true,  fast: true,  antic: 670, slow: true,  vibe: [18, 50, 20, 70, 30] },
+  9: { burst: 126, flash: 0.95, rays: 0.95, fine: true,  fast: true,  antic: 780, slow: true,  vibe: [22, 56, 24, 80, 36] },
+};
+const hitCfg = (tier) => HIT[Math.max(4, Math.min(9, tier))];
+
 export function createReveal({ mountEl, onAgain }) {
   const host = document.createElement("div");
   host.className = "reveal hidden";
   host.innerHTML = `
+    <div class="reveal__dim"></div>
     <div class="reveal__aura"></div>
-    <canvas class="reveal__fx"></canvas>
+    <div class="reveal__interior"></div>
+    <div class="reveal__rays"></div>
+    <div class="reveal__rays reveal__rays--fine"></div>
+    <div class="reveal__tell"></div>
     <div class="reveal__stack"></div>
+    <canvas class="reveal__fx"></canvas>
+    <div class="reveal__flash"></div>
+    <p class="reveal__stamp" aria-hidden="true"></p>
     <p class="reveal__hint"></p>
     <button class="reveal__again" type="button" hidden>Open another</button>`;
   mountEl.appendChild(host);
@@ -40,12 +63,21 @@ export function createReveal({ mountEl, onAgain }) {
   const stackEl = host.querySelector(".reveal__stack");
   const hintEl = host.querySelector(".reveal__hint");
   const againEl = host.querySelector(".reveal__again");
+  const interiorEl = host.querySelector(".reveal__interior");
+  const raysEl = host.querySelector(".reveal__rays:not(.reveal__rays--fine)");
+  const raysFineEl = host.querySelector(".reveal__rays--fine");
+  const flashEl = host.querySelector(".reveal__flash");
+  const stampEl = host.querySelector(".reveal__stamp");
   const particles = createParticles(host.querySelector(".reveal__fx"));
 
   let slots = []; // { slot, cardEl, card }
   let cards = [];
   let pos = 0; // index of the current front card
   let peeking = true; // true while still inside the pack (peeking through the gap)
+  let anticipating = false; // true during the held "something rare is coming" beat
+  let anticTimer = null; // the pending uncover after the anticipation tell
+
+  const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
   // ---- press-and-drag to spread the stack ---------------------------------------
   // The stack rests as a plain front-view stack. Press and DRAG it and the cards
@@ -136,12 +168,18 @@ export function createReveal({ mountEl, onAgain }) {
     cards = packCards || [];
     pos = 0;
     sliding = false;
-    host.classList.remove("browsing");
+    anticipating = false;
+    clearTimeout(anticTimer);
+    host.classList.remove("browsing", "iridescent", "telling", "held");
     tiltSpring.stop();
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
     againEl.hidden = true;
     hintEl.textContent = ""; // no hint until the cards are out
+    // the interior glow (cards rise out of light) reads the rarest card's colour
+    const peak = cards.length ? Math.max(...cards.map(rarityToTier)) : 0;
+    host.style.setProperty("--tell", TIER_HEX[peak] || TIER_HEX[0]);
+    clearHit();
     // NOTE: stay hidden. The cards (images) still load while display:none, but the
     // stack isn't shown until the pack is grabbed (wake) — so it's never exposed
     // while the pack is floating or sliding back in after "Open another".
@@ -164,16 +202,41 @@ export function createReveal({ mountEl, onAgain }) {
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
     peeking = false;
     layout(); // the top card is now interactive (it never moved — just uncovered)
+    // the opening glows so the first card rises out of light, then settles low
+    interiorEl.animate(
+      [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0.22 }],
+      { duration: 720, easing: "ease-out", fill: "forwards" }
+    );
+    enter(slots[pos]); // the hero rises + scales in instead of just being "there"
     updateHint();
     flourishIfRare();
   }
 
+  // Play the rise+scale entrance on a slot's card (CSS keyframe; reduced-motion
+  // falls back to a plain fade). Self-cleans so a later layout isn't stuck mid-anim.
+  function enter(entry) {
+    if (!entry) return;
+    const el = entry.slot;
+    el.classList.remove("entering");
+    void el.offsetWidth; // restart the animation if it was mid-play
+    el.classList.add("entering");
+    const done = () => {
+      el.classList.remove("entering");
+      el.removeEventListener("animationend", done);
+    };
+    el.addEventListener("animationend", done);
+    setTimeout(done, 900); // safety net if animationend is missed
+  }
+
   function close() {
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent");
+    host.classList.remove("browsing", "iridescent", "telling", "held");
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
+    anticipating = false;
+    clearTimeout(anticTimer);
+    clearHit();
     tiltSpring.stop();
   }
 
@@ -251,48 +314,149 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function advance() {
-    if (pos >= cards.length) return;
-    sfx.flick();
-    // Start the iridescent build the instant the covering card is flicked away —
-    // so the aura is already washing in as the special card beneath is uncovered,
-    // not after it has settled. Keys off the card about to become front.
+    if (pos >= cards.length || anticipating) return;
+    if (host.classList.contains("held")) return; // a top-tier hit briefly holds taps
     const next = slots[pos + 1];
-    host.classList.toggle("iridescent", !!next && rarityToTier(next.card) >= RARE_TIER);
+    const nextTier = next ? rarityToTier(next.card) : -1;
+    sfx.flick();
+
+    if (nextTier >= RARE_TIER) {
+      // ANTICIPATION BEAT — fling the current card, then HOLD on a rising tell
+      // (its colour leaks up behind the stack, the world dims, an audio riser
+      // climbs) before the rare is uncovered with the full hit. The pause is the
+      // 期待 — the player feels it coming a beat before they see it.
+      anticipating = true;
+      const cfg = hitCfg(nextTier);
+      const cur = slots[pos];
+      cur.slot.classList.add("flung");
+      cur.slot.style.pointerEvents = "none";
+      host.style.setProperty("--tier-color", TIER_HEX[nextTier]);
+      host.classList.add("telling");
+      sfx.riser(nextTier, cfg.antic);
+      if (navigator.vibrate) navigator.vibrate(8);
+      const wait = REDUCED ? Math.min(220, cfg.antic) : cfg.antic;
+      anticTimer = setTimeout(() => {
+        host.classList.remove("telling");
+        anticipating = false;
+        pos++;
+        layout();
+        enter(slots[pos]);
+        flourishIfRare(); // the hit lands
+        updateHint();
+      }, wait);
+      return;
+    }
+
+    // common card — uncover immediately
     pos++;
     layout();
     if (pos < cards.length) {
+      enter(slots[pos]);
       flourishIfRare();
       updateHint();
     } else {
-      host.classList.remove("iridescent"); // last card gone → fade the aura out
-      hintEl.textContent = "That's the pack!";
-      againEl.hidden = false;
+      endOfPack();
     }
   }
 
-  // When the current front card is a hit, glow it and pop a foil burst + chime.
+  function endOfPack() {
+    host.classList.remove("iridescent");
+    clearHit();
+    hintEl.textContent = "That's the pack!";
+    againEl.hidden = false;
+  }
+
+  // THE HIT — when the current front card is a chase pull, fire the full payoff
+  // scaled by tier: sunburst rays, a screen flash, a rarity stamp, a glowing
+  // star/bokeh burst, a fuller chime + sparkle dust, haptics, and (top tiers) a
+  // held beat. A Double Rare is a shimmer; a Hyper takes the whole screen.
   function flourishIfRare() {
     const s = slots[pos];
     if (!s) return;
     const tier = rarityToTier(s.card);
     const isRare = tier >= RARE_TIER;
     s.slot.classList.toggle("rare", isRare);
-    // iridescent backdrop while a Double Rare-or-above card is up front
-    host.classList.toggle("iridescent", isRare);
-    if (isRare) {
-      const r = host.getBoundingClientRect();
-      particles.emit(r.left + r.width / 2, r.top + r.height * 0.44, { // where the centered card sits
-        count: 46,
-        speed: 7,
-        spread: Math.PI * 2,
-        colors: FOIL,
-        gravity: 0.06,
-        life: 70,
-        size: 3,
-      });
-      sfx.chime(tier);
-      if (navigator.vibrate) navigator.vibrate([10, 40, 12]);
+    host.classList.toggle("iridescent", isRare); // iridescent backdrop for the chase
+    if (!isRare) {
+      clearHit();
+      return;
     }
+
+    const cfg = hitCfg(tier);
+    const hex = TIER_HEX[tier];
+    host.style.setProperty("--tier-color", hex);
+
+    // rotating sunburst rays — gated by tier (a Double Rare gets none)
+    if (cfg.rays > 0) {
+      setRays(raysEl, cfg.rays, cfg.fast);
+      if (cfg.fine) setRays(raysFineEl, cfg.rays * 0.7, cfg.fast);
+    }
+    // the visceral white→tier screen flash
+    flashEl.animate(
+      [{ opacity: 0 }, { opacity: cfg.flash, offset: 0.08 }, { opacity: 0 }],
+      { duration: 460, easing: "ease-out" }
+    );
+    // the rarity label punches in
+    stampHit(tier);
+
+    // a glowing burst around the card — soft bokeh + 4-point sparkles, additive
+    const r = host.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height * 0.44;
+    const pal = tier >= 8 ? ["#ffffff", ...FOIL] : ["#ffffff", lighten(hex, 0.55), hex];
+    particles.emit(cx, cy, {
+      count: Math.round(cfg.burst * 0.6), speed: 7.5, spread: Math.PI * 2,
+      colors: pal, gravity: 0.05, life: 80, size: 3, bloom: true, trail: true,
+    });
+    particles.emit(cx, cy, {
+      count: Math.round(cfg.burst * 0.4), speed: 9.5, spread: Math.PI * 2,
+      colors: ["#ffffff", lighten(hex, 0.65)], gravity: 0.04, life: 72, size: 2.6,
+      shape: "star", bloom: true, trail: true,
+    });
+
+    sfx.chime(tier);
+    sfx.sparkleDust(8 + tier, 0.7);
+    if (navigator.vibrate) navigator.vibrate(cfg.vibe);
+
+    // the top tiers HOLD the moment — freeze taps so the reveal can be savoured
+    if (cfg.slow && !REDUCED) {
+      host.classList.add("held");
+      setTimeout(() => host.classList.remove("held"), 700);
+    }
+  }
+
+  // show + spin the rays at a target opacity (fast = quicker spin for top tiers)
+  function setRays(el, opacity, fast) {
+    el.style.opacity = String(opacity);
+    el.classList.add("spin");
+    el.classList.toggle("fast", !!fast);
+  }
+
+  // the rarity label punches in over the card, settles, then fades
+  function stampHit(tier) {
+    const s = slots[pos];
+    if (!s) return;
+    stampEl.textContent = tierOf(s.card).label;
+    stampEl.animate(
+      [
+        { opacity: 0, transform: "translate(-50%, -50%) scale(1.6)", letterSpacing: "0.34em" },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1)", letterSpacing: "0.08em", offset: 0.45 },
+        { opacity: 1, offset: 0.8 },
+        { opacity: 0 },
+      ],
+      { duration: 1700, easing: "cubic-bezier(0.2, 1.3, 0.3, 1)" }
+    );
+  }
+
+  // douse every hit layer — between cards, on close, and on a common pull
+  function clearHit() {
+    for (const el of [raysEl, raysFineEl]) {
+      el.style.opacity = "0";
+      el.classList.remove("spin", "fast");
+    }
+    flashEl.style.opacity = "0";
+    stampEl.style.opacity = "0";
+    host.classList.remove("telling", "held");
   }
 
   function updateHint() {

@@ -75,9 +75,13 @@ need to lift (`onMove` → `commitOpen`).
   than `CROSS_MIN`.
 - On commit (`makePieces`) the pack splits into two complementary pieces along the
   jagged seam. The **smaller** half flings off and fades (spring, `SEP_MAX`/`ROT`);
-  the bigger half is the body that still holds the cards.
+  the bigger half is the body that still holds the cards. The card's treasure light
+  (`.pack-light`: `open-bloom` + `sunburst()` shafts, clipped to the torn mouth)
+  blooms out of the opening.
+- `sfx.burst(power)` fires here too — a sub-bass drop + body thud + crack, the
+  chest-thump under the open (power scales with `peakSpeed`).
 - ~**750 ms** later the reveal takes over (`onOpen` → `reveal.show()`), uncovering
-  the centered card stack.
+  the centered card stack — which plays its own per-tier HIT (see `reveal.js`).
 
 ## 4 · The exit — which way the big half slides off
 
@@ -154,6 +158,18 @@ Quick map from behavior → code (all in [`src/pack.js`](../src/pack.js) unless 
 
 ### Changelog
 
+- **2026-06-18** — Premium VFX layer added on top of the opening-light work.
+  **Idle:** a rarity *tell* — `pack.setTell(peak)` lights a breathing halo
+  (`.pack-glow`) + tints the edge sparks toward the rarest hidden tier (`--tell` /
+  `--idle-heat`), so the sealed pack foreshadows a chase. **Open:** `sfx.burst`
+  chest-thump (above). **Reveal** (`reveal.js`): a per-tier `HIT` escalation table
+  (Double Rare = shimmer → Hyper = screen-takeover) — an anticipation tell (world
+  dims + colour leak + `sfx.riser`) before the chase, then sunburst rays, a screen
+  flash, a rarity stamp, a card entrance, glowing star/bokeh bursts, a fuller
+  `sfx.chime` + `sparkleDust`. **Engine:** `particles.js` rewritten to additive soft
+  sprites (bloom/trails/twinkle); `sfx.js` gains a master bus + synth reverb; foil
+  cards get a glitter-dust layer. All loops are opacity/transform-only and honour
+  `prefers-reduced-motion`.
 - **2026-06-17** — Exit goes sideways only for a true top→bottom split; any other
   cut drops away from its start crimp (top→down, bottom→up). Exit distance switched
   to px (iOS animation fix). Mobile double-tap / long-press hardening. Tear voids on

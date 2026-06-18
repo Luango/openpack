@@ -18,6 +18,7 @@
 
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
+import { TIER_HEX } from "./rarity.js";
 import * as sfx from "./sfx.js";
 
 // Internal coordinate box. The width is a fixed unit; the HEIGHT is re-derived
@@ -155,6 +156,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <span class="spark" style="left:68%"></span>
         <span class="spark" style="left:87%"></span>
       </div>
+      <!-- rarity TELL: a breathing halo behind the pack that only lights up when a
+           rare card is hidden inside (opacity scales with --idle-heat), tinted to
+           that tier via --tell. Sibling after .pack so ".pack.ready ~ .pack-glow"
+           starts its heartbeat. -->
+      <div class="pack-glow" aria-hidden="true"></div>
     </div>
     <canvas class="pack-fx"></canvas>`;
 
@@ -229,6 +235,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let lastClient = null;
   let lastT = 0;
   let peakSpeed = 0;
+  let tellTier = 0; // the rarest tier hidden inside — colours the idle tell
 
   // `w` = gap width while tearing; `sep` = how far the two pieces have parted.
   const spring = createSpring({
@@ -414,7 +421,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     lastClient = { x: e.clientX, y: e.clientY };
     lastT = performance.now();
     peakSpeed = 0;
-    mountEl.setPointerCapture?.(e.pointerId);
+    try { mountEl.setPointerCapture?.(e.pointerId); } catch { /* stray/released pointer id — fine */ }
   }
 
   function onMove(e) {
@@ -508,7 +515,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     opened = true;
     makePieces();
     spring.set({ sep: 1 }); // pieces pull fully apart
-    sfx.tearEnd(true, Math.min(1, 0.6 + peakSpeed / 4));
+    const power = Math.min(1, 0.6 + peakSpeed / 4);
+    sfx.tearEnd(true, power); // the fibrous snap
+    sfx.burst(power); // chest-thump under the open — sub-bass + body + crack
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
     // let the torn-off top FULLY fly away first, THEN hand off to the reveal
@@ -623,6 +632,17 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     setArmed: (v) => {
       armed = v;
       svg.classList.toggle("ready", v);
+    },
+    // The host whispers what the pack is hiding (the rarest tier inside) so the
+    // idle ambience can foreshadow it: a rarity-tinted breathing halo + tinted
+    // sparks, driven off the --tell / --idle-heat vars (only above Holo).
+    setTell: (peak) => {
+      tellTier = peak | 0;
+      const hex = TIER_HEX[tellTier] || TIER_HEX[0];
+      const heat = tellTier <= 3 ? 0 : Math.min(1, (tellTier - 3) / 6); // 0 below Holo → 1 at Hyper
+      mountEl.style.setProperty("--tell", hex);
+      mountEl.style.setProperty("--idle-heat", heat.toFixed(2));
+      mountEl.classList.toggle("chase", tellTier >= 8);
     },
   };
 }

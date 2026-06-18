@@ -36,6 +36,11 @@
         justify-content: center;
         touch-action: none; /* the slash drives the tear, never scrolls */
         z-index: 2;
+        /* the "tell": the hidden hit's tier colour + a 0–1 heat scalar (set by
+           pack.setTell). The idle rarity halo + tinted sparks read these so the
+           sealed pack foreshadows what's inside. */
+        --tell: #ffd49e;
+        --idle-heat: 0;
         transition: transform 0.7s cubic-bezier(0.45, 0, 0.7, 0.45), opacity 0.6s;
         will-change: transform, opacity; /* promote a layer so mobile composites the slide smoothly */
       }
@@ -92,6 +97,39 @@
       /* armed = the booster's card stack is rendered behind it; only then does the
          pack fade in so there's never a pack with nothing to open behind it */
       .pack.ready { opacity: 1; }
+
+      /* Rarity TELL halo — a rarity-tinted bloom behind the pack that BREATHES on a
+         heartbeat. Its opacity scales with --idle-heat, so it's invisible for a dud
+         and only swells in when something rare is sealed inside (the foreshadow).
+         Sits behind the foil (z-index:-1, like .pack-light); compositor-only
+         (opacity + scale), never animates the filter property. */
+      .pack-glow {
+        position: absolute;
+        left: 50%; top: 50%;
+        width: 134%; height: 122%;
+        transform: translate(-50%, -50%) scale(1);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: -1;
+        opacity: 0;
+        background: radial-gradient(closest-side,
+          color-mix(in srgb, var(--tell, #ffd49e) 80%, #fff) 0%,
+          var(--tell, #ffb877) 34%,
+          transparent 72%);
+        filter: blur(16px); /* STATIC blur — never animated */
+        mix-blend-mode: screen;
+      }
+      .pack.ready ~ .pack-glow { animation: heartbeat 4.6s ease-in-out infinite; }
+      @keyframes heartbeat {
+        0%        { opacity: calc(var(--idle-heat, 0) * 0.5);  transform: translate(-50%, -50%) scale(1); }
+        14%       { opacity: calc(var(--idle-heat, 0) * 0.85); transform: translate(-50%, -50%) scale(1.06); }
+        28%       { opacity: calc(var(--idle-heat, 0) * 0.6);  transform: translate(-50%, -50%) scale(1.02); }
+        46%       { opacity: calc(var(--idle-heat, 0) * 0.78); transform: translate(-50%, -50%) scale(1.05); }
+        70%, 100% { opacity: calc(var(--idle-heat, 0) * 0.5);  transform: translate(-50%, -50%) scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .pack.ready ~ .pack-glow { animation: none; opacity: calc(var(--idle-heat, 0) * 0.6); }
+      }
       .pack image {
         -webkit-user-drag: none;
         pointer-events: none; /* the <g> handlers drive the tear; the image never grabs the drag */
@@ -157,7 +195,8 @@
         height: 140%;         /* span up THROUGH the seal and out past the top edge */
         border-radius: 2px;
         background: linear-gradient(#fff, rgba(255, 180, 110, 0)); /* bright head clears into the dark; tail trails to the seal */
-        box-shadow: 0 0 8px rgba(255, 160, 80, 0.9);
+        /* glow warms toward the hidden hit's tier as the rarity heat rises */
+        box-shadow: 0 0 8px color-mix(in srgb, var(--tell, #ffa050) calc(var(--idle-heat, 0) * 75%), rgba(255, 160, 80, 0.9));
         transform-origin: bottom center; /* grows up from the seal bottom */
         opacity: 0;
         pointer-events: none;
@@ -380,6 +419,144 @@
         pointer-events: auto;
       }
       .reveal__again[hidden] { display: none; }
+
+      /* ======================================================================
+       *  THE HIT — sunburst rays, screen flash, anticipation tell, rarity stamp,
+       *  interior glow, card entrance. All live inside the .reveal host and are
+       *  gated/scaled per tier by reveal.js (a Double Rare just shimmers; a Hyper
+       *  takes the whole screen). New selectors only — they don't touch the
+       *  pack's open-light system above.
+       * ==================================================================== */
+
+      /* interior light — the opening glows so the first card rises out of light */
+      .reveal__interior {
+        position: absolute;
+        left: 50%; top: 44%;
+        width: 130%; height: 130%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(closest-side,
+          color-mix(in srgb, var(--tell, #ffd49e) 45%, transparent) 0%, transparent 66%);
+        mix-blend-mode: screen;
+        will-change: opacity;
+      }
+
+      /* rotating god-rays behind the hero card — one conic gradient, masked to a
+         soft disc, spun by a cheap transform. The punch-in is a fast opacity ramp. */
+      .reveal__rays {
+        position: absolute;
+        left: 50%; top: 44%;
+        width: 165vmax; height: 165vmax;
+        transform: translate(-50%, -50%) rotate(0deg);
+        pointer-events: none;
+        opacity: 0;
+        background: repeating-conic-gradient(from 0deg,
+          color-mix(in srgb, var(--tier-color, #fff) 85%, #fff) 0deg 2.2deg,
+          transparent 2.2deg 11deg);
+        -webkit-mask-image: radial-gradient(closest-side, #000 16%, rgba(0,0,0,0.5) 42%, transparent 72%);
+        mask-image: radial-gradient(closest-side, #000 16%, rgba(0,0,0,0.5) 42%, transparent 72%);
+        mix-blend-mode: screen;
+        transition: opacity 0.3s ease;
+        will-change: transform, opacity;
+      }
+      .reveal__rays.spin { animation: ray-spin 19s linear infinite; }
+      .reveal__rays.spin.fast { animation-duration: 13s; }
+      @keyframes ray-spin {
+        from { transform: translate(-50%, -50%) rotate(0deg); }
+        to   { transform: translate(-50%, -50%) rotate(360deg); }
+      }
+      .reveal__rays--fine {
+        background: repeating-conic-gradient(from 4deg,
+          color-mix(in srgb, var(--tier-color, #fff) 70%, #fff) 0deg 0.9deg,
+          transparent 0.9deg 6deg);
+      }
+      .reveal__rays--fine.spin { animation: ray-spin-rev 24s linear infinite; }
+      .reveal__rays--fine.spin.fast { animation-duration: 16s; }
+      @keyframes ray-spin-rev {
+        from { transform: translate(-50%, -50%) rotate(0deg); }
+        to   { transform: translate(-50%, -50%) rotate(-360deg); }
+      }
+
+      /* full-stage white→tier flash — the visceral "HIT" punctuation */
+      .reveal__flash {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 44%,
+          #fff 0%, color-mix(in srgb, var(--tier-color, #fff) 60%, #fff) 30%, transparent 70%);
+        mix-blend-mode: screen;
+        will-change: opacity;
+      }
+
+      /* anticipation TELL — colour leaks up behind the next card during the held
+         beat, while the world dims, just before a rare is uncovered */
+      .reveal__tell {
+        position: absolute;
+        left: 50%; top: 46%;
+        width: 90%; height: 90%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(closest-side,
+          color-mix(in srgb, var(--tier-color, #fff) 70%, transparent) 0%, transparent 68%);
+        mix-blend-mode: screen;
+        transition: opacity 0.3s ease;
+        will-change: opacity;
+      }
+      .reveal.telling .reveal__tell { opacity: 0.9; }
+      .reveal__dim {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(120% 100% at 50% 44%, transparent 28%, rgba(2, 3, 6, 0.72) 80%);
+        transition: opacity 0.35s ease;
+      }
+      .reveal.telling .reveal__dim { opacity: 1; }
+
+      /* the rarity STAMP — the tier label punches in over the hero card */
+      .reveal__stamp {
+        position: absolute;
+        left: 50%; top: 16%;
+        transform: translate(-50%, -50%) scale(1.6);
+        pointer-events: none;
+        opacity: 0;
+        font-size: clamp(15px, 4.4vw, 24px);
+        font-weight: 800;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #fff;
+        text-shadow: 0 0 14px var(--tier-color, #fff), 0 2px 10px rgba(0, 0, 0, 0.6);
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+
+      /* card ENTRANCE — the uncovered hero rises + scales in with a hair of
+         overshoot, ending exactly on the resting front-card transform (no jump). */
+      .reveal__slot.front.entering { animation: card-enter 0.55s cubic-bezier(0.18, 0.9, 0.3, 1.12) both; }
+      @keyframes card-enter {
+        0%   { transform: translateY(30px) scale(0.9); opacity: 0; }
+        55%  { opacity: 1; }
+        100% { transform: translateY(0) scale(1); opacity: 1; }
+      }
+
+      /* stacking order inside the reveal host: backdrop → rays → cards → sparkles
+         → flash → stamp */
+      .reveal__dim { z-index: 0; }
+      .reveal__aura, .reveal__interior { z-index: 1; }
+      .reveal__rays, .reveal__tell { z-index: 2; }
+      .reveal__stack { z-index: 10; }
+      .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
+      .reveal__flash { z-index: 300; }
+      .reveal__stamp { z-index: 320; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .reveal__rays.spin, .reveal__rays--fine.spin { animation: none; }
+        .reveal__slot.front.entering { animation: card-fade 0.4s ease both; }
+        @keyframes card-fade { from { opacity: 0; } to { opacity: 1; } }
+      }
     </style>
   </head>
   <body class="holo-on show-tear-zone">
@@ -406,6 +583,7 @@
       import { createPack } from "./src/pack.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
+      import { rarityToTier } from "./src/rarity.js";
 
       const hintEl = document.querySelector(".hint");
       const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
@@ -428,6 +606,8 @@
         ready = buildBooster().then((cards) => {
           cards.forEach((c) => { const im = new Image(); im.src = c.image; }); // warm hi-res
           reveal.prepare(cards); // pre-render the stack while the pack is still sealed
+          // foreshadow the pull: tint the idle pack toward the rarest card inside
+          pack.setTell(Math.max(...cards.map(rarityToTier)));
           pack.setArmed(true); // now it's safe to tear
           hintEl.textContent = TEAR_HINT;
         });

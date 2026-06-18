@@ -6,7 +6,7 @@
 // "mystery" placeholders so the open still works.
 
 import { fetchSetPool } from "./api.js";
-import { rarityToTier } from "./rarity.js";
+import { rarityToTier, TIER_HEX } from "./rarity.js";
 
 const DEFAULT_SET = "sv8"; // Surging Sparks — modern foils + illustration rares
 const PACK_SIZE = 5;
@@ -60,9 +60,7 @@ export async function buildBooster(setId = DEFAULT_SET, size = PACK_SIZE) {
 
 // ---- offline fallback -----------------------------------------------------
 
-// Tier accent colors (mirror base.css --tier-N) for the placeholder art.
-const TIER_HEX = ["#aab3c2", "#5fcf8e", "#57a6ee", "#3fd6c8", "#f2c84b", "#b072e6", "#f59247", "#ef5e92", "#ff6fd8", "#ffd24a"];
-
+// Tier accent colors for the placeholder art come from rarity.js (TIER_HEX).
 function mysteryArt(t) {
   const c = TIER_HEX[t] || TIER_HEX[0];
   const svg =
