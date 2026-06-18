@@ -18,10 +18,9 @@ const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
 const FOIL_Y = 17;
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
-const HOLD_MS = 240; // press and hold this long (without dragging) → the stack spreads
-const TILT_SLOP = 12; // moving more than this before the hold fires makes it a tilt-drag, not a hold
+const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this it's a tap)
+const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
 const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — the parallel cascade step
-const EXPAND_DIR = [-0.8, -0.6]; // default cascade direction (up-left) until your finger steers it
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
 
@@ -45,81 +44,25 @@ export function createReveal({ mountEl, onAgain }) {
   let pos = 0; // index of the current front card
   let peeking = true; // true while still inside the pack (peeking through the gap)
 
-  // ---- hold to spread the stack -------------------------------------------------
-  // A quick tap flips to the next card. Press and HOLD and the whole stack slides
-  // apart in PARALLEL — every card steps out along your finger by a fixed amount, so
-  // only each card's side edge shows (a real deck cracked open at an angle). Let go
-  // and it closes back to the front-view stack. (A quick drag tilts the holo — and
-  // the front card keeps tilting toward your finger while the stack is spread, too.)
-  let browsing = false; // the stack is spread open (or animating)
-  let fanActive = false; // the spread owns the slots' inline transforms right now
-  let dirX = EXPAND_DIR[0], dirY = EXPAND_DIR[1]; // unit cascade direction (steered by the finger)
-  let centerX = 0, centerY = 0; // deck centre in screen px, for steering
+  // ---- press-and-drag to spread the stack ---------------------------------------
+  // The stack rests as a plain front-view stack. Press and DRAG it and the cards
+  // slide apart in PARALLEL (no rotation, same size) along your finger — each card
+  // steps out by a fixed amount, so the front one stays on top and the rest reveal
+  // only their side edge. The spread tracks your finger 1:1 (no spring); let go and
+  // it eases shut. A quick tap flips to the next card. (No holo tilt while sliding.)
+  let sliding = false; // a press-drag spread is in progress
+  let dirX = 0, dirY = 0; // unit cascade direction = the drag direction
 
-  // One spring drives the spread: `open` 0→1 slides the stack from closed to cracked.
-  const deckSpring = createSpring({
-    rest: { open: 0 },
-    stiffness: 0.2,
-    damping: 0.82,
-    onTick: (c) => expandRender(c.open),
-  });
-
-  // point the cascade from the deck centre toward the finger (ignore tiny moves so a
-  // dead-still hold keeps the last/default direction)
-  function steer(px, py) {
-    const dx = px - centerX, dy = py - centerY, m = Math.hypot(dx, dy);
-    if (m > 18) { dirX = dx / m; dirY = dy / m; }
-  }
-
-  function startExpand(px, py) {
-    if (peeking || pos >= cards.length) return;
-    const r = stackEl.getBoundingClientRect();
-    centerX = r.left + r.width / 2;
-    centerY = r.top + r.height / 2;
-    steer(px, py); // aim it toward where you pressed
-    browsing = true;
-    fanActive = true;
-    host.classList.add("browsing"); // freeze the CSS slot transition — the spring/drag drive it now
-    deckSpring.reset({ open: 0 });
-    deckSpring.set({ open: 1 });
-    if (navigator.vibrate) navigator.vibrate(8);
-  }
-
-  function expandDrag(px, py) {
-    if (!browsing) return;
-    steer(px, py);
-    expandRender(deckSpring.cur.open); // re-aim immediately, 1:1 with the finger
-  }
-
-  function endExpand() {
-    browsing = false;
-    deckSpring.set({ open: 0 }); // close; expandRender finalises at rest
-  }
-
-  // Slide every live card out PARALLEL by `d` steps along the cascade direction (no
-  // rotation, same size) so the cards behind the front one reveal only their side
-  // edge. The front card stays put and on top; open 0 matches the CSS resting stack,
-  // so when it closes we hand the slots back to CSS with no visible jump.
-  function expandRender(open) {
-    if (!browsing && open <= 0.01) {
-      if (fanActive) {
-        fanActive = false;
-        host.classList.remove("browsing");
-        slots.forEach((s) => { s.slot.style.transform = ""; });
-        layout(); // restore --d / z-index / front pointer-events
-        deckSpring.stop();
-      }
-      return;
-    }
-    if (!fanActive) return; // torn down already — ignore the spring's tail-end ticks
-    const k = Math.max(0, open);
+  // Slide every live card out PARALLEL by `d` steps along the drag direction. `open`
+  // (0→1, from how far you've dragged) scales the spread; open 0 equals the CSS
+  // resting stack, so closing can hand the slots back to CSS with no visible jump.
+  function renderSlide(open) {
+    const k = Math.max(0, Math.min(1, open));
     for (let i = 0; i < slots.length; i++) {
       if (i < pos) continue; // already flung — leave it to the .flung CSS
       const d = i - pos;
-      // stacked (open 0) — mirrors `body.revealing .reveal__slot:not(.flung)` in pack.html
-      const ty0 = 5 * d, sc0 = 1 - 0.02 * d;
-      // cracked open (open 1) — slid out d steps along the cascade dir, back to full size
-      const slide = EXPAND_EDGE * d;
+      const ty0 = 5 * d, sc0 = 1 - 0.02 * d; // stacked (open 0) — mirrors the CSS resting stack
+      const slide = EXPAND_EDGE * d; // cracked open (open 1) — slid out d steps, back to full size
       const tx = dirX * slide * k;
       const ty = ty0 + (dirY * slide - ty0) * k;
       const sc = sc0 + (1 - sc0) * k;
@@ -128,15 +71,22 @@ export function createReveal({ mountEl, onAgain }) {
     }
   }
 
+  // Let go → re-enable the CSS transition and clear the inline transforms so every
+  // card eases back to the resting stack (a plain ease, no spring).
+  function closeSlide() {
+    sliding = false;
+    host.classList.remove("browsing");
+    void stackEl.offsetWidth; // reflow so the transition is armed before we clear
+    slots.forEach((s) => { s.slot.style.transform = ""; });
+  }
+
   // Render + load the whole stack UP FRONT, behind the still-sealed pack, so the
   // top card sits INSIDE the pack and peeks through the tear gap as you rip — and
   // there's nothing to fetch or build when the pack finally opens.
   function prepare(packCards) {
     cards = packCards || [];
     pos = 0;
-    browsing = false;
-    fanActive = false;
-    deckSpring.stop();
+    sliding = false;
     host.classList.remove("browsing");
     slots.forEach((s) => s.spring.stop());
     stackEl.innerHTML = "";
@@ -174,9 +124,8 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.remove("browsing");
     document.body.classList.remove("revealing");
     peeking = true;
-    browsing = false;
-    fanActive = false;
-    deckSpring.stop();
+    sliding = false;
+    host.classList.remove("browsing");
     slots.forEach((s) => s.spring.stop());
   }
 
@@ -207,8 +156,7 @@ export function createReveal({ mountEl, onAgain }) {
     });
 
     const entry = { slot, cardEl, card, spring };
-    let downX = 0, downY = 0, moved = false, holding = false, gestureMode = null, holdTimer = null;
-    const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+    let downX = 0, downY = 0, moved = false, holding = false;
 
     const isFront = () => slots[pos] === entry;
     const tilt = (e) => {
@@ -225,48 +173,44 @@ export function createReveal({ mountEl, onAgain }) {
         hyp: Math.min(1, Math.hypot(cx, cy)),
       });
     };
+    const flat = () => spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 });
 
     slot.addEventListener("pointerdown", (e) => {
       if (!isFront()) return;
       holding = true;
       moved = false;
-      gestureMode = null;
+      sliding = false;
       downX = e.clientX;
       downY = e.clientY;
       try { slot.setPointerCapture?.(e.pointerId); } catch {} // never let a stray pointer id abort the gesture
-      // hold still (no real drag) for HOLD_MS → spread the stack open
-      clearHold();
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        if (holding && gestureMode === null) { gestureMode = "expand"; moved = true; startExpand(downX, downY); }
-      }, HOLD_MS);
     });
     slot.addEventListener("pointermove", (e) => {
-      if (!holding || !isFront()) return;
-      if (gestureMode === "expand") { expandDrag(e.clientX, e.clientY); tilt(e); return; } // steer the spread + keep tilting the front card
-      const dx = e.clientX - downX, dy = e.clientY - downY;
-      // moving past the slop before the hold fires makes this a tilt-drag, not a hold
-      if (gestureMode !== "tilt" && Math.hypot(dx, dy) > TILT_SLOP) {
-        gestureMode = "tilt";
+      if (!isFront()) return;
+      if (!holding) { tilt(e); return; } // hover (desktop): holo lean only, no press
+      const dx = e.clientX - downX, dy = e.clientY - downY, m = Math.hypot(dx, dy);
+      if (!sliding) {
+        if (m <= SLIDE_SLOP) return; // still within tap tolerance
+        sliding = true;
         moved = true;
-        clearHold();
+        spring.reset(); // snap any holo tilt flat at once — no tilt while sliding
+        host.classList.add("browsing"); // freeze the CSS transition so the spread tracks the finger 1:1
       }
-      if (gestureMode === "tilt") tilt(e); // follow the pointer for the holo (no pre-tilt during a hold)
+      dirX = dx / m; dirY = dy / m; // cascade follows the drag direction…
+      renderSlide(Math.min(m / SLIDE_DRAG, 1)); // …and how far it opens follows the distance
     });
     const release = () => {
       if (!holding) return;
       holding = false;
-      clearHold();
-      spring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // ease the front card flat
-      if (gestureMode === "expand") {
-        endExpand(); // let go of the hold → the stack closes back up
+      if (sliding) {
+        closeSlide(); // let go → the spread eases shut
       } else if (!moved) {
         advance(); // a quick tap flicks the card away to the next
       }
-      gestureMode = null;
+      flat();
     };
     slot.addEventListener("pointerup", release);
     slot.addEventListener("pointercancel", release);
+    slot.addEventListener("pointerleave", () => { if (!holding) flat(); }); // end a hover tilt
     slot.addEventListener("contextmenu", (e) => e.preventDefault());
 
     return entry;
@@ -324,7 +268,7 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function updateHint() {
-    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · hold to spread`;
+    hintEl.textContent = `${pos + 1} / ${cards.length} · tap to flip · drag to spread`;
   }
 
   againEl.addEventListener("click", () => {
