@@ -490,7 +490,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     sparkTimer = setTimeout(flickSpark, 1800 + Math.random() * 2200);
     if (!armed || dragging || opened || document.hidden || !sparkEls.length) return;
     const el = sparkEls[(Math.random() * sparkEls.length) | 0];
-    const h = 0.85 + Math.random() * 0.9; // varied beam length per flick (some short, some tall)
+    const h = 0.8 + Math.random() * 0.5; // varied beam length (now the base spans the crimp, so peak ≈ 1)
     el.animate(
       [
         { opacity: 0, transform: "translateY(0) scaleY(0.4)" }, // a sliver at the seal
