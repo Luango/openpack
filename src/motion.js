@@ -67,6 +67,11 @@ export function createSpring({
       }
       onTick(cur);
     },
+    // retune the constants on the fly — e.g. soft while tracking a pointer, stiff to snap home
+    tune(nextStiffness, nextDamping) {
+      if (nextStiffness != null) stiffness = nextStiffness;
+      if (nextDamping != null) damping = nextDamping;
+    },
     stop() {
       if (raf) cancelAnimationFrame(raf);
       raf = null;

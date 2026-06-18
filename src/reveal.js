@@ -17,6 +17,8 @@ import * as sfx from "./sfx.js";
 const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
 const FOIL_Y = 17;
+const TILT_TRACK = [0.12, 0.82]; // soft spring [stiffness, damping] while the tilt follows the pointer — smooth, no shake
+const TILT_SNAP = [0.4, 0.8]; // stiff spring to magnet-snap every card flat on release
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
 const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this it's a tap)
 const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
@@ -83,13 +85,13 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   // The holo tilt — ONE spring shared across the whole visible stack, so every card
-  // leans the same way at once (each keeps its own foil). Stiff on purpose: it leans
-  // in fast on press, tracks your finger right through the slide, and magnet-snaps
-  // flat on release.
+  // leans the same way at once (each keeps its own foil). It runs SOFT while tracking
+  // the pointer (smooth, no jitter) and is retuned STIFF only when snapping flat on
+  // release — so the lean follows you fluidly but slams home like a magnet.
   const tiltSpring = createSpring({
     rest: { rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 },
-    stiffness: 0.35,
-    damping: 0.82,
+    stiffness: TILT_TRACK[0],
+    damping: TILT_TRACK[1],
     onTick: (c) => {
       const t = `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
       for (let i = pos; i < slots.length; i++) {
@@ -109,6 +111,7 @@ export function createReveal({ mountEl, onAgain }) {
     const r = stackEl.getBoundingClientRect();
     const cx = Math.max(-1, Math.min(1, (px - (r.left + r.width / 2)) / (r.width / 2)));
     const cy = Math.max(-1, Math.min(1, (py - (r.top + r.height / 2)) / (r.height / 2)));
+    tiltSpring.tune(TILT_TRACK[0], TILT_TRACK[1]); // soft follow — no shake
     tiltSpring.set({
       rx: cy * TILT,
       ry: -cx * TILT,
@@ -121,7 +124,8 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function flat() {
-    tiltSpring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 }); // magnet-snap every card flat
+    tiltSpring.tune(TILT_SNAP[0], TILT_SNAP[1]); // stiffen first so it snaps home like a magnet
+    tiltSpring.set({ rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 });
   }
 
   // Render + load the whole stack UP FRONT, behind the still-sealed pack, so the
