@@ -49,7 +49,9 @@ export function createReveal({ mountEl, onAgain }) {
   // slide apart in PARALLEL (no rotation, same size) along your finger — each card
   // steps out by a fixed amount, so the front one stays on top and the rest reveal
   // only their side edge. The spread tracks your finger 1:1 (no spring); let go and
-  // it eases shut. A quick tap flips to the next card. (No holo tilt while sliding.)
+  // it eases shut. A quick tap flips to the next card. Pressing first eases the front
+  // card into a holo tilt; once you drag, that tilt springs back to flat as the slide
+  // takes over (the tilt never tracks the finger mid-slide).
   let sliding = false; // a press-drag spread is in progress
   let dirX = 0, dirY = 0; // unit cascade direction = the drag direction
 
@@ -183,16 +185,17 @@ export function createReveal({ mountEl, onAgain }) {
       downX = e.clientX;
       downY = e.clientY;
       try { slot.setPointerCapture?.(e.pointerId); } catch {} // never let a stray pointer id abort the gesture
+      tilt(e); // grab feel: the front card eases (spring) into a tilt toward where you press
     });
     slot.addEventListener("pointermove", (e) => {
       if (!isFront()) return;
       if (!holding) { tilt(e); return; } // hover (desktop): holo lean only, no press
       const dx = e.clientX - downX, dy = e.clientY - downY, m = Math.hypot(dx, dy);
       if (!sliding) {
-        if (m <= SLIDE_SLOP) return; // still within tap tolerance
+        if (m <= SLIDE_SLOP) { tilt(e); return; } // still pressing — the tilt tracks your finger
         sliding = true;
         moved = true;
-        spring.reset(); // snap any holo tilt flat at once — no tilt while sliding
+        flat(); // spring the holo tilt back to flat as the slide takes over — eased, not a snap
         host.classList.add("browsing"); // freeze the CSS transition so the spread tracks the finger 1:1
       }
       dirX = dx / m; dirY = dy / m; // cascade follows the drag direction…
