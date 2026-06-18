@@ -64,8 +64,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         <!-- soft warm core fading to gold then transparent -->
         <radialGradient id="treasure" cx="0.5" cy="0.5" r="0.5">
           <stop offset="0" stop-color="#fffdf3"/>
-          <stop offset="0.28" stop-color="#ffe48f"/>
-          <stop offset="0.65" stop-color="#ffba38" stop-opacity="0.55"/>
+          <stop offset="0.42" stop-color="#ffe79a" stop-opacity="0.92"/>
+          <stop offset="0.72" stop-color="#ffba38" stop-opacity="0.4"/>
           <stop offset="1" stop-color="#ff9e1f" stop-opacity="0"/>
         </radialGradient>
         <!-- light shafts: brightest at the apex, fading to nothing at the tips.
@@ -252,12 +252,15 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         // It rides inside #pack-stage, so it fades away with the bag when the pack exits.
         const cardX = VB.w / 2;
         const cardY = VB.h / 2;
-        const r = 40 + c.sep * VB.w * 0.7;
+        // big + bright enough to clearly LIGHT the exposed card itself (the bulb you
+        // can see through the hole), not just spill rays past the edge. The clip +
+        // foil keep it to the opening, so a large bloom just lights the whole opening.
+        const r = 55 + c.sep * VB.w * 0.95;
         openBloom.setAttribute("cx", cardX.toFixed(1));
         openBloom.setAttribute("cy", cardY.toFixed(1));
         openBloom.setAttribute("rx", r.toFixed(1));
-        openBloom.setAttribute("ry", (r * 0.9).toFixed(1));
-        openBloom.style.opacity = Math.min(0.8, c.sep).toFixed(3); // soft core glow at the card
+        openBloom.setAttribute("ry", r.toFixed(1));
+        openBloom.style.opacity = Math.min(0.9, c.sep * 1.15).toFixed(3);
         lightRays.setAttribute("transform", `translate(${cardX.toFixed(1)} ${cardY.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
         lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
       } else if (tearPath) {
