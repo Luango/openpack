@@ -349,9 +349,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     mountEl.style.setProperty("--exit-y", Math.round(exitY * reach) + "px");
     mountEl.style.setProperty("--exit-rot", "0deg"); // straight slide — no tilt
 
-    // the light shafts fan OUT of the opening — aim them in the direction the
-    // gap faces (where the torn-off half pulls away from)
-    lightRaysPath.setAttribute("d", sunburst(Math.atan2(moverDir.y, moverDir.x)));
+    // the card shines a FULL radial burst from its centre; the foil blocks it and
+    // only the open-side shafts escape the torn hole (see the open-side clip below)
+    lightRaysPath.setAttribute("d", sunburst());
 
     // Light only escapes through the OPENING, never the intact foil. Clip it to a
     // half-plane on the torn-off half's side of the seam: the seam line (Pin→Pout,
@@ -723,17 +723,18 @@ function cwCorners(a, b) {
 // length and width, so it reads as uneven god-rays — light peeking out of the
 // opening — rather than a tidy mechanical sunburst. Drawn in the rays group's
 // local space; the group's transform places it at the gap and scales it as it grows.
-function sunburst(base) {
-  const N = 11; // number of shafts across the fan
-  const SPREAD = 2.55; // fan width (~146°) opening out of the gap
+function sunburst() {
+  const N = 20; // shafts ALL the way around — the card (the bulb) shines in every
+  //              direction; the foil blocks most of it and only the torn hole lets
+  //              the open-side shafts out (occlusion + the open-side clip do that).
   const L = 380; // reach of the longest shaft (matches the #rays gradient radius)
   let d = "";
   for (let i = 0; i < N; i++) {
-    const a = base - SPREAD / 2 + SPREAD * (i / (N - 1));
+    const a = (i / N) * Math.PI * 2; // full circle
     const jL = Math.abs((Math.sin(i * 12.9 + 1.7) * 4391) % 1); // 0..1, deterministic
     const jW = Math.abs((Math.sin(i * 7.31 + 0.4) * 2719) % 1);
-    const len = L * (0.66 + 0.34 * jL); // uneven shaft lengths
-    const hw = 0.018 + 0.03 * jW; // uneven shaft widths (radians of half-angle)
+    const len = L * (0.6 + 0.4 * jL); // uneven shaft lengths
+    const hw = 0.016 + 0.026 * jW; // uneven shaft widths (radians of half-angle)
     const x1 = (Math.cos(a - hw) * len).toFixed(1);
     const y1 = (Math.sin(a - hw) * len).toFixed(1);
     const x2 = (Math.cos(a + hw) * len).toFixed(1);
