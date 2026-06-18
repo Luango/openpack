@@ -62,9 +62,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
           <stop offset="1" stop-color="#fff2e0" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="sparkgrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#fff4e2" stop-opacity="0"/>
-          <stop offset="0.5" stop-color="#fff8ee" stop-opacity="0.95"/>
-          <stop offset="1" stop-color="#ffdca0" stop-opacity="0"/>
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="0.55" stop-color="#fff0d8" stop-opacity="0.55"/>
+          <stop offset="1" stop-color="#ffca7a" stop-opacity="0"/>
         </linearGradient>
         <mask id="tearmask">
           <rect x="0" y="0" width="${VB.w}" height="${VB.h}" rx="16" fill="#fff"/>
@@ -96,11 +96,11 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            pack.js flicks one every few seconds (rise + fade). pointer-events:none.
            Above the foil at y<0 — shown by the pack's overflow:visible. -->
       <g class="sparks" aria-hidden="true">
-        <rect class="spark" x="38"  y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="95"  y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="150" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="205" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
-        <rect class="spark" x="262" y="-20" width="2.4" height="20" rx="1.2" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="38"  y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="95"  y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="150" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="205" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
+        <rect class="spark" x="262" y="-18" width="3" height="26" rx="1.5" fill="url(#sparkgrad)"/>
       </g>
     </svg>
     <canvas class="pack-fx"></canvas>`;
@@ -484,16 +484,16 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // soft glint (sfx). Paused while grabbed, torn, opened, or the tab is hidden.
   const sparkEls = [...svg.querySelectorAll(".spark")];
   function flickSpark() {
-    sparkTimer = setTimeout(flickSpark, 2400 + Math.random() * 2800);
+    sparkTimer = setTimeout(flickSpark, 1800 + Math.random() * 2200);
     if (!armed || dragging || opened || document.hidden || !sparkEls.length) return;
     const el = sparkEls[(Math.random() * sparkEls.length) | 0];
     el.animate(
       [
-        { opacity: 0, transform: "translateY(3px) scaleY(0.4)" },
-        { opacity: 1, offset: 0.28 },
-        { opacity: 0, transform: "translateY(-24px) scaleY(1.3)" },
+        { opacity: 0, transform: "translateY(2px) scaleY(0.35)" },
+        { opacity: 1, transform: "translateY(-6px) scaleY(1)", offset: 0.22 }, // quick bright pop off the seal
+        { opacity: 0, transform: "translateY(-32px) scaleY(1.45)" }, // …then shoots up and fades
       ],
-      { duration: 520 + Math.random() * 220, easing: "cubic-bezier(.15,.6,.3,1)" }
+      { duration: 560 + Math.random() * 200, easing: "cubic-bezier(.12,.6,.3,1)" }
     );
     sfx.spark();
   }
