@@ -142,10 +142,12 @@ export function createReveal({ mountEl, onAgain }) {
     if (art && card.image) art.src = card.image;
     stackEl.appendChild(slot);
 
-    // the front card's tilt + holo, eased by the shared spring
+    // The front card's tilt + holo. Stiff on purpose: the tilt leans in fast on
+    // press and, the moment you start sliding, snaps back to flat like a magnet —
+    // fast but still spring-eased — so there's no tilt drifting through the slide.
     const spring = createSpring({
       rest: { rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 },
-      stiffness: 0.12,
+      stiffness: 0.35,
       damping: 0.82,
       onTick: (c) => {
         cardEl.style.transform = `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
@@ -195,7 +197,7 @@ export function createReveal({ mountEl, onAgain }) {
         if (m <= SLIDE_SLOP) { tilt(e); return; } // still pressing — the tilt tracks your finger
         sliding = true;
         moved = true;
-        flat(); // spring the holo tilt back to flat as the slide takes over — eased, not a snap
+        flat(); // magnet-snap the tilt back to flat (fast spring) as the slide takes over
         host.classList.add("browsing"); // freeze the CSS transition so the spread tracks the finger 1:1
       }
       dirX = dx / m; dirY = dy / m; // cascade follows the drag direction…
