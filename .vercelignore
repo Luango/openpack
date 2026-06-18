@@ -1,0 +1,4 @@
+# Dev-only files — not part of the static site Vercel serves.
+serve.py
+docs
+.claude

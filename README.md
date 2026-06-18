@@ -21,6 +21,16 @@ Then open <http://127.0.0.1:8123/>.
 > every response so a reload always fetches the current modules (the preview
 > webview otherwise holds onto stale JS between edits).
 
+## Deploy
+
+Hosted on **Vercel** (static, no build step) at **<https://openpack.vercel.app>**.
+It's pure HTML/CSS/ES-modules, so Vercel just serves the repo root — `serve.py` is
+local-dev only. [`vercel.json`](vercel.json) sets `Cache-Control: must-revalidate`
+on everything so a redeploy is picked up immediately (no content-hashing here, so
+nothing must cache stale); [`.vercelignore`](.vercelignore) keeps dev-only files
+out of the deploy. To ship: `vercel deploy --prod` from the repo (the CLI is linked
+to the `openpack` project).
+
 ## Data
 
 - **Open Pack** builds its booster from a **local snapshot** bundled in
