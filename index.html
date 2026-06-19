@@ -425,18 +425,16 @@
         100% { transform: translateX(330px); opacity: 0; }
       }
 
-      /* Floating card backs — the booster's card back (assets/card-back.jpg)
-         drifting up through the dark at different depths and angles, behind the
-         pack and the reveal. Ambient "cards in the vault" backdrop. */
+      /* Floating Poké Ball icons — monochrome (grey/white/black) balls drifting up
+         through the dark at different depths and angles, behind the pack and the
+         reveal. Ambient backdrop; matches the B&W balls inside the 3D carousel. */
       .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
       .float-card {
         position: absolute; bottom: -32%;
-        width: 150px; aspect-ratio: 63 / 88;
-        border-radius: 9px;
-        background: #1f3a8a url("assets/card-back.jpg") center / cover no-repeat;
-        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.55);
+        width: 132px; aspect-ratio: 1; /* square → the round Poké Ball icon */
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Crect width='100' height='50' fill='%23b9bcc8'/%3E%3Crect y='50' width='100' height='50' fill='%23f4f4f6'/%3E%3Crect y='41.5' width='100' height='17' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='46' fill='none' stroke='%231b1c22' stroke-width='5'/%3E%3Ccircle cx='50' cy='50' r='13.5' fill='%231b1c22'/%3E%3Ccircle cx='50' cy='50' r='8.8' fill='%23f4f4f6'/%3E%3C/svg%3E") center / contain no-repeat;
         opacity: 0;
-        filter: blur(var(--b, 0px)); /* far cards = blurrier (depth of field) */
+        filter: blur(var(--b, 0px)); /* far balls = blurrier (depth of field) */
         will-change: transform, opacity;
         animation: floatcard linear infinite;
       }

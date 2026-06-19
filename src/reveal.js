@@ -880,30 +880,32 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.add("collecting"); // CSS: drop the button, hide hint/caption
     againEl.disabled = true;
     binderEl.classList.add("rising"); // the binder slides up from below
+    slots.forEach((s) => { s.slot.style.pointerEvents = "none"; });
 
-    // where the binder sits, in the stack's local px (all slots share the stack box,
-    // so one delta vacuums every card to the same spot)
-    const sr = stackEl.getBoundingClientRect();
-    const br = binderEl.getBoundingClientRect();
-    const dx = (br.left + br.width / 2) - (sr.left + sr.width / 2);
-    const dy = (br.top + br.height / 2) - (sr.top + sr.height / 2);
-
-    // suck the cards in, front-to-back, staggered
     const order = haulOrder.length ? haulOrder.slice() : slots.map((_, i) => i);
-    const STAGGER = 200, FLIGHT = 420, START = 360; // ms (START = wait for the binder to rise)
-    order.forEach((cardIdx, k) => {
-      const s = slots[cardIdx];
-      s.slot.style.pointerEvents = "none";
-      setTimeout(() => {
-        s.slot.style.transition = `transform ${FLIGHT}ms cubic-bezier(0.5,0,0.85,0.3), opacity ${FLIGHT}ms ease-in ${FLIGHT * 0.4}ms`;
-        s.slot.style.transform = `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) rotate(0deg) scale(0.04)`;
-        s.slot.style.opacity = "0";
-        setTimeout(() => bloatBinder(k, order.length), FLIGHT - 60); // bloat as it lands
-      }, START + k * STAGGER);
-    });
+    const RISE = 520, STAGGER = 200, FLIGHT = 420; // RISE waits out the 0.5s rise transition
+
+    // suck the cards in only AFTER the binder has finished rising — so we measure its
+    // FINAL (risen) position. Measuring at click time gives the binder's start (down)
+    // spot, and the cards then fly PAST the risen binder and pop out below it.
+    setTimeout(() => {
+      const sr = stackEl.getBoundingClientRect();
+      const br = binderEl.getBoundingClientRect(); // risen now → true target
+      const dx = (br.left + br.width / 2) - (sr.left + sr.width / 2);
+      const dy = (br.top + br.height / 2) - (sr.top + sr.height / 2);
+      order.forEach((cardIdx, k) => {
+        const s = slots[cardIdx];
+        setTimeout(() => {
+          s.slot.style.transition = `transform ${FLIGHT}ms cubic-bezier(0.5,0,0.85,0.3), opacity ${FLIGHT}ms ease-in ${FLIGHT * 0.45}ms`;
+          s.slot.style.transform = `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) rotate(0deg) scale(0.04)`;
+          s.slot.style.opacity = "0"; // shrinks to nothing AT the binder centre → vacuumed in
+          setTimeout(() => bloatBinder(k, order.length), FLIGHT - 80); // bloat as it lands
+        }, k * STAGGER);
+      });
+    }, RISE);
 
     // after the last card is swallowed, settle the binder and hand off
-    const done = START + (order.length - 1) * STAGGER + FLIGHT + 360;
+    const done = RISE + (order.length - 1) * STAGGER + FLIGHT + 360;
     setTimeout(() => { close(); collecting = false; onAgain?.(); }, done);
   }
   // one bloat + gulp per card — the binder lurches bigger, like it just ate
