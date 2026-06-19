@@ -259,6 +259,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // ring wraps). `vel` carries fling momentum (index units / second).
   const N = meshes.length;
   const STEP = (Math.PI * 2) / N; // angle between adjacent packs
+  // above this fling speed (index/sec) we suppress the per-pack tick — packs are
+  // whipping past too fast to tick musically; ticks resume as it slows into place
+  const TICK_VEL = 6;
   let pos = 0, vel = 0;
   let dragging = false;
   let targetPos = null; // when set (by tap/goto), ease to this exact pos instead of free-fling
@@ -357,9 +360,17 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     for (const m of rimMats) m.uniforms.uTime.value = t; // sweep every pack's beam in sync
     if (!selecting && !introing) layout();
 
-    // tell the host when the focused pack changes (a tick + name plate)
+    // Tell the host when the focused pack changes (a tick + name plate). During a
+    // FAST fling we update the index silently (no host tick) — firing the per-pack
+    // sound for every pack whipping past was an audio machine-gun that piled up and
+    // trailed the spin. Below TICK_VEL it ratchets pack-by-pack into the settle, which
+    // is the satisfying feel anyway. The final landing always ticks (vel → 0).
     const idx = modIndex();
-    if (idx !== lastIdx && !selecting && !introing) { lastIdx = idx; onChange?.(packs[idx], idx); }
+    if (idx !== lastIdx && !selecting && !introing) {
+      const spinning = Math.abs(vel) > TICK_VEL;
+      lastIdx = idx;
+      if (!spinning) onChange?.(packs[idx], idx);
+    }
     renderer.render(scene, camera);
   }
   function play() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
@@ -395,6 +406,13 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     down = { x: e.clientX, y: e.clientY, pos, moved: 0, t: now(), lastX: e.clientX, lastT: now() };
     try { canvas.setPointerCapture?.(e.pointerId); } catch { /* stray/synthetic id — fine */ }
   }
+  // onMove ONLY updates wheel state (pos + fling velocity) — it must NOT render.
+  // With pointer capture, mobile fires pointermove far faster than the frame rate and
+  // uncoalesced; calling layout() here ran the whole ring re-place once PER event,
+  // flooding the main thread between frames. That starved the rAF loop (the visible
+  // 卡顿 on drag) AND delayed the per-pack tick (onChange fires from inside frame()),
+  // so the audio trailed the spin. The render loop already lays out every tick while
+  // dragging — so we just stash state here and let rAF draw it once per real frame.
   function onMove(e) {
     if (!down || selecting) return;
     const dx = e.clientX - down.x;
@@ -407,7 +425,6 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const instV = -(e.clientX - down.lastX) / perPack / (dtm / 1000);
     vel = vel * 0.6 + instV * 0.4; // smooth a little
     down.lastX = e.clientX; down.lastT = tt;
-    layout();
   }
   function onUp(e) {
     if (!down || selecting) return;

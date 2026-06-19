@@ -790,7 +790,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       ],
       { duration: 620 + Math.random() * 220, easing: "ease-out" }
     );
-    sfx.spark();
+    // (idle glint is now silent — the recurring spark sfx was a distracting tick)
   }
   let sparkTimer = setTimeout(flickSpark, 1400);
 

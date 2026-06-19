@@ -76,17 +76,37 @@ until you add it.
 
 ## Bundled sounds & licenses
 
-The `*.wav` files currently in this folder are a **recorded foley pack**, all sourced
-from **CC0 (public-domain)** libraries and rebuilt by `tools/build_sfx.py` (trimmed,
-normalised to ~−6 dB, looped/layered where noted). CC0 needs no attribution, but for
-provenance:
+The `*.wav` files here are a **recorded foley pack**, rebuilt by `tools/build_sfx.py`
+(trimmed, normalised to ~−6 dB, and **layered** for the money cues — see below). The
+three "satisfying" climax cues are stacked stingers, not single hits:
+
+- **`reveal_impact`** = synth sub-bass drop + impact punch + explosion crack + deep gong
+  bloom + bright glass "tsss" + a magical shimmer on top.
+- **`riser`** = a **reverse-cymbal** swell (reversed gong + reversed glass + a rising
+  noise bed) that climaxes on the hit; the engine time-stretches it to the hold length.
+- **`chime`** = a bright bell with a glitter shimmer struck into its attack.
+- **`tear_loop`/`tear_snap`** = paper rip/crush, high-shelf-lifted to read as metallic foil.
+
+### Sources & licenses
+
+Almost everything is **CC0 (public domain)** — safe to redistribute, no attribution
+needed. Provenance:
 
 - **Kenney** (https://kenney.nl) — CC0 — *Casino Audio* (card slide/place/fan, pack
   take-out & rip → `flick`, `setdown`, `cardtap`, `grab`, `tear_snap`), *Impact Sounds*
-  (punch/soft/plate/glass/bell → `open_burst`, `reveal_impact`, `chime`, and the
-  reversed-bell `riser`), *Interface Sounds* (`scratch`, `spark`, `sparkle`, `pip`,
-  `gulp`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
-- **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`
-  (seamless-looped paper crush) and a `tear_snap` variant (paper rip).
+  (punch body for `open_burst`/`reveal_impact`), *Interface Sounds* (`scratch`, `spark`,
+  `pip`, `gulp`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
+- **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`/`tear_snap`.
+- **"100 CC0 SFX"**, OpenGameArt — CC0 — gong/explosion/glass for `reveal_impact` &
+  `riser`, the bell for `chime`, metal/glass for the `tear_snap` crackle.
+
+**⚠ One CC-BY 3.0 file — attribution REQUIRED if shipped:**
+
+- **"Shimmer glitter magic"** by **ViRiX Dreamcore (David Mckee)**,
+  www.soundcloud.com/virix — OpenGameArt (https://opengameart.org/content/shimmer-glitter-magic),
+  licensed **CC-BY 3.0**. Used as the `sparkle` grain and the shimmer layer in
+  `reveal_impact` + `chime`. **Credit him somewhere user-visible** (about screen / credits)
+  if you ship this. To drop the attribution requirement entirely, swap `sparkle.wav` for a
+  CC0 twinkle and rebuild the two layered cues without the shimmer layer.
 
 To replace any cue, drop your own file in and edit `manifest.json` — no code changes.
