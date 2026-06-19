@@ -178,6 +178,31 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     return geoCache.get(key);
   }
 
+  // RIM LIGHT + BORDER BEAM, per pack. A glowing outline ribbon, traced from the
+  // art's own alpha so it HUGS the real pouch silhouette (crimped top, tapered
+  // sides), is attached to each pack mesh — so it rotates, pops and scales WITH the
+  // pack on the wheel. A weak always-on warm rim rings the whole edge; a bright
+  // comet sweeps around it. One ShaderMaterial per pack (so each can fade in the
+  // intro/selection), all ticked from the same clock so the beams move in sync.
+  const rimMats = [];
+  const rimGeoCache = new Map();
+  function addRimBeam(mesh, img, aspect) {
+    if (mesh.userData.rim) return; // already built (texture promise can resolve once)
+    const outline = traceOutline(img);
+    if (!outline) return;
+    const key = aspect.toFixed(3);
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, 0.04));
+    const mat = makeRimMaterial();
+    const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
+    // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999), so
+    // a pack never paints over its own rim. depthTest (kept on) still hides the rims of
+    // back-facing packs behind the nearer ones — only forward-facing edges light up.
+    rimMesh.renderOrder = 1000;
+    mesh.add(rimMesh);        // child → inherits the pack's rotation / pop / scale
+    mesh.userData.rim = rimMesh;
+    rimMats.push(mat);
+  }
+
   packs.forEach((p) => {
     const placeholder = new THREE.MeshStandardMaterial({ color: 0x222030, roughness: 0.6, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.4), placeholder);
@@ -195,6 +220,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // it faces on the wheel — no dark "back" showing on the far side (that was the
       // grey-pack inconsistency). One material → uniform across the whole carousel.
       mesh.material = makePackMaterial(tex);
+      addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
     });
   });
 
@@ -233,6 +259,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   function applyOpacity(mesh, op) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     mats.forEach((mm) => { mm.transparent = op < 1; mm.opacity = op; });
+    const rim = mesh.userData.rim; // the rim/beam fades right along with its pack
+    if (rim) rim.material.uniforms.uOpacity.value = op;
   }
 
   // --- render loop (parked while hidden) ------------------------------------
@@ -279,6 +307,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
 
     particles.update(dt);
     rising.update(dt);
+    for (const m of rimMats) m.uniforms.uTime.value = t; // sweep every pack's beam in sync
     if (!selecting && !introing) layout();
 
     // tell the host when the focused pack changes (a tick + name plate)
@@ -575,6 +604,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     dispose() {
       pause(); ro.disconnect();
       geoCache.forEach((g) => g.dispose());     // the shared pillow geometries
+      rimGeoCache.forEach((g) => g.dispose());  // the rim/beam ribbons
+      rimMats.forEach((m) => m.dispose());
       particles.points.geometry.dispose();
       scene.environment?.dispose?.();
       renderer.dispose();
@@ -639,6 +670,149 @@ function makePackGeometry(aspect) {
   return g;
 }
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+// ---- rim light + border beam ----------------------------------------------
+// Trace the pack art's OUTER silhouette from its alpha, returned as a closed loop
+// of points in the mesh's LOCAL coords (x ∈ [-0.5,0.5], y ∈ [-aspect/2, aspect/2],
+// image-y flipped to match the geometry). The pouch is one opaque span per row, so
+// the outline = its right edge top→bottom + its left edge bottom→top. A high sample
+// width + a low alpha cutoff make it hug the true outer edge tightly. Cached per art.
+const _outlineCache = new WeakMap();
+function traceOutline(img) {
+  if (_outlineCache.has(img)) return _outlineCache.get(img);
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return null;
+  const CW = 200, CH = Math.max(8, Math.round(CW * ih / iw));
+  const cv = document.createElement("canvas"); cv.width = CW; cv.height = CH;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, CW, CH);
+  let data; try { data = ctx.getImageData(0, 0, CW, CH).data; } catch { return null; } // tainted → skip the rim
+  const A = 18; // low cutoff → the outline sits right at the true outer edge, not inside it
+  const left = new Array(CH).fill(-1), right = new Array(CH).fill(-1);
+  let yTop = -1, yBot = -1;
+  for (let y = 0; y < CH; y++) {
+    let l = -1, r = -1;
+    for (let x = 0; x < CW; x++) if (data[(y * CW + x) * 4 + 3] > A) { if (l < 0) l = x; r = x; }
+    if (l >= 0) { left[y] = l; right[y] = r; if (yTop < 0) yTop = y; yBot = y; }
+  }
+  if (yTop < 0) return null;
+  let pts = [];
+  for (let y = yTop; y <= yBot; y++) if (right[y] >= 0) pts.push([right[y] + 1, y + 0.5]); // right edge ↓
+  for (let y = yBot; y >= yTop; y--) if (left[y] >= 0) pts.push([left[y], y + 0.5]);        // left edge ↑
+  pts = chaikin(rdp(pts, 1.0), 1); // simplify, then ONE light corner-cut → smooth but still tight
+  const aspect = ih / iw;
+  const out = pts.map(([px, py]) => [px / CW - 0.5, (0.5 - py / CH) * aspect]); // → local mesh coords
+  _outlineCache.set(img, out);
+  return out;
+}
+
+// Build a flat ribbon (triangle strip) that follows the closed outline, `halfW` wide
+// to each side of the edge, at local depth `z` (just proud of the front foil). Each
+// vertex carries aArc (0..1 along the loop, MONOTONIC — the loop is closed with a
+// duplicate start vertex at arc=1 so the beam doesn't glitch at the seam) and aSide
+// (-1..1 across the ribbon, for the soft cross-section glow in the shader).
+function makeRimGeometry(outline, halfW, z) {
+  const n = outline.length;
+  const seg = new Array(n); let total = 0;
+  for (let i = 0; i < n; i++) { const a = outline[i], b = outline[(i + 1) % n]; seg[i] = Math.hypot(b[0] - a[0], b[1] - a[1]); total += seg[i]; }
+  if (total < 1e-4) return new THREE.BufferGeometry();
+  const pos = [], aArc = [], aSide = [], idx = [];
+  let acc = 0;
+  for (let i = 0; i <= n; i++) {                 // n+1 verts: the last duplicates the first (arc=1)
+    const cur = outline[i % n], prev = outline[(i - 1 + n) % n], next = outline[(i + 1) % n];
+    let tx = next[0] - prev[0], ty = next[1] - prev[1];
+    const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
+    const nx = -ty, ny = tx;                     // unit normal (perp to the tangent)
+    const u = i < n ? acc / total : 1;
+    if (i < n) acc += seg[i];
+    pos.push(cur[0] + nx * halfW, cur[1] + ny * halfW, z); aArc.push(u); aSide.push(1);
+    pos.push(cur[0] - nx * halfW, cur[1] - ny * halfW, z); aArc.push(u); aSide.push(-1);
+  }
+  for (let i = 0; i < n; i++) {
+    const i0 = i * 2, i1 = i * 2 + 1, j0 = (i + 1) * 2, j1 = (i + 1) * 2 + 1;
+    idx.push(i0, i1, j0, i1, j1, j0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("aArc", new THREE.Float32BufferAttribute(aArc, 1));
+  g.setAttribute("aSide", new THREE.Float32BufferAttribute(aSide, 1));
+  g.setIndex(idx);
+  return g;
+}
+
+// The beam shader: a weak warm rim everywhere + a bright comet (tight head, trailing
+// tail) racing around the loop. Additive, so it reads as LIGHT against the dark scene.
+const RIM_VERT = `
+  attribute float aArc; attribute float aSide;
+  varying float vU; varying float vV;
+  void main() { vU = aArc; vV = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const RIM_FRAG = `
+  precision mediump float;
+  varying float vU; varying float vV;
+  uniform float uTime; uniform float uOpacity;
+  uniform vec3 uWarm; uniform vec3 uHot;
+  void main() {
+    float edge = max(0.0, 1.0 - abs(vV));
+    float body = pow(edge, 1.1);                       // broad soft glow across the ribbon
+    float hot  = pow(edge, 4.0);                       // a hotter thin core inside it
+    float head = fract(uTime * 0.22);                  // the comet's position around the loop
+    float ahead = fract(vU - head);
+    float behind = fract(head - vU);
+    float ring = min(ahead, behind);                   // circular distance to the head
+    float comet = exp(-ring * ring / 0.0016);          // bright head
+    float tail  = exp(-behind / 0.20) * 0.7;           // exponential tail trailing the head
+    float beam = max(comet, tail);
+    // weak always-on rim (0.22) + the strong sweeping comet; the hot core sharpens it
+    float i = (body * (0.22 + 2.7 * beam) + hot * beam * 1.2) * uOpacity;
+    vec3 col = mix(uWarm, uHot, clamp(beam * 1.1, 0.0, 1.0)); // gold rim → white-hot comet
+    gl_FragColor = vec4(col * i * 1.3, i);             // overdrive → blooms on the additive blend
+  }`;
+function makeRimMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 1 },
+      uWarm: { value: new THREE.Color(0xffc24a) },
+      uHot: { value: new THREE.Color(0xfffdf2) },
+    },
+    vertexShader: RIM_VERT,
+    fragmentShader: RIM_FRAG,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+// Ramer–Douglas–Peucker simplification (epsilon in px).
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  let maxD = 0, idx = 0;
+  const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1];
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len;
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD <= eps) return [pts[0], pts[pts.length - 1]];
+  return [...rdp(pts.slice(0, idx + 1), eps).slice(0, -1), ...rdp(pts.slice(idx), eps)];
+}
+
+// Chaikin corner-cutting — rounds a polyline into a smooth closed loop.
+function chaikin(pts, passes) {
+  let p = pts;
+  for (let k = 0; k < passes; k++) {
+    const out = [];
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    p = out;
+  }
+  return p;
+}
 
 // The pack BACK, drawn on a canvas from the product design sheet: the G-MAX AURA
 // swirl/vortex, a crimped top strip, a silver centre seal with a Gengar mark, the

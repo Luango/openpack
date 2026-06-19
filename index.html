@@ -211,58 +211,6 @@
         pointer-events: none;
         z-index: 1; /* over the foil */
       }
-
-      /* RIM LIGHT + BORDER BEAM — overlays the pack exactly like .pack-cut. A weak
-         warm ring rims the whole rounded-foil silhouette; a bright gold comet sweeps
-         around the border (same dash-offset technique as .cs-beam). Idle-only — fades
-         in with the pack, clears the moment a tear starts. */
-      .pack-rim {
-        position: absolute;
-        inset: 0;
-        overflow: visible;
-        pointer-events: none;
-        z-index: 1; /* over the foil, beneath the rip glow (.gap-glow-gl z2) */
-        opacity: 0;
-        transition: opacity 0.45s ease;
-      }
-      .pack.ready ~ .pack-rim { opacity: 1; }
-      .pack-wrap.tearing .pack-rim { opacity: 0; } /* gone the instant a tear starts */
-      /* px stroke widths regardless of how big the pack renders; round corners/ends */
-      .pack-rim path { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
-
-      /* weak rim light — a faint warm halo hugging the silhouette, gently breathing */
-      .rim-soft {
-        stroke: var(--tell, #ffd49e);
-        stroke-width: 2;
-        opacity: 0.3;
-        filter: drop-shadow(0 0 5px color-mix(in srgb, var(--tell, #ffd49e) 75%, transparent));
-      }
-      .pack.ready ~ .pack-rim .rim-soft { animation: rimBreathe 4.6s ease-in-out infinite; }
-      @keyframes rimBreathe { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.42; } }
-
-      /* strong border beam — a bright comet circling the rounded border: a wide gold
-         halo with a hot white core riding inside it, both racing around together
-         (stroke-dashoffset travels the perimeter; pathLength=100 → dashes are %). */
-      .beam-halo {
-        stroke: #ffce5a;
-        stroke-width: 5;
-        stroke-dasharray: 17 83;        /* one bright segment + a long gap */
-        filter: drop-shadow(0 0 7px rgba(255, 180, 70, 0.95)) drop-shadow(0 0 3px rgba(255, 214, 130, 0.85));
-      }
-      .beam-core {
-        stroke: #fffdf2;
-        stroke-width: 2;
-        stroke-dasharray: 10 90;        /* a touch shorter → a hot head inside the halo */
-        filter: drop-shadow(0 0 3px #fff);
-      }
-      .pack.ready ~ .pack-rim .beam-halo,
-      .pack.ready ~ .pack-rim .beam-core { animation: beamRun 3.4s linear infinite; }
-      @keyframes beamRun { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
-      @media (prefers-reduced-motion: reduce) {
-        .pack.ready ~ .pack-rim .beam-halo,
-        .pack.ready ~ .pack-rim .beam-core,
-        .pack.ready ~ .pack-rim .rim-soft { animation: none; }
-      }
       /* the WebGL "流光" canvas — overlays the pack exactly like .pack-cut, sits over
          the dark slit, and screen-blends so its additive gold reads as LIGHT leaking
          out of the tear. Sized in JS (flowlight.js) to the pack's box. */
@@ -283,9 +231,6 @@
       .pack-wrap.tearing .pack,
       .pack-wrap.tearing .pack-sheen,
       .pack-wrap.tearing .pack-glow,
-      .pack-wrap.tearing .pack-rim .beam-halo,
-      .pack-wrap.tearing .pack-rim .beam-core,
-      .pack-wrap.tearing .pack-rim .rim-soft,
       .pack-wrap.tearing .crimp-streak .cs-beam { animation-play-state: paused; }
       .scene-fx.paused .float-card { animation-play-state: paused; visibility: hidden; }
       /* the OPEN burst: kill the rim animation AND the drop-shadow filter on the
