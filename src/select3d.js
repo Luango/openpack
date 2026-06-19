@@ -216,11 +216,16 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       mesh.userData.aspect = aspect;
       mesh.geometry.dispose();              // drop the placeholder plane (shared geo is kept)
       mesh.geometry = packGeometry(aspect);
-      // SAME printed art on BOTH faces, so a pack looks identical no matter which way
-      // it faces on the wheel — no dark "back" showing on the far side (that was the
-      // grey-pack inconsistency). One material → uniform across the whole carousel.
-      mesh.material = makePackMaterial(tex);
+      // The FRONT face shows the printed art; the BACK face shows the real G-MAX AURA
+      // back (per the product design sheet) — different art per face, mapped to the two
+      // geometry groups. Front is set first so the pack shows immediately; the back
+      // swaps in when its texture loads (falls back to the front art if it can't).
+      const frontMat = makePackMaterial(tex);
+      mesh.material = frontMat;
       addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
+      loadBackTexture()
+        .then((backTex) => { mesh.material = [frontMat, makePackMaterial(backTex)]; })
+        .catch(() => { /* no back art → keep the front on both faces */ });
     });
   });
 
@@ -249,6 +254,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       m.scale.setScalar(BASE_S + POP_S * pop);
       // draw nearer packs last so they sit on top
       m.renderOrder = Math.round(m.position.z * 10);
+      // Fade the rim/beam out as a pack turns away from the lens: the flat outline
+      // ribbon collapses to an ugly vertical line edge-on, and the beam only reads on
+      // forward-facing packs anyway. (intro/selection drive this via applyOpacity.)
+      const rim = m.userData.rim;
+      if (rim) rim.material.uniforms.uOpacity.value = smoothstep(0.12, 0.55, front);
     }
   }
 
@@ -618,6 +628,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
 function now() { return performance.now(); }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
 // Procedural foil-pack geometry — a "pillow": a front and back sheet that bulge
 // outward through the body and press FLAT into the crimped seal strips at top and
@@ -628,8 +639,10 @@ function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2)
 function makePackGeometry(aspect) {
   const W = 1, H = aspect;
   const NX = 22, NY = 36;          // surface resolution (smooth bulge, cheap)
-  const PUFF = 0.07;               // half-thickness at the fattest point — a SLIM foil pouch
-  const LIP = 0.005;               // thin sealed lip so front/back never z-fight
+  const PUFF = 0.062;              // half-thickness ADDED by the card bulge in the body
+  const LIP = 0.014;               // base foil half-thickness everywhere — gives the sealed
+                                   // edges/crimps a flat, thin foil EDGE instead of tapering
+                                   // to needle points (the old side-view "blade" artifact)
   const TOP_SEAL = 0.07;           // flat crimp strip at the top (the serrated seal)
   const BOT_SEAL = 0.10;           // a longer, more tapered seal at the bottom (per the side view)
   // bulge profile: 0 at the L/R edges and within the seal strips, ~1 in the body
@@ -814,86 +827,6 @@ function chaikin(pts, passes) {
   return p;
 }
 
-// The pack BACK, drawn on a canvas from the product design sheet: the G-MAX AURA
-// swirl/vortex, a crimped top strip, a silver centre seal with a Gengar mark, the
-// "G-MAX AURA EDITION" title, "Contents: 5 Cards", legal text + lot code, fruit
-// pips and a stylised Pokémon wordmark. One shared texture (the back is identical
-// across the rack). aspect = height/width, matching the geometry.
-let _backTex = null;
-function makeBackTexture(aspect) {
-  if (_backTex) return _backTex;
-  const W = 560, H = Math.round(W * (aspect || 1.4));
-  const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const x = c.getContext("2d");
-  const cx = W * 0.5, cy = H * 0.5;
-  // swirl backdrop — a conic spiral of the art's magenta/purple/blue, darkening to
-  // the vortex hole at centre, with an outer vignette
-  x.fillStyle = "#180f2c"; x.fillRect(0, 0, W, H);
-  if (x.createConicGradient) {
-    const g = x.createConicGradient(-0.5, cx, cy);
-    [[0, "#3a1d6e"], [0.16, "#c12a82"], [0.36, "#6a2bd0"], [0.54, "#2a46b0"],
-     [0.72, "#a32a86"], [0.88, "#5a23b0"], [1, "#3a1d6e"]].forEach(([s, col]) => g.addColorStop(s, col));
-    x.fillStyle = g; x.fillRect(0, 0, W, H);
-  } else {
-    const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#6a2bd0"); g.addColorStop(1, "#c12a82");
-    x.fillStyle = g; x.fillRect(0, 0, W, H);
-  }
-  let rg = x.createRadialGradient(cx, cy, W * 0.015, cx, cy, W * 0.55);
-  rg.addColorStop(0, "rgba(0,0,0,0.9)"); rg.addColorStop(0.22, "rgba(20,6,42,0.35)"); rg.addColorStop(1, "rgba(0,0,0,0)");
-  x.fillStyle = rg; x.fillRect(0, 0, W, H);
-  rg = x.createRadialGradient(cx, cy, W * 0.42, cx, cy, W * 0.95);
-  rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, "rgba(8,4,18,0.85)");
-  x.fillStyle = rg; x.fillRect(0, 0, W, H);
-
-  // top crimp strip with a fine vertical hatch (the heat-sealed serration)
-  const crimpH = H * 0.06;
-  x.fillStyle = "rgba(206,202,224,0.5)"; x.fillRect(0, 0, W, crimpH);
-  x.strokeStyle = "rgba(255,255,255,0.22)"; x.lineWidth = 1;
-  for (let i = 0; i < W; i += 5) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, crimpH); x.stroke(); }
-
-  // centre silver seal band + a Gengar seal disc
-  const bw = W * 0.14;
-  const bg = x.createLinearGradient(cx - bw / 2, 0, cx + bw / 2, 0);
-  bg.addColorStop(0, "rgba(208,208,224,0.12)"); bg.addColorStop(0.5, "rgba(232,232,248,0.55)"); bg.addColorStop(1, "rgba(208,208,224,0.12)");
-  x.fillStyle = bg; x.fillRect(cx - bw / 2, crimpH, bw, H - crimpH);
-  const sr = W * 0.08;
-  x.fillStyle = "#cdced9"; x.beginPath(); x.arc(cx, cy, sr, 0, Math.PI * 2); x.fill();
-  x.fillStyle = "#473860"; x.beginPath(); x.arc(cx, cy, sr * 0.74, 0, Math.PI * 2); x.fill();
-  x.fillStyle = "#fff"; // Gengar eyes + grin
-  x.beginPath(); x.ellipse(cx - sr * 0.3, cy - sr * 0.16, sr * 0.17, sr * 0.1, -0.5, 0, Math.PI * 2); x.fill();
-  x.beginPath(); x.ellipse(cx + sr * 0.3, cy - sr * 0.16, sr * 0.17, sr * 0.1, 0.5, 0, Math.PI * 2); x.fill();
-  x.strokeStyle = "#fff"; x.lineWidth = sr * 0.1; x.beginPath(); x.arc(cx, cy + sr * 0.06, sr * 0.42, Math.PI * 0.15, Math.PI * 0.85); x.stroke();
-
-  // titles + text
-  x.fillStyle = "#fff"; x.textAlign = "left";
-  x.font = `italic 900 ${Math.round(W * 0.07)}px Arial, sans-serif`;
-  x.fillText("G-MAX AURA", W * 0.07, H * 0.17);
-  x.fillText("EDITION", W * 0.07, H * 0.225);
-  x.font = `800 ${Math.round(W * 0.044)}px Arial, sans-serif`;
-  x.fillText("Contents: 5 Cards", W * 0.07, H * 0.72);
-  x.fillStyle = "rgba(255,255,255,0.5)"; x.font = `${Math.round(W * 0.025)}px Arial, sans-serif`;
-  ["This pack contains randomly inserted collectable", "cards. Approximate odds vary by set. Keep this",
-   "packaging for reference. Not for resale separately.", "© Pokémon / Nintendo / Creatures / GAME FREAK."]
-    .forEach((t, i) => x.fillText(t, W * 0.07, H * 0.755 + i * H * 0.027));
-  x.fillStyle = "rgba(255,255,255,0.85)"; x.textAlign = "right"; x.font = `700 ${Math.round(W * 0.03)}px Arial, sans-serif`;
-  x.fillText("SWENTS-GMU-OOT", W * 0.94, H * 0.8);
-
-  // stylised Pokémon wordmark (bottom-right) — yellow fill, blue stroke
-  x.textAlign = "right"; x.font = `900 ${Math.round(W * 0.082)}px Arial, sans-serif`;
-  x.lineJoin = "round"; x.lineWidth = W * 0.014; x.strokeStyle = "#2a5cc0"; x.strokeText("Pokémon", W * 0.94, H * 0.88);
-  x.fillStyle = "#ffcb05"; x.fillText("Pokémon", W * 0.94, H * 0.88);
-
-  // fruit pips (bottom-left): strawberry, blueberry, crescent moon
-  x.fillStyle = "#e23b5a"; x.beginPath(); x.arc(W * 0.11, H * 0.85, W * 0.028, 0, Math.PI * 2); x.fill();
-  x.fillStyle = "#3b6fe2"; x.beginPath(); x.arc(W * 0.18, H * 0.86, W * 0.024, 0, Math.PI * 2); x.fill();
-  x.fillStyle = "#ffd24a"; x.beginPath(); x.arc(W * 0.24, H * 0.85, W * 0.026, 0, Math.PI * 2); x.fill();
-  x.globalCompositeOperation = "destination-out"; x.beginPath(); x.arc(W * 0.252, H * 0.845, W * 0.022, 0, Math.PI * 2); x.fill();
-  x.globalCompositeOperation = "source-over";
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 16;
-  _backTex = tex; return tex;
-}
 function setFaceFlash(mesh, v) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const m of mats) if (m.emissiveMap) m.emissiveIntensity = 0.12 + v;
@@ -1068,4 +1001,20 @@ function loadFaceTexture(p) {
   });
   _texCache.set(key, pr);
   return pr;
+}
+
+// The pack BACK — the real G-MAX AURA art (cropped + green-keyed from the product
+// design sheet). One shared texture across the whole rack (the back is identical).
+const BACK_IMG = "assets/pack-back-hi.webp";
+let _backArtTex = null;
+function loadBackTexture() {
+  if (_backArtTex) return _backArtTex;
+  _backArtTex = loadImg(BACK_IMG).then((im) => {
+    const tex = new THREE.Texture(im);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 16;
+    tex.needsUpdate = true;
+    return tex;
+  });
+  return _backArtTex;
 }
