@@ -682,6 +682,9 @@
          to tap only arrives once whenReady() swaps the label (the button stays tappable). */
       #start-gate.loading .start-gate__label  { animation-duration: 2.8s; opacity: 0.75; }
       #start-gate.loading .start-gate__center { animation-duration: 2.8s; }
+      /* calm, slow bob while loading — so the deeper/quicker .ready breathe below
+         reads as a clear state change the instant the ball becomes tappable */
+      #start-gate.loading .start-gate__ball   { animation-duration: 3.2s; }
       /* the loading bar: a thin track whose fill tracks sfx audio-decode progress
          (set in JS from sfx.onReadyProgress). It only exists while loading — once the
          audio is ready it fades out and the label flips to "Tap to open". */
@@ -719,6 +722,25 @@
         50%      { box-shadow: inset 0 0 0 2px #f4f4f6, 0 0 0 7px rgba(150, 188, 255, 0), 0 0 24px rgba(150, 188, 255, 0.85); }
       }
 
+      /* ---- becomes tappable: the gate flips to .ready ---------------------
+         whenReady() (audio decoded, label → "Tap to open") adds .ready. The ball
+         now breathes DEEPER and QUICKER than its loading idle so "you can press
+         now" is unmistakable, the centre button's attract-pulse speeds up, the
+         halo keeps pace, and one shock ring rings outward once to punctuate the
+         moment the target goes live (paired with the ready ping in JS). */
+      #start-gate.ready .start-gate__ball         { animation: gateReadyBreathe 1.5s ease-in-out infinite; }
+      #start-gate.ready .start-gate__center       { animation-duration: 1.3s; }
+      #start-gate.ready .start-gate__ball::before { animation-duration: 1.5s; }
+      #start-gate.ready .start-gate__shock        { animation: gateReadyShock 0.7s ease-out; }
+      @keyframes gateReadyBreathe {
+        0%, 100% { transform: translateY(0)    scale(1); }
+        50%      { transform: translateY(-6px) scale(1.09); }
+      }
+      @keyframes gateReadyShock {
+        0%   { opacity: 0.9; transform: scale(0.62); }
+        100% { opacity: 0;   transform: scale(1.5); }
+      }
+
       /* ---- tap feedback ---------------------------------------------------- */
       /* finger down on the button: depress it + quiet the bob for a tactile press */
       #start-gate.pressing .start-gate__ball   { animation: none; }
@@ -753,6 +775,9 @@
       @media (prefers-reduced-motion: reduce) {
         #start-gate .start-gate__ball, #start-gate .start-gate__center,
         #start-gate .start-gate__label { animation: none; }
+        /* equal/higher specificity so the .ready breathe + shock don't re-enable here */
+        #start-gate.ready .start-gate__ball, #start-gate.ready .start-gate__center { animation: none; }
+        #start-gate.ready .start-gate__shock { animation: none; opacity: 0; }
         #start-gate.opening .start-gate__ball { animation: none; opacity: 0; }
         #start-gate.nudge .start-gate__center, #start-gate.nudge .start-gate__label { animation: none; }
       }
@@ -1334,7 +1359,18 @@
           gateRevealed = true;
           if (gateBarFill) gateBarFill.style.width = "100%";
           startGate.classList.remove("loading"); // fades the bar out (CSS)
+          startGate.classList.add("ready");       // ball breathes deeper/quicker + shock ring — "you can tap now"
           gateLabel.textContent = "Tap to open";
+          // a soft two-note "ready" ping to draw the ear to the now-live target.
+          // NB: this is the very first frame BEFORE any user gesture, so browser
+          // autoplay policy blocks it on a cold first load (the whole reason this
+          // gate exists) — it sounds only where audio is already unlocked: a
+          // returning visit with media-engagement, or after the user nudged the
+          // volume control. Harmless no-op otherwise; the visual breathe carries it.
+          try {
+            sfx.pipTone?.(0);
+            setTimeout(() => sfx.pipTone?.(4), 110);
+          } catch { /* audio optional */ }
         };
         try {
           sfx.onReadyProgress?.((p) => { realProgress = Math.max(realProgress, p); });
@@ -1459,7 +1495,7 @@
           await ready;                                // pre-armed → resolves instantly
           document.body.classList.remove("picking");  // real pack appears at the matched rect
           startDissolve();                            // cross-dissolve the canvas into it, then park
-          sfx.silenceMusic?.();                        // ready-to-tear screen is QUIET — the open theme waits for the rip
+          sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up and play its INTRO, then HOLD at the intro's end until the pack fully opens
         },
         // The entrance animation has finished — only NOW pre-arm the first pack.
         // buildBooster + reveal.prepare build and render the card-stack DOM (plus
