@@ -4,6 +4,8 @@ docs
 .claude
 # the 9.7MB multi-view design sheet is a REFERENCE only (never loaded at runtime)
 assets/pack design sheet.png
+# BGM source files — not wired into the app yet; keep them out of the deploy until used
+assets/*.mp3
 # the 2.7MB PNG is the editable SOURCE; runtime ships the WebPs instead:
 #   • assets/pack.webp    — small (134KB), the SVG tear-pack LCP
 #   • assets/pack-hi.webp — hi-res (~270KB), the 3D carousel texture

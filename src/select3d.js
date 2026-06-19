@@ -107,26 +107,34 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
 
-  // LIGHTING MODEL — every pack is the same component, so it MUST read the same.
-  // The light is therefore fully UNIFORM: a flat ambient + a hemisphere that's
-  // azimuth-independent (it only depends on a surface's up-ness, and the packs are
-  // all upright), so every pack around the wheel gets the EXACT same illumination,
-  // no matter which way it faces. Crucially there is NO positional light (point /
-  // spot): a positional light falls off with distance, which is what was lighting
-  // only the front pack + its neighbour and leaving the rest dim. The focused pack
-  // stands out purely by being larger and nearer (FRONT_PUSH + scale), not by light.
-  // It's a REVOLVER now (packs face every direction), so the light must be
-  // azimuth-independent or the turned packs go dark. NO directional key — only a flat
-  // ambient + a hemisphere (both depend on a surface's up-ness, not its facing). Every
-  // pack — front, side, or back-facing — is lit identically. The foil "pop" comes from
-  // the environment reflection (also azimuth-uniform), boosted on the material below.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  scene.add(new THREE.HemisphereLight(0xd6deff, 0x2a2342, 1.35)); // cool sky / violet ground → even, with mood
-  // a gentle cool RIM from behind so the back of the wheel separates from the black
-  // backdrop (directional → no distance falloff, so it doesn't favour any one pack)
-  const rim = new THREE.DirectionalLight(0xbcd2ff, 0.35);
-  rim.position.set(0, 4, -10);
+  // LIGHTING — a cinematic rig for a REVOLVER of identical packs: a soft, even BASE so
+  // no pack ever falls black whichever way it faces, a gentle KEY for dimensionality,
+  // a cool RIM for separation, and — the centrepiece — a warm SPOT that is the FRONT
+  // pack's OWN light: whatever pack revolves to the front sits in it and pops with a
+  // real key + a live foil specular, while the side/back packs stay on the cool base.
+  //
+  // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
+  //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  scene.add(new THREE.HemisphereLight(0xd6deff, 0x241d3a, 1.0)); // cool sky / violet floor → mood + shape
+  // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
+  //     gradient across the foil so the packs read as dimensional, not flat prints.
+  const key = new THREE.DirectionalLight(0xfff1da, 0.5);
+  key.position.set(-4, 5, 8);
+  scene.add(key);
+  // (3) RIM — cool, from behind/above, peels the back of the wheel off the black bg.
+  const rim = new THREE.DirectionalLight(0xbcd2ff, 0.5);
+  rim.position.set(0, 5, -10);
   scene.add(rim);
+  // (4) FRONT SPOT — the focused pack's dedicated light. A warm cone pooled on the
+  //     front dock (between the lens and the ring), aimed at where the hero sits. Decay
+  //     + cone keep it OFF the side/back packs, so it reads as a stage spotlight that
+  //     the wheel turns each pack through — bright key + a sweeping foil highlight.
+  const frontSpot = new THREE.SpotLight(0xfff0d6, 30, 12, 0.62, 0.7, 1.4);
+  frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
+  frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
+  scene.add(frontSpot);
+  scene.add(frontSpot.target);
 
   // A soft equirect "environment" built from a canvas gradient gives the foil a
   // moving holographic sheen (metalness reflects it) as packs rotate — cheap, no HDR.
