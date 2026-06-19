@@ -37,9 +37,19 @@ export function renderCard(card, { variant = "grid", index } = {}) {
     const DEPTH = 3; // px of paper thickness
     const HALF = DEPTH / 2;
     const LAYERS = 8; // plates filling the wall so it has no gaps
+    // Keep every edge plate strictly INSIDE the front/back faces (±HALF) — never
+    // coplanar with either. The faces are opaque and full-bleed, so head-on the
+    // front face must win the depth test cleanly; a plate at the SAME z as the
+    // face is a tie, and Android's coarser GPU depth precision resolves that tie
+    // non-deterministically → the z-fighting / "overlap" flicker seen only on
+    // Android (desktop/iOS happen to settle it by paint order). A 0.5px lead is
+    // invisible to the eye but decisive for the depth test. Edge-on, the faces
+    // still cap the full ±HALF wall, so the paper thickness looks unchanged.
+    const WALL_INSET = 0.5;
     let edges = "";
     for (let i = 0; i <= LAYERS; i++) {
-      const z = (HALF - (i / LAYERS) * DEPTH).toFixed(3); // +HALF … −HALF
+      // span (HALF−INSET) … −(HALF−INSET) — clear of both opaque faces
+      const z = ((HALF - WALL_INSET) - (i / LAYERS) * (DEPTH - 2 * WALL_INSET)).toFixed(3);
       edges += `<div class="card__edge" style="transform: translateZ(${z}px)"></div>`;
     }
     return `

@@ -699,8 +699,17 @@ export function createReveal({ mountEl, onAgain }) {
       // untransformed depth offset (the later scale/rotate stay in-plane). The browser
       // depth-sorts by this, so the card sliding to centre rises through the others
       // continuously — no z-index flip snapping it from behind to in front in one frame.
-      const tz = -ao * 16; // px; ~16/1100 perspective ⇒ negligible size change, clean sort
-      s.slot.style.transform = `translateZ(${tz.toFixed(1)}px) translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+      // Depth = distance from centre (farther → farther back), PLUS a small signed
+      // bias by `off`. Without the bias, two cards symmetric about the centre (e.g.
+      // off = ±0.5 as you drag through the midpoint) get the SAME translateZ — an
+      // exact depth tie. They overlap on screen there, and Android's coarser GPU
+      // depth precision resolves the tie non-deterministically → the cards flicker /
+      // z-fight (only on Android; desktop/iOS settle it by paint order). The signed
+      // term gives left vs right a stable front-to-back order (like a real fanned
+      // hand) with no tie; at ~2px/step it's far below the 16px/step recede, so it
+      // never inverts which card is nearer and is invisible to the eye.
+      const tz = -ao * 16 - off * 2; // px; ~16/1100 perspective ⇒ negligible size change, clean sort
+      s.slot.style.transform = `translateZ(${tz.toFixed(2)}px) translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
       // z-index + foil only change when a card crosses the centre boundary — writing them
       // every frame needlessly repaints the (blend-mode) foil layers of every side card,
       // which is what janks the drag on mobile. Dirty-track and only write on transition.
