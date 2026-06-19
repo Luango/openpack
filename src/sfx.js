@@ -353,7 +353,10 @@ function unlockOutput() {
     src.buffer = ctx.createBuffer(1, 1, 22050);
     src.connect(ctx.destination);
     src.start(0);
-    outputUnlocked = true;
+    // Only count it DONE if it played through a RUNNING context — a buffer started while
+    // the context is still suspended (first-tap resume is async on iOS) doesn't actually
+    // un-mute the output, so leave the flag clear and retry on the next gesture.
+    if (ctx.state === "running") outputUnlocked = true;
   } catch {
     /* ignore — nothing to unlock */
   }
@@ -604,18 +607,18 @@ export function kickAudio() {
 // the pack's own pointerdown handler — the context is created + resume()'d first,
 // so the very first grab/tear isn't swallowed while the context is still cold.
 const unlock = () => {
-  // Only stop listening once the bed ACTUALLY started. startMusic() flips its flag
-  // synchronously but play() resolves async — on mobile that play often rejects (cold
-  // buffer / autoplay heuristics), which previously left the listeners removed and the
-  // music dead for the whole session. Wait for the real result and retry on the next
-  // gesture if it failed. (On iOS, getting the bed to play is also what promotes the
-  // audio session to "playback", so even the synth SFX stop being silent-switched.)
-  kickAudio().then((ok) => {
-    if (ok) {
-      window.removeEventListener("pointerdown", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
-    }
-  });
+  kickAudio();
+  // Stop listening only once the SFX AudioContext is actually RUNNING — NOT merely once
+  // music started. Music plays natively now (independent of the context), so "music ok" no
+  // longer implies the WebAudio graph the SFX use has unlocked. On iOS a freshly-created
+  // (pre-gesture) context often won't resume on the very first tap, so if we removed the
+  // listeners then, every SFX stayed silent for the whole session until a refresh. Keep
+  // retrying resume()/unlockOutput() (both run inside kickAudio→ensure) on each gesture —
+  // dragging the carousel, tapping a pack — until the context truly goes live, then detach.
+  if (ctx && ctx.state === "running") {
+    window.removeEventListener("pointerdown", unlock, true);
+    window.removeEventListener("keydown", unlock, true);
+  }
 };
 window.addEventListener("pointerdown", unlock, true);
 window.addEventListener("keydown", unlock, true);
