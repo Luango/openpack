@@ -228,7 +228,7 @@
       .pack.ready ~ .pack-rim { opacity: 1; }
       .pack-wrap.tearing .pack-rim { opacity: 0; } /* gone the instant a tear starts */
       /* px stroke widths regardless of how big the pack renders; round corners/ends */
-      .pack-rim rect { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+      .pack-rim path { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 
       /* weak rim light — a faint warm halo hugging the silhouette, gently breathing */
       .rim-soft {
@@ -1111,12 +1111,12 @@
 
       pack = createPack({
         mountEl: document.getElementById("pack-stage"),
-        // NB: we no longer wake the reveal on grab. The crack is now an opaque slit
-        // (no see-through peek), so the card stack stays fully hidden behind the
-        // covering pack until it actually opens — keeping 5 holo cards (with running
-        // glitter animations) OUT of the per-frame compositing during the tear.
-        // reveal.show() reveals + arranges the stack at the open; it's pre-rendered,
-        // so the reveal is still instant.
+        // The REAL card stack lives BEHIND the pack the whole time (z 1, under the foil
+        // at z 2). Wake it the moment the pack is grabbed so it's already THERE — as the
+        // tear opens you see the actual cards through the hole, with the foil + the
+        // opening light sitting IN FRONT of them. It only ANIMATES + becomes interactive
+        // at the open (reveal.show() drops the foil and presents the haul).
+        onGrab: () => reveal.wake(),
         onOpen: async () => {
           hintEl.textContent = ""; // the reveal has its own hint
           await ready; // (already prepared — instant)

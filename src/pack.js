@@ -172,9 +172,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
            and rides #pack-stage (fades on reveal). Lives OUTSIDE the drop-shadow
            .pack, like .pack-cut, so the moving beam never re-rasters the big foil. -->
       <svg class="pack-rim" viewBox="0 0 ${VB.w} ${VB.h}" aria-hidden="true">
-        <rect class="rim-soft"  x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
-        <rect class="beam-halo" x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
-        <rect class="beam-core" x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
+        <path class="rim-soft"  d="" pathLength="100"/>
+        <path class="beam-halo" d="" pathLength="100"/>
+        <path class="beam-core" d="" pathLength="100"/>
       </svg>
       <!-- the rip overlay — drawn OVER the foil but OUTSIDE the drop-shadow-filtered
            .pack, so writing the crack each frame never re-rasters the big foil (that
@@ -287,9 +287,94 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // The <image> renders the pack art straight away; probing it with a plain
   // Image just reports the natural size so applyAspect can match the viewBox to
   // it (no crop). A missing file leaves the SVG <image> empty — no broken icon.
+  // The probe is also drawn to a canvas to TRACE the foil's true silhouette from
+  // its alpha — so the rim light + border beam hug the pouch shape (crimped top,
+  // tapered sides), not a plain rounded rect.
+  const rimPaths = [...mountEl.querySelectorAll(".pack-rim path")];
   const probe = new Image();
-  probe.onload = () => applyAspect(probe.naturalWidth, probe.naturalHeight);
+  probe.crossOrigin = "anonymous"; // keep the canvas un-tainted so getImageData works
+  probe.onload = () => {
+    applyAspect(probe.naturalWidth, probe.naturalHeight); // sets VB.h first → silhouette scales to it
+    let d = "";
+    try { d = silhouettePath(probe); } catch { /* tainted canvas / no 2d ctx */ }
+    if (!d) d = roundedRectPath(2, 2, VB.w - 4, VB.h - 4, 15); // fallback: the foil-clip rounded rect
+    rimPaths.forEach((p) => p.setAttribute("d", d));
+  };
   probe.src = PACK_IMG;
+
+  // A rounded-rect as an SVG path — the rim/beam fallback when the silhouette can't
+  // be traced (so they always trace SOMETHING that hugs the pack).
+  function roundedRectPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    return `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}` +
+           `A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}` +
+           `V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+  }
+
+  // Trace the OUTER outline of the pack art from its alpha. The pouch is one
+  // opaque span per scanline, so the silhouette = its right edge top→bottom + its
+  // left edge bottom→top. Sampling a downscaled copy low-passes the crimp teeth
+  // into the overall pouch curve. Returns an SVG path "d" in viewBox coords (or "").
+  function silhouettePath(img) {
+    const CW = 130; // downscale width — enough for the shape, cheap to scan
+    const CH = Math.max(8, Math.round(CW * (img.naturalHeight / img.naturalWidth)));
+    const cv = document.createElement("canvas");
+    cv.width = CW; cv.height = CH;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return "";
+    ctx.drawImage(img, 0, 0, CW, CH);
+    const data = ctx.getImageData(0, 0, CW, CH).data;
+    const A = 28; // alpha threshold — solid foil only, ignore faint anti-aliased fringe
+    const left = new Array(CH).fill(-1);
+    const right = new Array(CH).fill(-1);
+    let yTop = -1, yBot = -1;
+    for (let y = 0; y < CH; y++) {
+      let l = -1, r = -1;
+      for (let x = 0; x < CW; x++) {
+        if (data[(y * CW + x) * 4 + 3] > A) { if (l < 0) l = x; r = x; }
+      }
+      if (l >= 0) { left[y] = l; right[y] = r; if (yTop < 0) yTop = y; yBot = y; }
+    }
+    if (yTop < 0) return ""; // fully transparent — nothing to trace
+    const sx = VB.w / CW, sy = VB.h / CH;
+    const pts = [];
+    for (let y = yTop; y <= yBot; y++) if (right[y] >= 0) pts.push([(right[y] + 1) * sx, (y + 0.5) * sy]); // right edge, top→bottom
+    for (let y = yBot; y >= yTop; y--) if (left[y] >= 0) pts.push([left[y] * sx, (y + 0.5) * sy]);          // left edge, bottom→top
+    const simp = rdp(pts, 0.9);     // drop near-collinear points
+    const smooth = chaikin(simp, 2); // round the corners → a clean flowing outline
+    if (smooth.length < 3) return "";
+    return "M" + smooth.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L") + "Z";
+  }
+
+  // Ramer–Douglas–Peucker polyline simplification (epsilon in viewBox units).
+  function rdp(pts, eps) {
+    if (pts.length < 3) return pts.slice();
+    let maxD = 0, idx = 0;
+    const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1];
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len;
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD <= eps) return [pts[0], pts[pts.length - 1]];
+    return [...rdp(pts.slice(0, idx + 1), eps).slice(0, -1), ...rdp(pts.slice(idx), eps)];
+  }
+
+  // Chaikin corner-cutting — each pass replaces every corner with two points 1/4
+  // and 3/4 along its edges, rounding the polyline into a smooth closed loop.
+  function chaikin(pts, passes) {
+    let p = pts;
+    for (let k = 0; k < passes; k++) {
+      const out = [];
+      for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length];
+        out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+        out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+      }
+      p = out;
+    }
+    return p;
+  }
 
   let armed = false; // a tear can't start until the cards behind it are ready
   let path = [];
