@@ -34,7 +34,7 @@ export const DEFAULT_PACKS = Array.from({ length: 10 }, (_, i) => ({
   id: `genetic-apex-${i + 1}`,
   name: "Genetic Apex",
   sub: "Genetic Apex",
-  img: "assets/pack.png", // hi-res source (1083×1794) — crisp on the 3D mesh
+  img: "assets/pack-hi.webp", // hi-res WebP (1083×1794, ~270KB, transparent bg) — crisp on the 3D mesh
   hue: 0,
   accent: "#b49bff",
 }));
@@ -743,24 +743,23 @@ function makeEnvTexture() {
   return tex;
 }
 
-// A few card-backs that drift slowly UPWARD at the middle depth of the wheel (z≈0),
-// so the carousel has a sense of cards rising through it. Placed in the 3D scene (not
-// a flat CSS layer), they depth-sort with the packs: behind the popped front pack,
-// in front of the back ones. They look like REAL card backs — opaque, with rounded
-// corners (the card-back art is drawn into a rounded-rect clip so the plane's corners
-// are cut away) — only fading at the very top/bottom of their travel so they don't pop.
+// A few Poké Ball icons that drift slowly UPWARD at the middle depth of the wheel
+// (z≈0), so the carousel has a sense of motes rising through it. Placed in the 3D
+// scene (not a flat CSS layer), they depth-sort with the packs: behind the popped
+// front pack, in front of the back ones. Round icons (the ball is drawn into a
+// circular clip so the plane's corners are cut away), tinted down so they recede.
 function makeRisingCards() {
-  const tex = roundedCardBackTexture();
+  const tex = pokeballTexture();
   const COUNT = 6;
   const group = new THREE.Group();
-  const geo = new THREE.PlaneGeometry(1, 88 / 63); // a card's 63:88 portrait
+  const geo = new THREE.PlaneGeometry(1, 1); // square — the Poké Ball icon is round
   const cards = [];
   const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 0..1, seeded by index
   for (let i = 0; i < COUNT; i++) {
-    // OPAQUE rounded card backs (alphaTest cuts the corners — no see-through body),
-    // just heavily DIMMED via a dark colour multiply so they recede behind the packs
-    // and never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x3a3e52, alphaTest: 0.5 });
+    // Poké Ball icons (alphaTest cuts the plane's corners to the round ball), tinted
+    // DOWN via a cool colour multiply so they recede behind the packs as ambiance and
+    // never upstage the wheel.
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x9aa0bc, alphaTest: 0.5 });
     const m = new THREE.Mesh(geo, mat);
     const u = {
       x: (rand(i, 1) - 0.5) * 7.5,        // spread across the wheel's width
@@ -790,30 +789,31 @@ function makeRisingCards() {
   };
 }
 
-// card-back.jpg drawn into a ROUNDED-RECT clip → a texture whose corners are
-// transparent, so the rising card planes read as real (rounded) cards, not sharp
-// rectangles. Shared by every rising card.
-let _cardBackTex = null;
-function roundedCardBackTexture() {
-  if (_cardBackTex) return _cardBackTex;
-  const tex = new THREE.Texture();
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const im = new Image();
-  im.crossOrigin = "anonymous";
-  im.onload = () => {
-    const W = im.naturalWidth, H = im.naturalHeight;
-    const c = document.createElement("canvas"); c.width = W; c.height = H;
-    const x = c.getContext("2d");
-    const r = Math.min(W, H) * 0.075; // corner radius
-    x.beginPath();
-    x.moveTo(r, 0); x.arcTo(W, 0, W, H, r); x.arcTo(W, H, 0, H, r);
-    x.arcTo(0, H, 0, 0, r); x.arcTo(0, 0, W, 0, r); x.closePath();
-    x.clip();
-    x.drawImage(im, 0, 0, W, H);
-    tex.image = c; tex.needsUpdate = true;
-  };
-  im.src = "assets/card-back.jpg";
-  _cardBackTex = tex;
+// A Poké Ball icon drawn on a canvas (transparent outside the ball circle, so the
+// plane's corners cut away to a round icon). Shared by every rising element.
+let _pokeballTex = null;
+function pokeballTexture() {
+  if (_pokeballTex) return _pokeballTex;
+  const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
+  const x = c.getContext("2d");
+  const cx = S / 2, cy = S / 2, R = S * 0.46;
+  const BLACK = "#1b1c22", WHITE = "#f4f4f6", RED = "#ee3d36";
+  // body — clipped to the ball circle: red top half, white bottom half, black centre band
+  x.save();
+  x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
+  x.fillStyle = RED;   x.fillRect(0, 0, S, cy);
+  x.fillStyle = WHITE; x.fillRect(0, cy, S, S - cy);
+  x.fillStyle = BLACK; x.fillRect(0, cy - S * 0.085, S, S * 0.17);
+  x.restore();
+  // outer rim
+  x.strokeStyle = BLACK; x.lineWidth = S * 0.05;
+  x.beginPath(); x.arc(cx, cy, R - x.lineWidth / 2, 0, Math.PI * 2); x.stroke();
+  // centre button: black ring → white core
+  x.fillStyle = BLACK; x.beginPath(); x.arc(cx, cy, S * 0.135, 0, Math.PI * 2); x.fill();
+  x.fillStyle = WHITE; x.beginPath(); x.arc(cx, cy, S * 0.088, 0, Math.PI * 2); x.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  _pokeballTex = tex;
   return tex;
 }
 
