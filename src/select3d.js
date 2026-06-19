@@ -191,12 +191,14 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const outline = traceOutline(img);
     if (!outline) return;
     const key = aspect.toFixed(3);
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, 0.04));
+    // a thin tube hugging the silhouette, CENTRED in the foil thickness (z=0)
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.016, 0));
     const mat = makeRimMaterial();
     const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
-    // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999), so
-    // a pack never paints over its own rim. depthTest (kept on) still hides the rims of
-    // back-facing packs behind the nearer ones — only forward-facing edges light up.
+    // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) and
+    // with depthTest off (set in makeRimMaterial), so the centred tube is never buried
+    // inside the pack body — it reads as the pack's glowing edge from any angle. The
+    // layout() facing-fade keeps far-back packs from bleeding their rim forward.
     rimMesh.renderOrder = 1000;
     mesh.add(rimMesh);        // child → inherits the pack's rotation / pop / scale
     mesh.userData.rim = rimMesh;
@@ -254,11 +256,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       m.scale.setScalar(BASE_S + POP_S * pop);
       // draw nearer packs last so they sit on top
       m.renderOrder = Math.round(m.position.z * 10);
-      // Fade the rim/beam out as a pack turns away from the lens: the flat outline
-      // ribbon collapses to an ugly vertical line edge-on, and the beam only reads on
-      // forward-facing packs anyway. (intro/selection drive this via applyOpacity.)
+      // Keep the rim/beam lit on the front AND side packs (so the side isn't "empty"),
+      // and fade it only on the FAR-BACK packs — depthTest is off, so a fully-turned
+      // back pack would otherwise bleed its rim forward over the front of the wheel.
+      // (intro/selection drive this via applyOpacity instead.)
       const rim = m.userData.rim;
-      if (rim) rim.material.uniforms.uOpacity.value = smoothstep(0.12, 0.55, front);
+      if (rim) rim.material.uniforms.uOpacity.value = smoothstep(-0.55, -0.15, Math.cos(a));
     }
   }
 
@@ -724,55 +727,61 @@ function traceOutline(img) {
   return out;
 }
 
-// Build a flat ribbon (triangle strip) that follows the closed outline, `halfW` wide
-// to each side of the edge, at local depth `z` (just proud of the front foil). Each
-// vertex carries aArc (0..1 along the loop, MONOTONIC — the loop is closed with a
-// duplicate start vertex at arc=1 so the beam doesn't glitch at the seam) and aSide
-// (-1..1 across the ribbon, for the soft cross-section glow in the shader).
-function makeRimGeometry(outline, halfW, z) {
+// Build a thin TUBE that follows the closed outline at local depth `z`, `radius`
+// thick. A tube (not a flat ribbon) is visible from ANY angle — head-on it reads as
+// the outline glow, edge-on its cross-section still shows, so the pack's side isn't
+// "empty". Centred at z=0 it sits at the middle of the foil's thickness — the pack's
+// true edge. Each vertex carries aArc (0..1 along the loop, MONOTONIC — closed with a
+// duplicate ring at arc=1 so the beam doesn't glitch at the seam) and aRing (the
+// position around the tube cross-section, 0..1, for a soft core in the shader).
+function makeRimGeometry(outline, radius, z) {
   const n = outline.length;
   const seg = new Array(n); let total = 0;
   for (let i = 0; i < n; i++) { const a = outline[i], b = outline[(i + 1) % n]; seg[i] = Math.hypot(b[0] - a[0], b[1] - a[1]); total += seg[i]; }
   if (total < 1e-4) return new THREE.BufferGeometry();
-  const pos = [], aArc = [], aSide = [], idx = [];
+  const K = 6;                                   // tube cross-section segments (a hexagonal wire — cheap, round enough)
+  const pos = [], aArc = [], aRing = [], idx = [];
   let acc = 0;
-  for (let i = 0; i <= n; i++) {                 // n+1 verts: the last duplicates the first (arc=1)
+  for (let i = 0; i <= n; i++) {                 // n+1 rings: the last duplicates the first (arc=1)
     const cur = outline[i % n], prev = outline[(i - 1 + n) % n], next = outline[(i + 1) % n];
     let tx = next[0] - prev[0], ty = next[1] - prev[1];
     const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
-    const nx = -ty, ny = tx;                     // unit normal (perp to the tangent)
+    const nx = -ty, ny = tx;                     // in-plane normal; the tube spans this AND the z axis
     const u = i < n ? acc / total : 1;
     if (i < n) acc += seg[i];
-    pos.push(cur[0] + nx * halfW, cur[1] + ny * halfW, z); aArc.push(u); aSide.push(1);
-    pos.push(cur[0] - nx * halfW, cur[1] - ny * halfW, z); aArc.push(u); aSide.push(-1);
+    for (let k = 0; k < K; k++) {                // ring around the tangent: cos·(in-plane normal) + sin·(z)
+      const th = (2 * Math.PI * k) / K, c = Math.cos(th), s = Math.sin(th);
+      pos.push(cur[0] + radius * c * nx, cur[1] + radius * c * ny, z + radius * s);
+      aArc.push(u); aRing.push(k / K);
+    }
   }
   for (let i = 0; i < n; i++) {
-    const i0 = i * 2, i1 = i * 2 + 1, j0 = (i + 1) * 2, j1 = (i + 1) * 2 + 1;
-    idx.push(i0, i1, j0, i1, j1, j0);
+    const a = i * K, b = (i + 1) * K;
+    for (let k = 0; k < K; k++) {
+      const k2 = (k + 1) % K;
+      idx.push(a + k, a + k2, b + k, a + k2, b + k2, b + k);
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("aArc", new THREE.Float32BufferAttribute(aArc, 1));
-  g.setAttribute("aSide", new THREE.Float32BufferAttribute(aSide, 1));
+  g.setAttribute("aRing", new THREE.Float32BufferAttribute(aRing, 1));
   g.setIndex(idx);
   return g;
 }
 
-// The beam shader: a weak warm rim everywhere + a bright comet (tight head, trailing
-// tail) racing around the loop. Additive, so it reads as LIGHT against the dark scene.
+// The beam shader: a weak warm rim glowing along the whole tube + a bright comet
+// (tight head, trailing tail) racing around it. Additive → reads as LIGHT.
 const RIM_VERT = `
-  attribute float aArc; attribute float aSide;
-  varying float vU; varying float vV;
-  void main() { vU = aArc; vV = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  attribute float aArc; attribute float aRing;
+  varying float vU; varying float vR;
+  void main() { vU = aArc; vR = aRing; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const RIM_FRAG = `
   precision mediump float;
-  varying float vU; varying float vV;
+  varying float vU; varying float vR;
   uniform float uTime; uniform float uOpacity;
   uniform vec3 uWarm; uniform vec3 uHot;
   void main() {
-    float edge = max(0.0, 1.0 - abs(vV));
-    float body = pow(edge, 1.1);                       // broad soft glow across the ribbon
-    float hot  = pow(edge, 4.0);                       // a hotter thin core inside it
     float head = fract(uTime * 0.22);                  // the comet's position around the loop
     float ahead = fract(vU - head);
     float behind = fract(head - vU);
@@ -780,10 +789,10 @@ const RIM_FRAG = `
     float comet = exp(-ring * ring / 0.0016);          // bright head
     float tail  = exp(-behind / 0.20) * 0.7;           // exponential tail trailing the head
     float beam = max(comet, tail);
-    // weak always-on rim (0.22) + the sweeping comet (dialled back); hot core sharpens it
-    float i = (body * (0.22 + 1.7 * beam) + hot * beam * 0.7) * uOpacity;
+    // weak always-on rim (0.2) + the sweeping comet; thin tube so no cross-section term
+    float i = (0.2 + 1.7 * beam) * uOpacity;
     vec3 col = mix(uWarm, uHot, clamp(beam, 0.0, 1.0)); // gold rim → white-hot comet
-    gl_FragColor = vec4(col * i * 1.12, i);            // mild overdrive → a soft bloom, not a blowout
+    gl_FragColor = vec4(col * i * 1.1, i);             // mild overdrive → a soft bloom, not a blowout
   }`;
 function makeRimMaterial() {
   return new THREE.ShaderMaterial({
@@ -798,6 +807,7 @@ function makeRimMaterial() {
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    depthTest: false,        // the centred tube would otherwise be buried in the body
     side: THREE.DoubleSide,
   });
 }
