@@ -467,6 +467,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     heroMesh.scale.setScalar(lerp(restPose.s, heroTarget.scale, e));
     heroMesh.renderOrder = 999;
     applyOpacity(heroMesh, 1);
+    // the rim/beam fades OUT as the chosen pack zooms in — the SVG tear-pack it lands
+    // on has none, so the rim is gone well before the cross-dissolve (no popping seam)
+    const heroRim = heroMesh.userData.rim;
+    if (heroRim) heroRim.material.uniforms.uOpacity.value = Math.max(0, 1 - selT / 0.55);
     setHeroFlash(Math.sin(selT * Math.PI) * 0.9); // golden-streak flash, peaks mid-flight
     // bystanders recede outward + fade
     for (const m of meshes) {
@@ -776,10 +780,10 @@ const RIM_FRAG = `
     float comet = exp(-ring * ring / 0.0016);          // bright head
     float tail  = exp(-behind / 0.20) * 0.7;           // exponential tail trailing the head
     float beam = max(comet, tail);
-    // weak always-on rim (0.22) + the strong sweeping comet; the hot core sharpens it
-    float i = (body * (0.22 + 2.7 * beam) + hot * beam * 1.2) * uOpacity;
-    vec3 col = mix(uWarm, uHot, clamp(beam * 1.1, 0.0, 1.0)); // gold rim → white-hot comet
-    gl_FragColor = vec4(col * i * 1.3, i);             // overdrive → blooms on the additive blend
+    // weak always-on rim (0.22) + the sweeping comet (dialled back); hot core sharpens it
+    float i = (body * (0.22 + 1.7 * beam) + hot * beam * 0.7) * uOpacity;
+    vec3 col = mix(uWarm, uHot, clamp(beam, 0.0, 1.0)); // gold rim → white-hot comet
+    gl_FragColor = vec4(col * i * 1.12, i);            // mild overdrive → a soft bloom, not a blowout
   }`;
 function makeRimMaterial() {
   return new THREE.ShaderMaterial({
