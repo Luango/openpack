@@ -31,18 +31,18 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 //                  is SELECTED, but only plays its INTRO and then HOLDS (see the intro-
 //                  hold block below); the rest pours in when the pack fully splits open.
 // Only one is audible at a time; switching scenes fades the other out under it.
-// Each bed streams from its own <audio> element into its own gain node, routed
-// STRAIGHT to the destination — parallel to the SFX limiter, NOT through it — so
-// a loud cue can't pump/duck the music as a side effect. The only thing that
-// modulates the audible bed is the explicit duck() below: on a big moment (open,
-// reveal, chime) the music dips so the cue cuts through, then eases back. User
-// volume + mute apply to both beds (see musicTarget()).
+// Each bed plays NATIVELY from its own <audio> element — we do NOT route it through the
+// WebAudio graph. iOS/WebKit's createMediaElementSource silently drops ALL output (the bug
+// behind "music on Android but not iOS"), so the bed's level is driven by el.volume directly
+// (see rampElVolume). Volume/mute, scene cross-fades, the intro-hold, and the duck() below
+// all just tween el.volume — no GainNode, no AudioContext dependency. User volume + mute
+// apply to both beds (see musicTarget()).
 const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
 const MUSIC_SRC = {
   carousel: new URL("../assets/bgm-moonlit-drift.mp3", import.meta.url),
   open: new URL("../assets/bgm-starlight-symphony.mp3", import.meta.url),
 };
-const beds = new Map(); // scene name -> { el, node, gain }
+const beds = new Map(); // scene name -> { el }
 let musicStarted = false;
 let currentScene = "carousel"; // which bed should be audible right now
 let duckFactor = 1; // 1 = full bed; <1 while a big moment ducks it
@@ -185,12 +185,40 @@ function musicTarget(scene) {
   return userVol * MUSIC_BASE * duckFactor;
 }
 
-// Glide EVERY bed's gain to its current target (no clicks). Called whenever
-// volume, mute, the duck factor, or the active scene changes.
+// Click-free volume fade for a bed's <audio> element. BGM plays NATIVELY (not through a
+// WebAudio GainNode) because iOS/WebKit's createMediaElementSource silently drops all
+// output — the bug behind "no music on iOS, fine on Android". So we tween el.volume on a
+// rAF instead. `timeConstant` is the e-folding time in seconds; we close the remaining
+// distance exponentially each frame, and a running tween just picks up the newest target.
+function rampElVolume(el, target, timeConstant = 0.05) {
+  if (!el) return;
+  el.__volTarget = Math.max(0, Math.min(1, target));
+  el.__volTC = Math.max(0.02, timeConstant);
+  if (el.__volTimer) return; // a tween is already running — it'll read the updated target/TC
+  // setInterval, NOT requestAnimationFrame: rAF is paused in a backgrounded/unfocused tab,
+  // which would freeze the fade (and could strand the bed at volume 0). A timer fires
+  // regardless of focus, and the dt-based exponential below stays correct even if the
+  // browser throttles it — a long gap just jumps most of the remaining distance at once.
+  let last = performance.now();
+  el.__volTimer = setInterval(() => {
+    const now = performance.now();
+    const dt = Math.max(0, (now - last) / 1000); last = now;
+    const k = 1 - Math.exp(-dt / el.__volTC); // fraction of remaining distance this step
+    const v = el.volume + (el.__volTarget - el.volume) * k;
+    if (Math.abs(el.__volTarget - v) < 0.004) {
+      try { el.volume = el.__volTarget; } catch { /* ignore */ }
+      clearInterval(el.__volTimer); el.__volTimer = 0;
+      return;
+    }
+    try { el.volume = Math.max(0, Math.min(1, v)); } catch { /* ignore */ }
+  }, 30);
+}
+
+// Glide EVERY bed to its current target (no clicks). Called whenever volume, mute, the
+// duck factor, or the active scene changes. No AudioContext needed — beds are native.
 function rampMusic(timeConstant = 0.05) {
-  if (!ctx) return;
   for (const [name, bed] of beds) {
-    if (bed.gain) bed.gain.gain.setTargetAtTime(musicTarget(name), ctx.currentTime, timeConstant);
+    if (bed.el) rampElVolume(bed.el, musicTarget(name), timeConstant);
   }
 }
 
@@ -207,8 +235,9 @@ function makeBed(scene) {
     el.loop = true;
     el.preload = "auto";
     el.crossOrigin = "anonymous";
+    el.volume = 0; // start silent — rampMusic fades it up once it's actually playing
     el.load(); // kick off buffering immediately
-    const bed = { el, node: null, gain: null };
+    const bed = { el };
     beds.set(scene, bed);
     return bed;
   } catch {
@@ -224,58 +253,34 @@ function prebufferMusic() {
   makeBed("open");
 }
 
-// Wire a bed into the audio graph (once per element). createMediaElementSource can
-// only be called once on a given element, so this is guarded and lazy.
-function wireBed(bed) {
-  if (!bed || bed.node || !ctx) return;
-  try {
-    bed.node = ctx.createMediaElementSource(bed.el);
-    bed.gain = ctx.createGain();
-    bed.gain.gain.value = 0.0001; // start silent, fade up on play
-    bed.node.connect(bed.gain).connect(ctx.destination);
-  } catch {
-    /* no MediaElementSource support — this bed silently skips */
-  }
-}
-
 // Begin playing a bed and glide it to its target. `restart` rewinds it to 0 first —
 // used for the open theme so its emotional build-up restarts each time a pack is chosen.
 function playBed(scene, timeConstant = 1.2, restart = false) {
   const bed = makeBed(scene);
-  if (!bed || !ctx) return;
-  wireBed(bed);
-  if (!bed.gain) return;
+  if (!bed || !bed.el) return;
   if (restart) { try { bed.el.currentTime = 0; } catch { /* ignore */ } }
   if (bed.el.paused) bed.el.play().catch(() => {});
-  bed.gain.gain.setTargetAtTime(musicTarget(scene), ctx.currentTime, timeConstant);
+  rampElVolume(bed.el, musicTarget(scene), timeConstant);
 }
 
 // Start the music once, on the first user gesture (autoplay needs one). The elements and
-// their bytes are already prepared by prebufferMusic() (at load), so this just wires the
-// current scene's bed and plays — no download wait. Fades in so it doesn't slam on.
-// Returns a promise that resolves TRUE only once the bed is actually playing — the
-// caller uses this to decide whether to stop listening for gestures. Resolving on the
-// real play() result (not the synchronous musicStarted flag) is what lets a mobile
-// first-tap that rejects fall through to a retry on the next gesture.
+// their bytes are already prepared by prebufferMusic() (at load), so this just plays the
+// current scene's bed — no download wait — and fades it up. BGM plays NATIVELY (no
+// AudioContext, no MediaElementSource — see rampElVolume), so it's independent of the SFX
+// context's suspended/running state and immune to the iOS WebKit MediaElementSource bug.
+// Returns a promise that resolves TRUE only once the bed is actually playing — the caller
+// uses this to decide whether to stop listening for gestures. Resolving on the real play()
+// result lets a first-tap that rejects fall through to a retry on the next gesture.
 function startMusic() {
-  if (musicStarted || !ctx) return Promise.resolve(musicStarted);
+  if (musicStarted) return Promise.resolve(musicStarted);
   musicStarted = true;
   try {
     prebufferMusic();
     const bed = makeBed(currentScene);
-    if (!bed) { musicStarted = false; return Promise.resolve(false); } // no <audio> support
-    wireBed(bed);
-    // The VERY FIRST gesture races the context awake: a freshly-created context is
-    // "suspended" and ctx.resume() is async. If we ramp the bed up before the context is
-    // actually running, its audio pumps into a FROZEN graph and the first open is SILENT
-    // (the second works because the context is already running by then). So fire BOTH
-    // synchronously here — resume() AND play() — to keep the single user-gesture
-    // activation for each, then wait for the context to truly be running before we ramp
-    // the gain up (and re-assert play() in case the cold start stalled the element).
-    const resumed = ctx.state === "running" ? Promise.resolve() : Promise.resolve(ctx.resume?.()).catch(() => {});
-    const played = bed.el.play();
-    return Promise.all([resumed, played])
-      .then(() => (bed.el.paused ? bed.el.play() : null)) // resume may have stalled it — re-assert
+    if (!bed || !bed.el) { musicStarted = false; return Promise.resolve(false); } // no <audio> support
+    bed.el.volume = 0; // start silent, fade up once it's truly playing
+    return bed.el
+      .play()
       .then(() => { _lastPlay = "ok"; rampMusic(1.2); return true; }) // gentle ~3.5s fade-in to the resting bed
       .catch((e) => {
         _lastPlay = "rejected:" + (e && e.name || e); // recorded for audioStatus()
@@ -283,7 +288,7 @@ function startMusic() {
         return false;
       });
   } catch {
-    musicStarted = false; // no MediaElementSource support — silently skip BGM
+    musicStarted = false; // no <audio> support — silently skip BGM
     return Promise.resolve(false);
   }
 }
@@ -300,7 +305,6 @@ let bedWatchTimer = null;
 function nudgeCurrentBed() {
   const bed = beds.get(currentScene);
   if (!bed || !bed.el) return;
-  wireBed(bed);
   if (bed.el.paused) bed.el.play().then(() => { _lastPlay = "ok"; }, (e) => { _lastPlay = "rejected:" + (e && e.name || e); });
   rampMusic(1.2);
 }
@@ -313,16 +317,16 @@ export function audioStatus() {
     vol: +userVol.toFixed(2), scene: currentScene, musicStarted, lastPlay: _lastPlay,
     watching: !!bedWatchTimer,
     beds: [...beds].map(([k, b]) => ({
-      k, wired: !!b.node, paused: b.el ? b.el.paused : null,
+      k, paused: b.el ? b.el.paused : null,
       t: b.el ? +b.el.currentTime.toFixed(2) : null,
       rs: b.el ? b.el.readyState : null, ns: b.el ? b.el.networkState : null,
       err: b.el && b.el.error ? b.el.error.code : null,
-      gain: b.gain ? +b.gain.gain.value.toFixed(3) : null,
+      vol: b.el ? +b.el.volume.toFixed(3) : null,
     })),
   };
 }
 function ensureBedPlaying() {
-  if (bedWatchTimer || !ctx) return;
+  if (bedWatchTimer) return;
   let tries = 0;
   const tick = () => {
     bedWatchTimer = null;
@@ -362,14 +366,14 @@ export function setMusicScene(scene, seconds = 1.6) {
   if (!MUSIC_SRC[scene] || scene === currentScene) return;
   const prev = currentScene;
   currentScene = scene;
-  if (!ctx || !musicStarted) return; // first gesture will start the right bed
+  if (!musicStarted) return; // first gesture will start the right bed
   const tc = Math.max(0.05, seconds / 3); // ~95% of the way there by `seconds`
   // The open theme restarts so its build-up plays from the top each pull; the calm
   // carousel loop resumes where it left off (it's ambient — no "beginning" to hear).
   playBed(scene, tc, scene === "open");
   const old = beds.get(prev);
-  if (old?.gain) {
-    old.gain.gain.setTargetAtTime(0, ctx.currentTime, tc);
+  if (old?.el) {
+    rampElVolume(old.el, 0, tc);
     setTimeout(() => {
       if (currentScene !== prev) { try { old.el.pause(); } catch { /* ignore */ } }
     }, seconds * 1000 + 200);
@@ -409,7 +413,7 @@ export function startOpenTheme(introSec = OPEN_INTRO_SEC) {
     if (bed.el.currentTime < introSec) return;
     clearOpenHold(); // stop watching (no pause timer pending yet)
     // quick fade DOWN, then pause at the bottom so the hold lands without a click
-    if (bed.gain && ctx) bed.gain.gain.setTargetAtTime(0.0001, ctx.currentTime, OPEN_FADE / 3);
+    rampElVolume(bed.el, 0, OPEN_FADE / 3);
     openPauseTimer = setTimeout(() => {
       openPauseTimer = null;
       try { bed.el.pause(); } catch { /* ignore */ } // HOLD here — wait for the open
@@ -426,14 +430,10 @@ export function resumeOpenTheme() {
   const wasHeld = !!openPauseTimer || !!beds.get("open")?.el?.paused; // fading out / parked
   clearOpenHold(); // cancel any pending hold + pending pause-timer
   const bed = beds.get("open");
-  if (currentScene !== "open" || !bed?.el || !ctx) return;
-  if (wasHeld && bed.gain) {
-    // reset to silent under the (paused) bed so the resume is a real fade-IN
-    bed.gain.gain.cancelScheduledValues(ctx.currentTime);
-    bed.gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  }
+  if (currentScene !== "open" || !bed?.el) return;
+  if (wasHeld) { try { bed.el.volume = 0; } catch { /* ignore */ } } // reset to silent so the resume is a real fade-IN
   if (bed.el.paused) bed.el.play().catch(() => {});
-  if (bed.gain) bed.gain.gain.setTargetAtTime(musicTarget("open"), ctx.currentTime, OPEN_FADE / 3); // quick fade-in
+  rampElVolume(bed.el, musicTarget("open"), OPEN_FADE / 3); // quick fade-in
 }
 
 // Fade EVERY bed out to silence — the deliberately quiet ready-to-tear screen,
@@ -444,7 +444,7 @@ export function silenceMusic(seconds = 1.2) {
   clearOpenHold(); // a tear that never opened drops its pending intro-hold
   if (currentScene === "silent") return;
   currentScene = "silent";
-  if (!ctx || !musicStarted) return; // nothing playing yet — first gesture handles it
+  if (!musicStarted) return; // nothing playing yet — first gesture handles it
   rampMusic(Math.max(0.05, seconds / 3)); // glide all beds to their (now 0) targets
   const parked = [...beds.values()];
   setTimeout(() => {
@@ -459,7 +459,7 @@ export function silenceMusic(seconds = 1.2) {
 // events keep the DEEPEST dip and the LATEST release, so a burst→reveal→chime
 // run stays ducked as one continuous beat instead of pumping between cues.
 export function duck(depth = 0.3, holdMs = 650, releaseMs = 800) {
-  if (!ctx) return;
+  if (!musicStarted) return; // no bed playing → nothing to duck
   duckFactor = Math.min(duckFactor, Math.max(0, Math.min(1, depth)));
   rampMusic(0.06); // pull down fast
   if (duckTimer) clearTimeout(duckTimer);

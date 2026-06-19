@@ -1424,7 +1424,7 @@
           hud.textContent =
             `ctx=${s.ctx} gesture=${s.gestureSeen} out=${s.outputUnlocked} muted=${s.muted} vol=${s.vol}\n` +
             `scene=${s.scene} started=${s.musicStarted} watching=${s.watching}\nplay=${s.lastPlay}\n` +
-            s.beds.map((b) => `· ${b.k}: paused=${b.paused} t=${b.t} rs=${b.rs} ns=${b.ns} err=${b.err} wired=${b.wired} gain=${b.gain}`).join("\n");
+            s.beds.map((b) => `· ${b.k}: paused=${b.paused} t=${b.t} rs=${b.rs} ns=${b.ns} err=${b.err} vol=${b.vol}`).join("\n");
           requestAnimationFrame(paint);
         };
         paint();
