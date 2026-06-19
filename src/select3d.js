@@ -52,11 +52,11 @@ const FRONT_PUSH = 1.8;  // how far the focused pack juts toward the camera (big
 const FRONT_LIFT = 0.0;  // no vertical lift — all packs stay centred on the midline
 const BASE_S    = 0.86;  // scale of a non-focused pack
 const POP_S     = 0.42;  // extra scale added to the focused pack
-// How far each pack YAWS toward "radially outward". 1.0 = a full revolver (packs turn
-// through every angle → only the face-on front ones catch the key highlight → the rest
-// go dull). A SMALL value keeps every pack near face-on (a shallow coverflow fan, like
-// the Shining Revelry reference), so they ALL catch the same light and read identically.
-const TURN      = 0.34;
+// How far each pack YAWS toward "radially outward". 1.0 = a true REVOLVER: the front
+// pack faces you, the side packs turn, and the back packs face AWAY from the screen.
+// (Even lighting across all those facings is handled by using only azimuth-uniform
+// light — hemisphere + env — with NO directional key; see the lighting block.)
+const TURN      = 1.0;
 const FOG_NEAR = 11.0, FOG_FAR = 30.0; // gentle distance fog → the back recedes but isn't crushed
 
 // ---- intro entrance ------------------------------------------------------
@@ -115,17 +115,13 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // spot): a positional light falls off with distance, which is what was lighting
   // only the front pack + its neighbour and leaving the rest dim. The focused pack
   // stands out purely by being larger and nearer (FRONT_PUSH + scale), not by light.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-  scene.add(new THREE.HemisphereLight(0xd6deff, 0x2a2342, 1.0)); // cool sky / violet ground → even base
-  // KEY FROM THE CAMERA — a warm directional light pointing from the lens INTO the
-  // scene. Directional ⇒ no distance falloff, so it lights EVERY pack's camera-facing
-  // face identically: each one gets the same "front-lit" foil look + a matching
-  // specular highlight, not just the front pack. This is what makes them all read the
-  // same. (Slightly above the lens so the highlight lands on each pack's upper body.)
-  const key = new THREE.DirectionalLight(0xfff1dd, 1.5);
-  key.position.set(0, 2.5, CAM_D + 2);   // from in front/above → direction ≈ −z, toward the packs
-  key.target.position.set(0, 0, 0);
-  scene.add(key); scene.add(key.target);
+  // It's a REVOLVER now (packs face every direction), so the light must be
+  // azimuth-independent or the turned packs go dark. NO directional key — only a flat
+  // ambient + a hemisphere (both depend on a surface's up-ness, not its facing). Every
+  // pack — front, side, or back-facing — is lit identically. The foil "pop" comes from
+  // the environment reflection (also azimuth-uniform), boosted on the material below.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  scene.add(new THREE.HemisphereLight(0xd6deff, 0x2a2342, 1.35)); // cool sky / violet ground → even, with mood
   // a gentle cool RIM from behind so the back of the wheel separates from the black
   // backdrop (directional → no distance falloff, so it doesn't favour any one pack)
   const rim = new THREE.DirectionalLight(0xbcd2ff, 0.35);
@@ -155,9 +151,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   function makePackMaterial(faceTex) {
     return new THREE.MeshStandardMaterial({
       map: faceTex,
-      roughness: 0.45,         // satin foil — a soft sheen that rolls off, not a hot blowout
-      metalness: 0.34,         // foil — catches the camera-key's highlight + a little env sheen
-      envMapIntensity: 0.85,
+      roughness: 0.42,         // satin foil — a soft sheen that rolls off, not a hot blowout
+      metalness: 0.45,         // foil — reflects the (azimuth-uniform) env sheen on EVERY facing
+      envMapIntensity: 1.2,
       emissive: 0xffffff,
       emissiveMap: faceTex,
       emissiveIntensity: 0.2,  // self-light so the art reads vivid even in shadow
