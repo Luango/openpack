@@ -907,6 +907,24 @@
       .reveal__slot .card--detail {
         width: 100%;
         height: 100%;
+        /* FLATTEN the card here. The detail card is a preserve-3d component (built for
+           a 3D flip), but the reveal only ever shows it FACE-ON — the flip, the card
+           back and the paper edge are never exercised. Meanwhile, on Android, layers
+           that sit inside a 3D rendering context have their mix-blend-mode DROPPED or
+           mis-composited by the GPU — so the holo/foil (.card__vfx, .card__glare,
+           .card__sparkle all use color-dodge/overlay) renders as a flat opaque
+           gradient smeared over the art ("broken skins"), only on Android. Removing
+           the 3D context lets the blend modes composite as plain 2D layers, which
+           Android handles correctly. Head-on the look is identical on every platform;
+           the small holo tilt still works (the slot keeps the perspective). */
+        transform-style: flat;
+      }
+      /* the back face + paper-edge plates only matter for the (unused) 3D flip; with
+         the card flattened they'd just paint in DOM order over/under the face, so drop
+         them — never visible face-on, and it removes needless compositing layers. */
+      .reveal__slot .card__back,
+      .reveal__slot .card__edge {
+        display: none;
       }
       /* a rare pull adds a tier-colored glow on top of the card's own shadow */
       .reveal__slot.front.rare .card--detail {

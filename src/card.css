@@ -147,6 +147,12 @@
   overflow: hidden;
   backface-visibility: hidden;
   transform-style: flat;
+  /* Isolate the blend group: the holo/foil layers below use color-dodge/overlay,
+     which must blend ONLY against the card art inside this face — never against
+     whatever sits behind the card (the dark stage). An explicit isolation context
+     pins that down; without it, Android compositors can blend against the wrong
+     backdrop and render the foil as garbage. */
+  isolation: isolate;
 }
 
 .card__face .card__art {
