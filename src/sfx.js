@@ -276,8 +276,9 @@ function startMusic() {
     const played = bed.el.play();
     return Promise.all([resumed, played])
       .then(() => (bed.el.paused ? bed.el.play() : null)) // resume may have stalled it — re-assert
-      .then(() => { rampMusic(1.2); return true; }) // gentle ~3.5s fade-in to the resting bed
-      .catch(() => {
+      .then(() => { _lastPlay = "ok"; rampMusic(1.2); return true; }) // gentle ~3.5s fade-in to the resting bed
+      .catch((e) => {
+        _lastPlay = "rejected:" + (e && e.name || e); // recorded for audioStatus()
         musicStarted = false; // autoplay blocked — let the next gesture retry
         return false;
       });
@@ -300,8 +301,25 @@ function nudgeCurrentBed() {
   const bed = beds.get(currentScene);
   if (!bed || !bed.el) return;
   wireBed(bed);
-  if (bed.el.paused) bed.el.play().catch(() => {});
+  if (bed.el.paused) bed.el.play().then(() => { _lastPlay = "ok"; }, (e) => { _lastPlay = "rejected:" + (e && e.name || e); });
   rampMusic(1.2);
+}
+
+// ---- TEMP audio diagnostic (drives the ?audiodebug HUD; remove once resolved) ----
+let _lastPlay = "(none)";
+export function audioStatus() {
+  return {
+    gestureSeen, outputUnlocked, ctx: ctx ? ctx.state : "(none)", muted,
+    vol: +userVol.toFixed(2), scene: currentScene, musicStarted, lastPlay: _lastPlay,
+    watching: !!bedWatchTimer,
+    beds: [...beds].map(([k, b]) => ({
+      k, wired: !!b.node, paused: b.el ? b.el.paused : null,
+      t: b.el ? +b.el.currentTime.toFixed(2) : null,
+      rs: b.el ? b.el.readyState : null, ns: b.el ? b.el.networkState : null,
+      err: b.el && b.el.error ? b.el.error.code : null,
+      gain: b.gain ? +b.gain.gain.value.toFixed(3) : null,
+    })),
+  };
 }
 function ensureBedPlaying() {
   if (bedWatchTimer || !ctx) return;

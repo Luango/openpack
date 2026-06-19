@@ -1410,6 +1410,26 @@
       // visible intro waits on; the ~5s entrance is ample time to finish in the background.
       (window.requestIdleCallback || ((fn) => setTimeout(fn, 200)))(() => sfx.preload());
 
+      // TEMP audio diagnostic: open the page with ?audiodebug to get a live status HUD
+      // (ctx state, mute, play() result, bed buffering) for diagnosing no-sound reports on
+      // a real device. Off by default — costs nothing for normal users. Remove once fixed.
+      if (location.search.includes("audiodebug") && sfx.audioStatus) {
+        const hud = document.createElement("pre");
+        hud.style.cssText = "position:fixed;left:6px;top:6px;z-index:99999;margin:0;padding:8px 10px;" +
+          "background:rgba(0,0,0,.82);color:#6f6;font:11px/1.4 ui-monospace,monospace;" +
+          "white-space:pre;border-radius:8px;max-width:92vw;overflow:auto;pointer-events:none;";
+        document.body.appendChild(hud);
+        const paint = () => {
+          const s = sfx.audioStatus();
+          hud.textContent =
+            `ctx=${s.ctx} gesture=${s.gestureSeen} out=${s.outputUnlocked} muted=${s.muted} vol=${s.vol}\n` +
+            `scene=${s.scene} started=${s.musicStarted} watching=${s.watching}\nplay=${s.lastPlay}\n` +
+            s.beds.map((b) => `· ${b.k}: paused=${b.paused} t=${b.t} rs=${b.rs} ns=${b.ns} err=${b.err} wired=${b.wired} gain=${b.gain}`).join("\n");
+          requestAnimationFrame(paint);
+        };
+        paint();
+      }
+
       // Build a booster AND render its card stack (hidden) up front, then ARM the
       // pack. The pack can't be torn until its cards are ready, so the reveal is
       // always instant — no fetch or render after the rip.
