@@ -73,3 +73,20 @@ Put `tear-loop.wav`, `flick-1.wav`, `flick-2.wav`, `flick-3.wav` in this folder,
 
 Reload — the tear and the card-flick now play your foley; everything else stays synth
 until you add it.
+
+## Bundled sounds & licenses
+
+The `*.wav` files currently in this folder are a **recorded foley pack**, all sourced
+from **CC0 (public-domain)** libraries and rebuilt by `tools/build_sfx.py` (trimmed,
+normalised to ~−6 dB, looped/layered where noted). CC0 needs no attribution, but for
+provenance:
+
+- **Kenney** (https://kenney.nl) — CC0 — *Casino Audio* (card slide/place/fan, pack
+  take-out & rip → `flick`, `setdown`, `cardtap`, `grab`, `tear_snap`), *Impact Sounds*
+  (punch/soft/plate/glass/bell → `open_burst`, `reveal_impact`, `chime`, and the
+  reversed-bell `riser`), *Interface Sounds* (`scratch`, `spark`, `sparkle`, `pip`,
+  `gulp`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
+- **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`
+  (seamless-looped paper crush) and a `tear_snap` variant (paper rip).
+
+To replace any cue, drop your own file in and edit `manifest.json` — no code changes.

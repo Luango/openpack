@@ -93,7 +93,7 @@ const INTRO_C1 = { x: -5,  y: 3.5, z: 4 };     // start tangent — eases down a
 const INTRO_C2 = { x: -3,  y: 0,   z: -RING_R };// end tangent — arrives level, flattening to +x (shorter = gentler merge speed)
 const INTRO_DIR = -1;     // wheel carry direction: -1 = counter-clockwise (flip to +1 for CW)
 
-export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand }) {
+export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand, onIntroEnd }) {
   // --- renderer / scene / camera -------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: !COARSE, alpha: true, powerPreference: "high-performance" });
   renderer.setClearColor(0x000000, 0); // transparent — the page's nebula bg shows through
@@ -220,6 +220,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     rimMats.push(mat);
   }
 
+  // Each pack's art/material/rim are built when its texture decodes. The intro waits
+  // on these (Promise.all below) so EVERYTHING — geometry, both face materials, the rim
+  // shader, the edge wall — is built and uploaded BEFORE the first animated frame. That
+  // turns the old mid-flight stalls (texture swap, lazy shader compile) into one warm-up
+  // before the motion, which is the bulk of the mobile "卡顿" during the entrance.
+  const assetsReady = [];
   packs.forEach((p) => {
     const placeholder = new THREE.MeshStandardMaterial({ color: 0x222030, roughness: 0.6, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.4), placeholder);
@@ -228,22 +234,24 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     mesh.userData = { pack: p, flip: 0, flipTo: 0, aspect: 1.4 };
     group.add(mesh);
     meshes.push(mesh);
-    loadFaceTexture(p).then((tex) => {
+    const pr = loadFaceTexture(p).then((tex) => {
       const aspect = tex.image.height / tex.image.width; // true art aspect
       mesh.userData.aspect = aspect;
       mesh.geometry.dispose();              // drop the placeholder plane (shared geo is kept)
       mesh.geometry = packGeometry(aspect);
       // The FRONT face shows the printed art; the BACK face shows the real G-MAX AURA
       // back (per the product design sheet) — different art per face, mapped to the two
-      // geometry groups. Front is set first so the pack shows immediately; the back
-      // swaps in when its texture loads (falls back to the front art if it can't).
+      // geometry groups. The flight rotates each pack 180° (its back faces the lens
+      // mid-arc), so the back material must be in place BEFORE the intro to avoid a
+      // swap stall — we resolve this pack's readiness only once both faces are set.
       const frontMat = makePackMaterial(tex);
       mesh.material = frontMat;
       addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
-      loadBackTexture()
+      return loadBackTexture()
         .then((backTex) => { mesh.material = [frontMat, makePackMaterial(backTex)]; })
         .catch(() => { /* no back art → keep the front on both faces */ });
-    });
+    }).catch(() => { /* art failed to load → the intro timeout still fires it */ });
+    assetsReady.push(pr);
   });
 
   // --- carousel state -------------------------------------------------------
@@ -276,7 +284,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // back pack would otherwise bleed its rim forward over the front of the wheel.
       // (intro/selection drive this via applyOpacity instead.)
       const rim = m.userData.rim;
-      if (rim) rim.material.uniforms.uOpacity.value = smoothstep(-0.55, -0.15, Math.cos(a));
+      if (rim) rim.material.uniforms.uOpacity.value = rimFade(Math.cos(a));
     }
   }
 
@@ -291,6 +299,15 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     if (rim) rim.material.uniforms.uOpacity.value = op;
     const wall = mesh.userData.wall; // the silver edge wall fades with it too
     if (wall) { wall.material.transparent = op < 1; wall.material.opacity = op; }
+  }
+
+  // Gate a mesh's rim by its current facing, ON TOP of whatever opacity applyOpacity
+  // just set (its intro fade-in). layout() owns this fade in the idle carousel; the
+  // intro entrance doesn't call layout(), so stepIntro calls this after applyOpacity —
+  // otherwise a pack rotated to the back would draw its highlight over the front packs.
+  function fadeRimByFacing(mesh) {
+    const rim = mesh.userData.rim;
+    if (rim) rim.material.uniforms.uOpacity.value *= rimFade(Math.cos(mesh.rotation.y));
   }
 
   // --- render loop (parked while hidden) ------------------------------------
@@ -515,6 +532,27 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   }
 
   // ---- intro entrance: queue the packs in to build the ring ----------------
+  // Hold the intro until the art is decoded and the GPU is warm, THEN start the
+  // motion. Nothing renders before this fires (the rAF loop is parked), so the user
+  // just sees the page's nebula bg for the load beat — far better than animating a
+  // ring that hitches every time a texture/shader finishes compiling mid-flight.
+  // A timeout backstops a slow/failed asset so the entrance always plays.
+  function startIntroWhenReady() {
+    let started = false;
+    const begin = () => {
+      if (started) return; started = true;
+      // Compile every shader program + upload every texture used by the scene NOW,
+      // in one synchronous warm-up, while the canvas is still blank. This moves the
+      // lazy first-render compile/upload cost OFF the animation's critical path —
+      // the first intro frame then runs clean.
+      try { renderer.compile(scene, camera); } catch { /* warm-up is best-effort */ }
+      initIntro();
+      play();
+    };
+    Promise.all(assetsReady).then(begin);
+    setTimeout(begin, 1500); // never hang on a stalled asset
+  }
+
   // Arm the entrance: hide every pack, schedule each to launch INTRO_ARR apart
   // (mesh 0 leads), and reset the wheel carry. The frame loop runs stepIntro.
   function initIntro() {
@@ -569,6 +607,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         m.rotation.set(0, bFace + (a * TURN - bFace) * bw, 0);
         m.scale.setScalar(bScale + (rScale - bScale) * bw);
         applyOpacity(m, Math.min(1, p * 3));
+        fadeRimByFacing(m); // a pack turning to the back must not bleed its rim forward
         m.renderOrder = Math.round(m.position.z * 10);
         if (p >= 1) s.docked = true; // slotAngle already fixed at launch
       } else {                                        // a ring member, carried by the wheel
@@ -576,6 +615,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         m.rotation.y = a * TURN;
         m.scale.setScalar(rScale);
         applyOpacity(m, 1);
+        fadeRimByFacing(m); // back-facing ring members keep their rim hidden too
         m.renderOrder = Math.round(m.position.z * 10);
       }
     }
@@ -611,6 +651,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     introing = false;
     pos = -(introState[0].slotAngle + wheelAngle) / STEP;
     vel = 0; targetPos = null; lastIdx = -1;
+    // The entrance is over and the wheel is idle — NOW the host can do its heavy
+    // main-thread work (build + render the next booster's card stack). Deferring it
+    // to here keeps that DOM build off the intro's frames, where it caused jank.
+    onIntroEnd?.();
   }
 
   // ---- public API ----------------------------------------------------------
@@ -624,9 +668,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       particles.points.material.opacity = 0.6;
       resize();
       // first entrance plays the queue-in intro; later shows reveal the ring directly
-      if (!introDone) { introDone = true; initIntro(); }
-      else layout();
-      play();
+      if (!introDone) { introDone = true; startIntroWhenReady(); }
+      else { layout(); play(); }
     },
     hide() { pause(); mountEl.classList.add("gone"); },
     get index() { return modIndex(); },
@@ -657,6 +700,13 @@ function now() { return performance.now(); }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+// How bright a pack's rim/beam should be for its facing — full on the front & side
+// packs, faded to nothing on the ones turned to the back. The rim draws with depthTest
+// off (so its own pack body can't bury the centred ribbon), which means a back-facing
+// pack would otherwise bleed its glow FORWARD over the front of the wheel. This fade is
+// the judgment that keeps a pack behind from drawing its highlight on top — applied both
+// in the idle layout() and, crucially, through the intro entrance (stepIntro).
+function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 
 // Procedural foil-pack geometry — a "pillow": a front and back sheet that bulge
 // outward through the body and press FLAT into the crimped seal strips at top and

@@ -1114,6 +1114,12 @@
           document.body.classList.remove("picking");  // real pack appears at the matched rect
           hideCanvas();                               // drop the carousel canvas
         },
+        // The entrance animation has finished — only NOW pre-arm the first pack.
+        // buildBooster + reveal.prepare build and render the card-stack DOM (plus
+        // warm 5 hi-res images), which is heavy main-thread work; running it during
+        // the intro is what made the carousel stutter, so we hold it until the wheel
+        // is idle. Selection still works if tapped immediately — onLand awaits `ready`.
+        onIntroEnd: () => loadNextPack(),
       });
 
       function backToSelect() {
@@ -1126,8 +1132,7 @@
 
       hintEl.textContent = ""; // no "Preparing pack…" behind the picker
       document.body.classList.add("picking"); // tear-pack stays hidden until a pack is chosen
-      selector.show(); // open straight into the picker
-      loadNextPack(); // pre-arm the first pack behind the picker
+      selector.show(); // open straight into the picker (intro pre-arms the pack via onIntroEnd)
     </script>
   </body>
 </html>

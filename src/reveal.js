@@ -189,7 +189,12 @@ export function createReveal({ mountEl, onAgain }) {
         (Math.abs(c.rx) < 0.05 && Math.abs(c.ry) < 0.05)
           ? ""
           : `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
-      for (let i = pos; i < slots.length; i++) {
+      // Only the front few cards are actually visible (the rest are stacked behind it,
+      // shrunk, showing at most a 15px sliver when spread). Writing the foil vars to
+      // ALL of them re-ran style/paint on every card per frame — the worst of the
+      // mobile drag cost. Cap to the front three: the glint you can see, nothing more.
+      const end = Math.min(slots.length, pos + 3);
+      for (let i = pos; i < end; i++) {
         const ce = slots[i].cardEl;
         ce.style.setProperty("--mx", c.mx.toFixed(1) + "%");
         ce.style.setProperty("--my", c.my.toFixed(1) + "%");
@@ -883,7 +888,7 @@ export function createReveal({ mountEl, onAgain }) {
     slots.forEach((s) => { s.slot.style.pointerEvents = "none"; });
 
     const order = haulOrder.length ? haulOrder.slice() : slots.map((_, i) => i);
-    const RISE = 520, STAGGER = 200, FLIGHT = 420; // RISE waits out the 0.5s rise transition
+    const RISE = 520, STAGGER = 200, FLIGHT = 420, ANTIC = 150; // RISE waits out the 0.5s rise transition; ANTIC = the wind-up beat
 
     // suck the cards in only AFTER the binder has finished rising — so we measure its
     // FINAL (risen) position. Measuring at click time gives the binder's start (down)
@@ -893,20 +898,36 @@ export function createReveal({ mountEl, onAgain }) {
       const br = binderEl.getBoundingClientRect(); // risen now → true target
       const dx = (br.left + br.width / 2) - (sr.left + sr.width / 2);
       const dy = (br.top + br.height / 2) - (sr.top + sr.height / 2);
+      // each card keeps its fan pose (position + tilt + scale) and just eases UP a
+      // touch along ITS OWN facing — a small local lift = the anticipation — THEN
+      // gets sucked into the binder.
       order.forEach((cardIdx, k) => {
         const s = slots[cardIdx];
+        const rest = s.slot.style.transform; // resting fan pose: translate(..) rotate(..) scale(..)
+        // insert the lift AFTER rotate, so "up" is in the card's LOCAL frame (follows its tilt)
+        const lifted = rest.includes("scale(") ? rest.replace("scale(", "translateY(-16px) scale(") : rest;
         setTimeout(() => {
-          s.slot.style.transition = `transform ${FLIGHT}ms cubic-bezier(0.5,0,0.85,0.3), opacity ${FLIGHT}ms ease-in ${FLIGHT * 0.45}ms`;
-          s.slot.style.transform = `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) rotate(0deg) scale(0.04)`;
-          s.slot.style.opacity = "0"; // shrinks to nothing AT the binder centre → vacuumed in
-          setTimeout(() => bloatBinder(k, order.length), FLIGHT - 80); // bloat as it lands
+          // 1) ANTICIPATION — same place/tilt/size, ease up a little along its own facing
+          s.slot.style.transition = `transform ${ANTIC}ms cubic-bezier(0.33,1,0.68,1)`;
+          s.slot.style.transform = lifted;
+          // 2) SUCK — then whoosh into the binder, shrinking to nothing at its centre
+          setTimeout(() => {
+            s.slot.style.transition = `transform ${FLIGHT}ms cubic-bezier(0.5,0,0.85,0.3), opacity ${FLIGHT}ms ease-in ${FLIGHT * 0.45}ms`;
+            s.slot.style.transform = `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) rotate(0deg) scale(0.04)`;
+            s.slot.style.opacity = "0";
+            setTimeout(() => bloatBinder(k, order.length), FLIGHT - 80); // bloat as it lands
+          }, ANTIC);
         }, k * STAGGER);
       });
     }, RISE);
 
-    // after the last card is swallowed, settle the binder and hand off
-    const done = RISE + (order.length - 1) * STAGGER + FLIGHT + 360;
-    setTimeout(() => { close(); collecting = false; onAgain?.(); }, done);
+    // after the last card is swallowed, the now-full binder SLIDES BACK DOWN out of
+    // frame on its OWN beat (a "drop away") — and ONLY THEN do we hand back to the
+    // carousel. So it's a transition OUT, not an instant cut to the wheel.
+    const lastSwallow = RISE + (order.length - 1) * STAGGER + ANTIC + FLIGHT;
+    const SLIDE_OUT = 500; // matches the binder's 0.5s slide-down transition
+    setTimeout(() => binderEl.classList.remove("rising"), lastSwallow + 240); // binder drops + fades away
+    setTimeout(() => { close(); collecting = false; onAgain?.(); }, lastSwallow + 240 + SLIDE_OUT);
   }
   // one bloat + gulp per card — the binder lurches bigger, like it just ate
   function bloatBinder(k, total) {

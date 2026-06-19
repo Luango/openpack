@@ -104,7 +104,10 @@ function buildBus(c) {
 
 function ensure() {
   if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // "interactive" asks the platform for the smallest output buffer it can give —
+    // the lowest latency between a cue firing and the speaker, so a sound lands WITH
+    // its visual instead of trailing it (the default hint can pick a larger buffer).
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
     buildBus(ctx);
     loadSamples(ctx); // fire-and-forget; cues fall back to synth until samples decode
   }
@@ -364,11 +367,23 @@ function tearChimeUp(progress) {
   }
 }
 
+// ONE shared, read-only white-noise buffer. Every noise-based cue (the tear loop,
+// burst, revealImpact, riser, flick, reseal) reads from it — looped or simply
+// stopped early — so we NEVER fill a fresh Float32Array with Math.random() on the
+// main thread mid-open/mid-reveal. That per-cue allocation (up to ~50k samples for
+// the reveal-impact tail) ran inside the exact janky frame the sound had to sync
+// to, which both worsened the hitch and drifted the audio clock. Built once, lazily.
+// (The tiny <0.05s grains in crinkle/shred/crack bake a decay envelope INTO their
+// samples, so they keep their own per-call buffers — they're cheap.)
+let _noise = null;
 function noiseBuffer(c, seconds = 2) {
-  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * seconds), c.sampleRate);
+  if (_noise && _noise.length >= c.sampleRate * seconds) return _noise;
+  const len = Math.ceil(c.sampleRate * Math.max(2.5, seconds)); // 2.5s covers the longest tail
+  const buf = c.createBuffer(1, len, c.sampleRate);
   const d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  return buf; // long buffer so the loop point is inaudible
+  _noise = buf; // long buffer so any loop point is inaudible, and reused thereafter
+  return buf;
 }
 
 // a quick scatter of bright noise grains — the metallic "crinkle" of foil being

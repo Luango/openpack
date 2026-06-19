@@ -1,21 +1,78 @@
 {
-  "grab": [],
-  "tear_loop": [],
-  "tear_snap": [],
-  "open_release": [],
-  "scratch": [],
-  "open_burst": [],
-  "reveal_impact": [],
-  "riser": [],
-  "chime": [],
-  "sparkle": [],
-  "flick": [],
-  "setdown": [],
-  "cardtap": [],
-  "pip": [],
-  "spark": [],
-  "reject": [],
-  "reseal": [],
-  "conclude": [],
-  "hover": []
+  "grab": [
+    "grab-1.wav",
+    "grab-2.wav"
+  ],
+  "tear_loop": [
+    "tear-loop.wav"
+  ],
+  "tear_snap": [
+    "tear-snap-1.wav",
+    "tear-snap-2.wav",
+    "tear-snap-3.wav"
+  ],
+  "scratch": [
+    "scratch-1.wav",
+    "scratch-2.wav",
+    "scratch-3.wav",
+    "scratch-4.wav"
+  ],
+  "open_burst": [
+    "open-burst-1.wav",
+    "open-burst-2.wav"
+  ],
+  "reveal_impact": [
+    "reveal-impact.wav"
+  ],
+  "riser": [
+    "riser.wav"
+  ],
+  "flick": [
+    "flick-1.wav",
+    "flick-2.wav",
+    "flick-3.wav",
+    "flick-4.wav"
+  ],
+  "setdown": [
+    "setdown-1.wav",
+    "setdown-2.wav",
+    "setdown-3.wav",
+    "setdown-4.wav"
+  ],
+  "cardtap": [
+    "cardtap-1.wav",
+    "cardtap-2.wav",
+    "cardtap-3.wav"
+  ],
+  "reseal": [
+    "reseal.wav"
+  ],
+  "chime": [
+    "chime.wav"
+  ],
+  "sparkle": [
+    "sparkle.wav"
+  ],
+  "spark": [
+    "spark.wav"
+  ],
+  "open_release": [
+    "open-release.wav"
+  ],
+  "conclude": [
+    "conclude.wav"
+  ],
+  "pip": [
+    "pip.wav"
+  ],
+  "gulp": [
+    "gulp-1.wav",
+    "gulp-2.wav"
+  ],
+  "reject": [
+    "reject.wav"
+  ],
+  "hover": [
+    "hover.wav"
+  ]
 }
