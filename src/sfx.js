@@ -287,6 +287,39 @@ function startMusic() {
   }
 }
 
+// RETRY GUARD — the single most common "first open is silent, second is fine" cause is a
+// cold first load where the gate becomes tappable (via its readiness backstop) before the
+// 3MB music bed has actually buffered: that first play() races an empty element and never
+// produces sound, while the second visit plays instantly because the file is cached. The
+// fix: once the user HAS tapped (the session + context are now unlocked, so further play()
+// calls need NO new gesture), keep nudging the current scene's bed every ~400ms until it's
+// genuinely advancing — covering a slow buffer, a stalled cold start, or a raced resume.
+// Bounded so it can't spin forever, and a no-op during the deliberately-silent scenes.
+let bedWatchTimer = null;
+function nudgeCurrentBed() {
+  const bed = beds.get(currentScene);
+  if (!bed || !bed.el) return;
+  wireBed(bed);
+  if (bed.el.paused) bed.el.play().catch(() => {});
+  rampMusic(1.2);
+}
+function ensureBedPlaying() {
+  if (bedWatchTimer || !ctx) return;
+  let tries = 0;
+  const tick = () => {
+    bedWatchTimer = null;
+    if (currentScene === "silent") return;     // intentional quiet (ready-to-tear) — leave it
+    const bed = beds.get(currentScene);
+    const advancing = bed && bed.el && !bed.el.paused && bed.el.currentTime > 0;
+    if (advancing) { rampMusic(1.2); return; } // it's truly playing — done
+    if (++tries > 10) return;                  // ~4s of nudging, then give up (gestures still retry)
+    musicStarted = true;                       // we've committed to a bed; keep startMusic a no-op
+    nudgeCurrentBed();
+    bedWatchTimer = setTimeout(tick, 400);
+  };
+  bedWatchTimer = setTimeout(tick, 400);
+}
+
 // Play a 1-sample silent buffer through the context. iOS keeps WebAudio output muted
 // (and gated by the physical silent/ring switch) until a sound has played through the
 // context inside a user gesture — this wakes it so every later synth cue is audible.
@@ -540,7 +573,9 @@ export function kickAudio() {
   try {
     ensure();
     unlockOutput(); // wake the output INSIDE the gesture so iOS un-mutes the whole context
-    return startMusic();
+    const started = startMusic();
+    ensureBedPlaying(); // keep nudging until the bed truly advances (cold-buffer / stalled start)
+    return started;
   } catch {
     /* no Web Audio support */
     return Promise.resolve(false);
