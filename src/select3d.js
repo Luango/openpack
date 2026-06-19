@@ -25,6 +25,10 @@ import * as THREE from "three";
 import * as sfx from "./sfx.js";
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Phones (coarse pointer) carry the whole "卡顿" complaint, so the carousel scales
+// itself down there: no MSAA, a lower pixel-ratio cap, and thinner ambient particle
+// fields. Desktop keeps the full-fat render. One flag drives every mobile dial below.
+const COARSE = matchMedia("(pointer: coarse)").matches;
 
 // The default roster — a wheel of identical sealed packs to pick from (the gacha
 // feel: same art, you choose which one to open). `img` is the source art; `hue`
@@ -91,7 +95,7 @@ const INTRO_DIR = -1;     // wheel carry direction: -1 = counter-clockwise (flip
 
 export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand }) {
   // --- renderer / scene / camera -------------------------------------------
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: !COARSE, alpha: true, powerPreference: "high-performance" });
   renderer.setClearColor(0x000000, 0); // transparent — the page's nebula bg shows through
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   mountEl.appendChild(renderer.domElement);
@@ -186,18 +190,29 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // intro/selection), all ticked from the same clock so the beams move in sync.
   const rimMats = [];
   const rimGeoCache = new Map();
+  const wallGeoCache = new Map();
   function addRimBeam(mesh, img, aspect) {
     if (mesh.userData.rim) return; // already built (texture promise can resolve once)
     const outline = traceOutline(img);
     if (!outline) return;
     const key = aspect.toFixed(3);
-    // a thin tube hugging the silhouette, CENTRED in the foil thickness (z=0)
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.016, 0));
+    // EDGE WALL — a solid silver-foil band standing along the silhouette, spanning the
+    // foil thickness (±EDGE_T in z). The two art sheets are an OPEN pillow, so edge-on
+    // you used to see straight through the slit between them (the "transparent" pack).
+    // This wall closes that slit: edge-on it reads as a solid silver foil edge (matching
+    // the design sheet's slim side view); head-on it's a thin silver rim under the glow.
+    if (!wallGeoCache.has(key)) wallGeoCache.set(key, makeEdgeWall(outline, EDGE_T));
+    const wall = new THREE.Mesh(wallGeoCache.get(key), makeEdgeMaterial());
+    mesh.add(wall);
+    mesh.userData.wall = wall;
+    // a flat outline ribbon hugging the silhouette, CENTRED in the foil thickness (z=0)
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, 0));
     const mat = makeRimMaterial();
     const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
     // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) and
-    // with depthTest off (set in makeRimMaterial), so the centred tube is never buried
-    // inside the pack body — it reads as the pack's glowing edge from any angle. The
+    // with depthTest off (set in makeRimMaterial), so the centred ribbon isn't buried in
+    // the pack body — head-on it reads as the outline glow, and centred at z=0 it sits
+    // at the middle of the edge (no float) instead of proud of the front face. The
     // layout() facing-fade keeps far-back packs from bleeding their rim forward.
     rimMesh.renderOrder = 1000;
     mesh.add(rimMesh);        // child → inherits the pack's rotation / pop / scale
@@ -274,6 +289,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     mats.forEach((mm) => { mm.transparent = op < 1; mm.opacity = op; });
     const rim = mesh.userData.rim; // the rim/beam fades right along with its pack
     if (rim) rim.material.uniforms.uOpacity.value = op;
+    const wall = mesh.userData.wall; // the silver edge wall fades with it too
+    if (wall) { wall.material.transparent = op < 1; wall.material.opacity = op; }
   }
 
   // --- render loop (parked while hidden) ------------------------------------
@@ -335,7 +352,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   function resize() {
     const w = mountEl.clientWidth || window.innerWidth;
     const h = mountEl.clientHeight || window.innerHeight;
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    // cap the backing-store resolution: 1.5× on a phone (a DPR-3 screen would
+    // otherwise render 9× the fragments of CSS pixels — the carousel's biggest cost)
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, COARSE ? 1.5 : 2));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     // portrait phones: pull back so the focused pack + its neighbours aren't cropped;
@@ -623,6 +642,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       geoCache.forEach((g) => g.dispose());     // the shared pillow geometries
       rimGeoCache.forEach((g) => g.dispose());  // the rim/beam ribbons
       rimMats.forEach((m) => m.dispose());
+      wallGeoCache.forEach((g) => g.dispose()); // the silver edge walls
+      meshes.forEach((m) => m.userData.wall?.material.dispose());
       particles.points.geometry.dispose();
       scene.environment?.dispose?.();
       renderer.dispose();
@@ -727,61 +748,90 @@ function traceOutline(img) {
   return out;
 }
 
-// Build a thin TUBE that follows the closed outline at local depth `z`, `radius`
-// thick. A tube (not a flat ribbon) is visible from ANY angle — head-on it reads as
-// the outline glow, edge-on its cross-section still shows, so the pack's side isn't
-// "empty". Centred at z=0 it sits at the middle of the foil's thickness — the pack's
-// true edge. Each vertex carries aArc (0..1 along the loop, MONOTONIC — closed with a
-// duplicate ring at arc=1 so the beam doesn't glitch at the seam) and aRing (the
-// position around the tube cross-section, 0..1, for a soft core in the shader).
-function makeRimGeometry(outline, radius, z) {
+// Half-thickness of the sealed foil EDGE — matches the pillow's LIP so the wall meets
+// the front/back sheets right at the silhouette and closes the open slit between them.
+const EDGE_T = 0.014;
+
+// Build a solid EDGE WALL: a band standing along the closed outline, from z=+halfT to
+// z=−halfT, so the open pillow becomes a closed pouch. Edge-on it fills the see-through
+// slit with a solid silver foil edge; head-on it's a thin rim at the very silhouette.
+function makeEdgeWall(outline, halfT) {
+  const n = outline.length;
+  const pos = [], idx = [];
+  for (let i = 0; i < n; i++) {
+    const p = outline[i];
+    pos.push(p[0], p[1], halfT, p[0], p[1], -halfT); // a front-edge vert + a back-edge vert
+  }
+  for (let i = 0; i < n; i++) {
+    const a = i * 2, b = ((i + 1) % n) * 2;          // wrap the last segment back to the start
+    idx.push(a, a + 1, b, a + 1, b + 1, b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+// Brushed-silver foil for the edge wall — metallic so it catches the env sheen as the
+// wheel turns, reading as a real foil edge rather than a flat grey band. One per pack
+// (so it can fade with its pack during the intro/breakaway).
+function makeEdgeMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color: 0xb9bdca, metalness: 0.6, roughness: 0.42, envMapIntensity: 1.1, side: THREE.DoubleSide,
+  });
+}
+
+// Build a flat ribbon (triangle strip) that follows the closed outline, `halfW` wide
+// to each side of the edge, at local depth `z`. Centred at z=0 it sits at the middle
+// of the foil's thickness — the pack's true edge — so it reads as the edge glow from a
+// quarter angle instead of floating proud of the front face. Each vertex carries aArc
+// (0..1 along the loop, MONOTONIC — closed with a duplicate start vertex at arc=1 so
+// the beam doesn't glitch at the seam) and aSide (-1..1 across the ribbon, for the
+// soft cross-section glow in the shader).
+function makeRimGeometry(outline, halfW, z) {
   const n = outline.length;
   const seg = new Array(n); let total = 0;
   for (let i = 0; i < n; i++) { const a = outline[i], b = outline[(i + 1) % n]; seg[i] = Math.hypot(b[0] - a[0], b[1] - a[1]); total += seg[i]; }
   if (total < 1e-4) return new THREE.BufferGeometry();
-  const K = 6;                                   // tube cross-section segments (a hexagonal wire — cheap, round enough)
-  const pos = [], aArc = [], aRing = [], idx = [];
+  const pos = [], aArc = [], aSide = [], idx = [];
   let acc = 0;
-  for (let i = 0; i <= n; i++) {                 // n+1 rings: the last duplicates the first (arc=1)
+  for (let i = 0; i <= n; i++) {                 // n+1 verts: the last duplicates the first (arc=1)
     const cur = outline[i % n], prev = outline[(i - 1 + n) % n], next = outline[(i + 1) % n];
     let tx = next[0] - prev[0], ty = next[1] - prev[1];
     const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
-    const nx = -ty, ny = tx;                     // in-plane normal; the tube spans this AND the z axis
+    const nx = -ty, ny = tx;                     // unit normal (perp to the tangent)
     const u = i < n ? acc / total : 1;
     if (i < n) acc += seg[i];
-    for (let k = 0; k < K; k++) {                // ring around the tangent: cos·(in-plane normal) + sin·(z)
-      const th = (2 * Math.PI * k) / K, c = Math.cos(th), s = Math.sin(th);
-      pos.push(cur[0] + radius * c * nx, cur[1] + radius * c * ny, z + radius * s);
-      aArc.push(u); aRing.push(k / K);
-    }
+    pos.push(cur[0] + nx * halfW, cur[1] + ny * halfW, z); aArc.push(u); aSide.push(1);
+    pos.push(cur[0] - nx * halfW, cur[1] - ny * halfW, z); aArc.push(u); aSide.push(-1);
   }
   for (let i = 0; i < n; i++) {
-    const a = i * K, b = (i + 1) * K;
-    for (let k = 0; k < K; k++) {
-      const k2 = (k + 1) % K;
-      idx.push(a + k, a + k2, b + k, a + k2, b + k2, b + k);
-    }
+    const i0 = i * 2, i1 = i * 2 + 1, j0 = (i + 1) * 2, j1 = (i + 1) * 2 + 1;
+    idx.push(i0, i1, j0, i1, j1, j0);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("aArc", new THREE.Float32BufferAttribute(aArc, 1));
-  g.setAttribute("aRing", new THREE.Float32BufferAttribute(aRing, 1));
+  g.setAttribute("aSide", new THREE.Float32BufferAttribute(aSide, 1));
   g.setIndex(idx);
   return g;
 }
 
-// The beam shader: a weak warm rim glowing along the whole tube + a bright comet
-// (tight head, trailing tail) racing around it. Additive → reads as LIGHT.
+// The beam shader: a weak warm rim everywhere + a bright comet (tight head, trailing
+// tail) racing around the loop. Additive, so it reads as LIGHT against the dark scene.
 const RIM_VERT = `
-  attribute float aArc; attribute float aRing;
-  varying float vU; varying float vR;
-  void main() { vU = aArc; vR = aRing; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  attribute float aArc; attribute float aSide;
+  varying float vU; varying float vV;
+  void main() { vU = aArc; vV = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const RIM_FRAG = `
   precision mediump float;
-  varying float vU; varying float vR;
+  varying float vU; varying float vV;
   uniform float uTime; uniform float uOpacity;
   uniform vec3 uWarm; uniform vec3 uHot;
   void main() {
+    float edge = max(0.0, 1.0 - abs(vV));
+    float body = pow(edge, 1.1);                       // broad soft glow across the ribbon
+    float hot  = pow(edge, 4.0);                       // a hotter thin core inside it
     float head = fract(uTime * 0.22);                  // the comet's position around the loop
     float ahead = fract(vU - head);
     float behind = fract(head - vU);
@@ -789,10 +839,10 @@ const RIM_FRAG = `
     float comet = exp(-ring * ring / 0.0016);          // bright head
     float tail  = exp(-behind / 0.20) * 0.7;           // exponential tail trailing the head
     float beam = max(comet, tail);
-    // weak always-on rim (0.2) + the sweeping comet; thin tube so no cross-section term
-    float i = (0.2 + 1.7 * beam) * uOpacity;
+    // weak always-on rim (0.22) + the sweeping comet (dialled back); hot core sharpens it
+    float i = (body * (0.22 + 1.7 * beam) + hot * beam * 0.7) * uOpacity;
     vec3 col = mix(uWarm, uHot, clamp(beam, 0.0, 1.0)); // gold rim → white-hot comet
-    gl_FragColor = vec4(col * i * 1.1, i);             // mild overdrive → a soft bloom, not a blowout
+    gl_FragColor = vec4(col * i * 1.12, i);            // mild overdrive → a soft bloom, not a blowout
   }`;
 function makeRimMaterial() {
   return new THREE.ShaderMaterial({
@@ -877,7 +927,7 @@ function makeEnvTexture() {
 // circular clip so the plane's corners are cut away), tinted down so they recede.
 function makeRisingCards() {
   const tex = pokeballTexture();
-  const COUNT = 9;
+  const COUNT = COARSE ? 5 : 9;
   const group = new THREE.Group();
   const geo = new THREE.PlaneGeometry(1, 1); // square — the Poké Ball icon is round
   const cards = [];
@@ -886,11 +936,11 @@ function makeRisingCards() {
     // Poké Ball icons (alphaTest cuts the plane's corners to the round ball), tinted
     // DOWN via a cool colour multiply so they recede behind the packs as ambiance and
     // never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x3a3e52, alphaTest: 0.5 });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x3a3e52, transparent: true, opacity: 0.95, depthWrite: false });
     const m = new THREE.Mesh(geo, mat);
     const u = {
       x: (rand(i, 1) - 0.5) * 9,          // spread across the wheel's width
-      z: -4.5 + rand(i, 2) * 6,           // far (−4.5, small + foggy) → near (+1.5, big) ↔ depth variety
+      z: -3.4 - rand(i, 2) * 5,           // ALWAYS behind the ring (−3.4 … −8.4) so they never cross a pack
       speed: 0.18 + rand(i, 3) * 0.32,    // rise speed (units/sec) — slow, gentle drift
       scale: 0.45 + rand(i, 4) * 1.2,     // small → large ↔ size variety
       rot: (rand(i, 5) - 0.5) * 0.5,
@@ -939,7 +989,13 @@ function pokeballTexture() {
   // centre button: black ring → white core
   x.fillStyle = BLACK; x.beginPath(); x.arc(cx, cy, S * 0.135, 0, Math.PI * 2); x.fill();
   x.fillStyle = WHITE; x.beginPath(); x.arc(cx, cy, S * 0.088, 0, Math.PI * 2); x.fill();
-  const tex = new THREE.CanvasTexture(c);
+  // soften the whole icon — it's only a background mote, it must NOT grab the eye:
+  // blur a copy and use THAT, so the details AND the edge read slightly out of focus
+  const soft = document.createElement("canvas"); soft.width = soft.height = S;
+  const sx = soft.getContext("2d");
+  sx.filter = "blur(3px)";
+  sx.drawImage(c, 0, 0);
+  const tex = new THREE.CanvasTexture(soft);
   tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   _pokeballTex = tex;
   return tex;
@@ -947,7 +1003,9 @@ function pokeballTexture() {
 
 // A field of slow-drifting glow motes for the "digital space" backdrop.
 function makeParticles() {
-  const COUNT = 240;
+  // each frame this re-uploads the whole position buffer to the GPU, so the count is
+  // a direct per-frame CPU+upload cost — keep the field much thinner on a phone
+  const COUNT = COARSE ? 90 : 240;
   const pos = new Float32Array(COUNT * 3);
   const spd = new Float32Array(COUNT);
   for (let i = 0; i < COUNT; i++) {

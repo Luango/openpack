@@ -233,6 +233,10 @@
       .pack-wrap.tearing .pack-glow,
       .pack-wrap.tearing .crimp-streak .cs-beam { animation-play-state: paused; }
       .scene-fx.paused .float-card { animation-play-state: paused; visibility: hidden; }
+      /* once the pack opens, the reveal stage covers the backdrop — freeze the 6
+         blurred drifting balls so the compositor isn't recompositing them behind it
+         every frame during the (already busy) reveal. They resume on "Open another". */
+      body.revealing .scene-fx .float-card { animation-play-state: paused; visibility: hidden; }
       /* the OPEN burst: kill the rim animation AND the drop-shadow filter on the
          foil, so the two pieces flinging apart don't re-raster the whole foil
          through a filter every frame (mobile jank). animation:none is required —
@@ -765,6 +769,11 @@
          double the per-frame composite a phone can't spare */
       @media (pointer: coarse) {
         .reveal__rays--fine { display: none; }
+        /* the rays are a full-screen screen-blend layer — the compositor re-reads the
+           backdrop across the whole box every frame while they spin. The radial mask
+           already fades them out by ~72% radius, so shrinking the box from 130vmax to
+           100vmax loses nothing visible but cuts that blended area by ~40% on a phone. */
+        .reveal__rays { width: 100vmax; height: 100vmax; }
       }
 
       /* full-stage white→tier flash — the visceral "HIT" punctuation */
