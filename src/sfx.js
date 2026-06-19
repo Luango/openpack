@@ -1031,6 +1031,41 @@ export function cardTap(depth = 0) {
   src.stop(t + dur);
 }
 
+// A juicy "absorb / gulp" pop for sucking a card into the binder — a soft round body
+// blip that bends UP (the swallow) plus a little squish transient, its pitch RISING
+// with each card so collecting a pack reads as an escalating, satisfying munch — à la
+// Cult of the Lamb chowing down. index = which card (0-based), total = pack size.
+export function gulp(index = 0, total = 5) {
+  if (playSample("gulp", { rate: 1 + index * 0.05, send: 0.12 })) return;
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  const step = total > 1 ? index / (total - 1) : 0; // 0..1 across the pack
+  const base = 240 + step * 380;                    // ascending pitch per card
+  // round body that bends up (the swallow), then settles
+  const osc = c.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(base * 0.8, t);
+  osc.frequency.exponentialRampToValueAtTime(base * 1.7, t + 0.06);
+  osc.frequency.exponentialRampToValueAtTime(base * 1.15, t + 0.15);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.17, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  osc.connect(g).connect(master);
+  send(g, 0.1);
+  osc.start(t); osc.stop(t + 0.19);
+  // a soft "squish" transient on top
+  const nz = c.createBufferSource();
+  nz.buffer = noiseBuffer(c, 0.05);
+  const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = base * 2.2; bp.Q.value = 0.9;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.09, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  nz.connect(bp).connect(ng).connect(master);
+  nz.start(t); nz.stop(t + 0.05);
+}
+
 // A tiny high blip articulating each count pip as the status fades in — a soft
 // ascending "tick … tick … tick" so the haul size registers aurally. Very quiet.
 export function pipTone(index = 0) {

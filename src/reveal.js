@@ -73,12 +73,29 @@ export function createReveal({ mountEl, onAgain }) {
       <p class="reveal__hint"></p>
     </div>
     <p class="reveal__sr" aria-live="polite"></p>
-    <button class="reveal__again" type="button" hidden>Open another</button>`;
+    <button class="reveal__again" type="button" hidden>Collect</button>
+    <!-- the binder the cards get vacuumed into on Collect; rises as the button drops,
+         and bloats once per card (see collect() in this file) -->
+    <div class="reveal__binder" aria-hidden="true">
+      <div class="binder-icon">
+        <svg viewBox="0 0 72 88" width="100%" height="100%">
+          <rect x="6" y="5" width="60" height="78" rx="7" fill="#2a2150" stroke="#b49bff" stroke-width="3"/>
+          <rect x="6" y="5" width="15" height="78" rx="7" fill="#1c1638" stroke="#b49bff" stroke-width="3"/>
+          <circle cx="13.5" cy="26" r="3.2" fill="#d8ccff"/>
+          <circle cx="13.5" cy="44" r="3.2" fill="#d8ccff"/>
+          <circle cx="13.5" cy="62" r="3.2" fill="#d8ccff"/>
+          <rect x="30" y="30" width="26" height="28" rx="3" fill="#b49bff" opacity="0.85"/>
+          <path d="M43 33 l3 6 6 .8 -4.4 4.2 1 6.2 -5.6-3 -5.6 3 1-6.2 -4.4-4.2 6-.8z" fill="#fff2c8"/>
+        </svg>
+      </div>
+    </div>`;
   mountEl.appendChild(host);
 
   const stackEl = host.querySelector(".reveal__stack");
   const hintEl = host.querySelector(".reveal__hint");
   const againEl = host.querySelector(".reveal__again");
+  const binderEl = host.querySelector(".reveal__binder");
+  const binderIconEl = host.querySelector(".binder-icon");
   const interiorEl = host.querySelector(".reveal__interior");
   const shadowEl = host.querySelector(".reveal__shadow");
   const raysEl = host.querySelector(".reveal__rays:not(.reveal__rays--fine)");
@@ -391,7 +408,10 @@ export function createReveal({ mountEl, onAgain }) {
 
   function close() {
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting");
+    binderEl.classList.remove("rising");
+    againEl.disabled = false;
+    collecting = false;
     document.body.classList.remove("revealing");
     peeking = true;
     sliding = false;
@@ -849,10 +869,55 @@ export function createReveal({ mountEl, onAgain }) {
     if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap for the next card.`;
   }
 
-  againEl.addEventListener("click", () => {
-    close();
-    onAgain?.();
-  });
+  // COLLECT — the button drops away as a binder rises, then the pull is vacuumed into
+  // it one card at a time; the binder bloats + gulps on each card (Cult-of-the-Lamb
+  // munch). When the last card lands, hand back to the host (→ pick another pack).
+  let collecting = false;
+  function collect() {
+    if (collecting || !slots.length) return;
+    collecting = true;
+    stopHaulLoop();                 // freeze the fan; we drive the slots by hand now
+    host.classList.add("collecting"); // CSS: drop the button, hide hint/caption
+    againEl.disabled = true;
+    binderEl.classList.add("rising"); // the binder slides up from below
+
+    // where the binder sits, in the stack's local px (all slots share the stack box,
+    // so one delta vacuums every card to the same spot)
+    const sr = stackEl.getBoundingClientRect();
+    const br = binderEl.getBoundingClientRect();
+    const dx = (br.left + br.width / 2) - (sr.left + sr.width / 2);
+    const dy = (br.top + br.height / 2) - (sr.top + sr.height / 2);
+
+    // suck the cards in, front-to-back, staggered
+    const order = haulOrder.length ? haulOrder.slice() : slots.map((_, i) => i);
+    const STAGGER = 200, FLIGHT = 420, START = 360; // ms (START = wait for the binder to rise)
+    order.forEach((cardIdx, k) => {
+      const s = slots[cardIdx];
+      s.slot.style.pointerEvents = "none";
+      setTimeout(() => {
+        s.slot.style.transition = `transform ${FLIGHT}ms cubic-bezier(0.5,0,0.85,0.3), opacity ${FLIGHT}ms ease-in ${FLIGHT * 0.4}ms`;
+        s.slot.style.transform = `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) rotate(0deg) scale(0.04)`;
+        s.slot.style.opacity = "0";
+        setTimeout(() => bloatBinder(k, order.length), FLIGHT - 60); // bloat as it lands
+      }, START + k * STAGGER);
+    });
+
+    // after the last card is swallowed, settle the binder and hand off
+    const done = START + (order.length - 1) * STAGGER + FLIGHT + 360;
+    setTimeout(() => { close(); collecting = false; onAgain?.(); }, done);
+  }
+  // one bloat + gulp per card — the binder lurches bigger, like it just ate
+  function bloatBinder(k, total) {
+    sfx.gulp?.(k, total);
+    if (navigator.vibrate) navigator.vibrate(12);
+    const grow = 1 + 0.16 + k * 0.02; // each card leaves it a touch fatter
+    binderIconEl.animate(
+      [{ transform: "scale(1)" }, { transform: `scale(${grow})`, offset: 0.35 }, { transform: "scale(1)" }],
+      { duration: 300, easing: "cubic-bezier(0.34,1.56,0.64,1)" }
+    );
+  }
+
+  againEl.addEventListener("click", collect);
 
   return { prepare, wake, show, close };
 }

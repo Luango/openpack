@@ -663,17 +663,48 @@
         bottom: calc(54px + env(safe-area-inset-bottom, 0px));
         transform: translateX(-50%);
         min-height: 44px; /* comfortable thumb target */
-        padding: 12px 26px;
+        padding: 13px 40px;
         border-radius: 999px;
-        border: 1px solid var(--line, #2a313f);
-        background: var(--bg-elev, #141821);
-        color: #eef1f6;
+        border: 0;
+        background: linear-gradient(180deg, #fff 0%, var(--tier-color, #b49bff) 150%);
+        color: #1a1622;
         font: inherit;
-        font-weight: 600;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        box-shadow: 0 10px 30px -8px var(--tier-color, #b49bff);
         cursor: pointer;
         pointer-events: auto;
+        z-index: 330;
+        transition: transform 0.45s cubic-bezier(0.5, 0, 0.75, 0), opacity 0.4s ease;
       }
       .reveal__again[hidden] { display: none; }
+      .reveal__again:active { filter: brightness(0.95); }
+      /* COLLECT: the button drops away as the binder rises to take its place */
+      .reveal.collecting .reveal__again {
+        transform: translateX(-50%) translateY(180px);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .reveal.collecting .reveal__status,
+      .reveal.collecting .reveal__haul-cap { opacity: 0; }
+
+      /* the binder the pull is vacuumed into — parked below, rises on Collect */
+      .reveal__binder {
+        position: fixed;
+        left: 50%;
+        bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+        width: 92px;
+        aspect-ratio: 72 / 88;
+        transform: translate(-50%, 170px) scale(0.9);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 320;
+        transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+        filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.55));
+      }
+      .reveal__binder.rising { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      .binder-icon { width: 100%; height: 100%; transform-origin: 50% 80%; will-change: transform; }
 
       /* ======================================================================
        *  THE HIT — sunburst rays, screen flash, anticipation tell, rarity stamp,
