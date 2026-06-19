@@ -288,6 +288,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let split = false; // promoted to two pieces?
   let lightClosing = false; // true once the opening light is being faded out (before the pack exits)
   let lightAnims = []; // WAAPI breathe→fade on the opening light (cancelled on reset)
+  let handoffTimer = 0; // pending "drop the pack" handoff — gated on the light fade finishing
   let opened = false;
   let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the flying half tilts around
   let moverEl = null; // the SMALLER half (flies off); the larger body stays put
@@ -642,27 +643,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // value. The shadow is invisible mid-burst anyway. Restored in clearTear.
     wrap.classList.add("opening");
     makePieces();
-    spring.set({ sep: 1.15 }); // pieces KICK fully apart — overshoot so the torn half flies hard off-frame AND the flare blooms bigger/brighter
-    // GOD LIGHT: the rip is complete, so release the jagged tear clip (it bounded the
-    // light exactly at the rip line — see makePieces) and replace it with a WIDE, SMOOTH
-    // cone fanning along the mouth direction. The apex is pulled BEHIND the card so the
-    // near-card region is already broad → the bloom stays round and there's no sharp V
-    // at the card. The light now pours out a clean fan, never cut by the ripping line.
-    {
-      const C = { x: VB.w / 2, y: VB.h / 2 };
-      const ax = moverDir; // unit vector — the way the torn mouth faces
-      const HALF = 1.05; // ~60° half-angle → a broad fan (≈120° total)
-      const BACK = 140; // push the cone apex this far behind the card
-      const R = 1400; // far off-screen, so the fan edges never read on-screen
-      const apex = { x: C.x - ax.x * BACK, y: C.y - ax.y * BACK };
-      const rot = (v, t) => ({ x: v.x * Math.cos(t) - v.y * Math.sin(t), y: v.x * Math.sin(t) + v.y * Math.cos(t) });
-      const lD = rot(ax, -HALF), rD = rot(ax, HALF);
-      setPoints(lightClipPoly, [
-        apex,
-        { x: apex.x + lD.x * R, y: apex.y + lD.y * R },
-        { x: apex.x + rD.x * R, y: apex.y + rD.y * R },
-      ]);
-    }
+    spring.set({ sep: 1 }); // pieces pull fully apart
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
@@ -674,13 +655,24 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // loaded beat of the whole open. Rather than snuff it instantly, let it SHOOT
     // out, then HOLD and breathe (two surges of gathering energy) so the player gets
     // a real "what's in here?!" window before the cards spring up — and a chase
-    // lingers noticeably longer than a common. It must still be FULLY gone before the
-    // foil slides away on exit (or the detached shafts hang over nothing and give the
-    // trick away), so the fade lands ~150 ms ahead of the handoff.
-    const holdMs = 1000 + tellTier * 45; // god-light holds ~1 s (common) → ~1.4 s (chase) before it fades for the handoff
-    const fadeTail = 150; // gap between the light hitting 0 and the cards arriving
-    const handoffMs = holdMs + fadeTail;
+    // lingers noticeably longer than a common.
+    const holdMs = 760 + tellTier * 70; // common ~760 → chase ~1390
+    const dropBeat = 150; // a short breath after the light is gone, before the pack drops
     const TAKEOVER = 130; // let the spring tick brighten the shoot-out first, then own it
+    // The pack must NOT drop until the god light has fully faded out — otherwise the
+    // foil slides off while the light still shows and the detached shafts hang over
+    // nothing (the trick shows). So we GATE the handoff on the fade actually finishing
+    // (not a parallel timer), with a safety net so the flow can never hang.
+    let handedOff = false;
+    const handOff = () => {
+      if (handedOff) return;
+      handedOff = true;
+      onOpen?.(); // drop the pack body + spring the cards up
+    };
+    const dropAfter = (ms) => {
+      clearTimeout(handoffTimer);
+      handoffTimer = setTimeout(handOff, ms);
+    };
     setTimeout(() => {
       // hand opacity from the spring tick to a dedicated breathe→fade; the tick keeps
       // owning the bloom RADIUS (parked large), this owns brightness from here.
@@ -697,21 +689,24 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       const raysCur = parseFloat(lightRays.style.opacity) || 0.6;
       if (openBloom.animate) {
         const opts = { duration: dur, easing: "ease-in-out", fill: "forwards" };
-        lightAnims = [
-          openBloom.animate(breathe(bloomCur, 0.92), opts),
-          lightRays.animate(breathe(raysCur, 0.98), opts),
-        ];
+        const bloomA = openBloom.animate(breathe(bloomCur, 0.92), opts);
+        const raysA = lightRays.animate(breathe(raysCur, 0.98), opts);
+        lightAnims = [bloomA, raysA];
+        // ONLY drop the pack once the light has actually finished fading
+        raysA.addEventListener("finish", () => dropAfter(dropBeat));
+        // safety net: if the finish event is ever missed (e.g. backgrounded tab), still
+        // hand off so the reveal can never stall (handedOff makes whichever fires win)
+        handoffTimer = setTimeout(handOff, dur + dropBeat + 400);
       } else {
-        // no WAAPI — hold, then a plain transition fade over the tail of the window
+        // no WAAPI — hold, fade over the tail of the window, THEN drop the pack
+        const fadeMs = 300;
         setTimeout(() => {
           lightRays.style.transition = openBloom.style.transition = "opacity 0.3s ease";
           lightRays.style.opacity = openBloom.style.opacity = "0";
-        }, Math.max(0, dur - 300));
+          dropAfter(fadeMs + dropBeat);
+        }, Math.max(0, dur - fadeMs));
       }
     }, TAKEOVER);
-    // let the light fully bloom, breathe, and fade — THEN hand off to the reveal
-    // (which drops the pack body and springs the cards up out of the lingering glow)
-    setTimeout(() => onOpen?.(), handoffMs);
   }
 
   // A brief, decaying screen-kick on the burst (a hair of scale-pop + jitter). On
@@ -796,6 +791,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     gapGlow.style.opacity = 0;
     flow?.stop(); // halt + clear the flowing-light shader
     lightClosing = false; // reset the pre-exit fade latch for the next tear
+    clearTimeout(handoffTimer); // a reset mid-hold must not later drop the pack
     lightAnims.forEach((a) => a.cancel()); // drop the breathe→fade so it can't pin opacity
     lightAnims = [];
     lightRays.style.transition = openBloom.style.transition = ""; // instant reset, no carry-over fade

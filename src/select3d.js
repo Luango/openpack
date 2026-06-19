@@ -127,7 +127,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // Fog tinted to the aurora's mid-horizon indigo (not the old near-black) so the back
   // of the ring recedes into a LIT haze that blends with the shader backdrop, instead
   // of fading every far pack into a dark halo against the brighter background.
-  scene.fog = new THREE.Fog(0x2b3168, FOG_NEAR, FOG_FAR);
+  scene.fog = new THREE.Fog(0x282b4d, FOG_NEAR, FOG_FAR);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
@@ -918,7 +918,11 @@ function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 function makePackGeometry(aspect) {
   const W = 1, H = aspect;
   const NX = 22, NY = 36;          // surface resolution (smooth bulge, cheap)
-  const PUFF = 0.062;              // half-thickness ADDED by the card bulge in the body
+  const PUFF = 0.034;              // half-thickness ADDED by the card bulge in the body. Kept
+                                   // SLIM: a fat bulge rose ABOVE the rim ribbon and made the
+                                   // 流光 read as floating on the pack face instead of hugging the
+                                   // edge. A flatter pillow keeps the foil sheen-slide but lets the
+                                   // rim sit right at the silhouette (see RIM_Z, tuned to match).
   const LIP = 0.014;               // base foil half-thickness everywhere — gives the sealed
                                    // edges/crimps a flat, thin foil EDGE instead of tapering
                                    // to needle points (the old side-view "blade" artifact)
@@ -1021,10 +1025,12 @@ function traceOutline(img) {
 const EDGE_T = 0.014;
 
 // Forward float of the rim ribbon, in local z. With depthTest ON, the ribbon must sit
-// just PROUD of its own front sheet (which peaks ~0.035 under the ribbon) or that sheet
-// would occlude it head-on. Far below the body's mid bulge (~0.076), so the float reads
-// as "at the edge", not hovering — yet a pack in front on the wheel still occludes it.
-const RIM_Z = 0.045;
+// just PROUD of its own front sheet, or that sheet would occlude it head-on — but kept
+// as SHALLOW as possible so the 流光 hugs the true edge instead of hovering in front of
+// it. With the slim PUFF (0.034), the front sheet under the ribbon's footprint stays
+// ~0.024, so 0.026 clears it by a hair while sitting right at the silhouette; the body's
+// mid bulge (now ~0.048) is still interior, and a pack in front on the wheel occludes it.
+const RIM_Z = 0.026;
 
 // Build a solid EDGE WALL: a band standing along the closed outline, from z=+halfT to
 // z=−halfT, so the open pillow becomes a closed pouch. Edge-on it fills the see-through
@@ -1237,24 +1243,31 @@ const BG_FRAG = `
   uniform float uMobile;  // 1 on phones → calmer aurora
   void main() {
     vec2 uv = vUv;
-    // vertical palette: deep base (for reflection contrast) → indigo → electric blue
-    vec3 base = vec3(0.07,  0.09,  0.22);
-    vec3 mid  = vec3(0.17,  0.24,  0.60);
-    vec3 top  = vec3(0.28,  0.50,  0.88);
+    // Vertical palette — a "twilight gallery": deep ink-violet base (clean reflection
+    // contrast) → muted indigo → a SOFT periwinkle/slate at the top. Deliberately
+    // DESATURATED — the old top was an electric sky-blue (0.28,0.50,0.88) that read as
+    // default game-UI; pulling the saturation and value down lets the lit packs be the
+    // only vivid thing in frame, which is the whole point of the stage.
+    vec3 base = vec3(0.043, 0.047, 0.082);
+    vec3 mid  = vec3(0.123, 0.130, 0.250);
+    vec3 top  = vec3(0.235, 0.262, 0.430);
     vec3 col = mix(base, mid, smoothstep(0.0, 0.55, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
-    // two slow aurora bands sweeping across the upper field (cyan ↔ violet)
+    // two slow aurora bands — desaturated teal ↔ violet, tuned to HARMONISE with the
+    // plum/teal pack art instead of a clashing electric cyan, and dialled gently down
     float t = uTime * 0.06;
     float b1 = sin(uv.x * 3.1 + t * 2.0) * 0.5 + 0.5;
     float b2 = sin(uv.x * 5.7 - uv.y * 2.3 - t * 3.0) * 0.5 + 0.5;
-    vec3 aur = mix(vec3(0.16, 0.55, 0.78), vec3(0.42, 0.28, 0.72), b1);
-    float aurAmt = (1.0 - 0.55 * uMobile) * 0.28;
+    vec3 aur = mix(vec3(0.16, 0.34, 0.42), vec3(0.30, 0.24, 0.46), b1);
+    float aurAmt = (1.0 - 0.55 * uMobile) * 0.20;
     col += aur * pow(b2, 2.0) * smoothstep(0.15, 0.95, uv.y) * aurAmt;
-    // warm stage-glow pooled where the focused pack sits (centre, a little high)
+    // a soft warm-WHITE stage pool behind the focused pack — a gallery spotlight, not
+    // the old orange wash that fought both the cool field and the purple foil. A
+    // restrained warm key against a cool ambient is the classic premium-product look.
     vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
-    col += vec3(1.0, 0.82, 0.52) * smoothstep(0.62, 0.0, length(d)) * 0.30;
-    // soft vignette so the corners settle and the packs stay the focus
-    col *= 1.0 - smoothstep(0.45, 1.15, length(uv - vec2(0.5))) * 0.55;
+    col += vec3(1.0, 0.93, 0.82) * smoothstep(0.60, 0.0, length(d)) * 0.22;
+    // gentle vignette — settle the corners without crushing them to near-black
+    col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.42;
     gl_FragColor = vec4(col, 1.0);
   }`;
 function makeBackground() {

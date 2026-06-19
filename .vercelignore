@@ -8,6 +8,7 @@ assets/pack design sheet.png
 # clean-named copy below, so ignore the rest but ship the one that's wired in.
 assets/*.mp3
 !assets/bgm-moonlit-drift.mp3
+!assets/bgm-starlight-symphony.mp3
 # the 2.7MB PNG is the editable SOURCE; runtime ships the WebPs instead:
 #   • assets/pack.webp    — small (134KB), the SVG tear-pack LCP
 #   • assets/pack-hi.webp — hi-res (~270KB), the 3D carousel texture

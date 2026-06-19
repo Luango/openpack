@@ -126,7 +126,11 @@ export function createFlowLight(canvas) {
   function setViewBox(w, h) { if (w && h) vb = { w, h }; }
 
   function resize() {
-    const dpr = COARSE ? 1 : Math.min(2, window.devicePixelRatio || 1);
+    // Render the backing store at the REAL device pixel ratio. The glow is a single
+    // soft-falloff ribbon — cheap even at 2–3×. The old `COARSE ? 1` forced the canvas
+    // to 1× on phones (DPR 2–3), so the CSS `width:100%` stretch upsampled the gradient
+    // → the visible "马赛克"/blocky halo. Cap at 2.5 so a 3× phone stays bounded.
+    const dpr = Math.min(COARSE ? 2.5 : 2, window.devicePixelRatio || 1);
     const r = canvas.getBoundingClientRect();
     canvas.width = Math.max(1, Math.round(r.width * dpr));
     canvas.height = Math.max(1, Math.round(r.height * dpr));

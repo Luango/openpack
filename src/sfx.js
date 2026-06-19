@@ -25,20 +25,27 @@ let makeup; // post-limiter gain, the bus output into destination
 let reverbIn; // feed a voice in here (via send) for the wet tail
 
 // ---- background music (BGM) ------------------------------------------------
-// A looping music bed, streamed from an <audio> element into its own gain node.
-// It routes STRAIGHT to the destination — parallel to the SFX limiter, NOT
-// through it — so a loud cue can't pump/duck the music as a side effect. The
-// only thing that modulates the bed is the explicit duck() below: on a big
-// moment (open, reveal, chime) the music dips so the cue cuts through, then
-// eases back. User volume + mute apply to the bed too (see musicTarget()).
-let musicEl = null; // the streaming HTMLAudioElement (loops the mp3)
-let musicNode = null; // MediaElementAudioSourceNode wrapping musicEl
-let musicGain = null; // bed level = userVol * MUSIC_BASE * duckFactor (0 if muted)
+// TWO looping music beds that CROSS-FADE as the player moves between scenes:
+//   • "carousel" — the calm Moonlit Drift loop while browsing the deck of packs.
+//   • "open"     — the energetic Starlight Symphony theme the moment a pack is
+//                  chosen and standing ready to tear (setMusicScene("open")).
+// Only one is audible at a time; switching scenes fades the other out under it.
+// Each bed streams from its own <audio> element into its own gain node, routed
+// STRAIGHT to the destination — parallel to the SFX limiter, NOT through it — so
+// a loud cue can't pump/duck the music as a side effect. The only thing that
+// modulates the audible bed is the explicit duck() below: on a big moment (open,
+// reveal, chime) the music dips so the cue cuts through, then eases back. User
+// volume + mute apply to both beds (see musicTarget()).
+const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
+const MUSIC_SRC = {
+  carousel: new URL("../assets/bgm-moonlit-drift.mp3", import.meta.url),
+  open: new URL("../assets/bgm-starlight-symphony.mp3", import.meta.url),
+};
+const beds = new Map(); // scene name -> { el, node, gain }
 let musicStarted = false;
+let currentScene = "carousel"; // which bed should be audible right now
 let duckFactor = 1; // 1 = full bed; <1 while a big moment ducks it
 let duckTimer = null; // pending release back to full bed
-const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
-const MUSIC_URL = new URL("../assets/bgm-moonlit-drift.mp3", import.meta.url);
 
 // Persisted user preferences (shared across pages via localStorage). Read once at
 // module load so BOTH the gallery and the pack honour a saved volume/mute, even
@@ -160,51 +167,91 @@ export function getVolume() { return userVol; }
 export function isMuted() { return muted; }
 
 // ---- background music control ----------------------------------------------
-// Where the bed should sit RIGHT NOW given volume, mute and any active duck.
-function musicTarget() {
-  return muted ? 0 : userVol * MUSIC_BASE * duckFactor;
+// Where a given bed should sit RIGHT NOW: full level only for the CURRENT scene
+// (scaled by volume, mute and any active duck); every other bed sits at 0 so the
+// scene switch is just a cross-fade between two always-correct targets.
+function musicTarget(scene) {
+  if (muted || scene !== currentScene) return 0;
+  return userVol * MUSIC_BASE * duckFactor;
 }
 
-// Glide the bed gain to its current target (no clicks). Called whenever volume,
-// mute, or the duck factor changes.
+// Glide EVERY bed's gain to its current target (no clicks). Called whenever
+// volume, mute, the duck factor, or the active scene changes.
 function rampMusic(timeConstant = 0.05) {
-  if (!musicGain || !ctx) return;
-  musicGain.gain.setTargetAtTime(musicTarget(), ctx.currentTime, timeConstant);
-}
-
-// Create the BGM <audio> element and begin BUFFERING the file now, WITHOUT playing it.
-// play() still needs the first user gesture (autoplay policy), but by then the bytes are
-// already downloaded and the graph is ready — so the bed starts with no fetch hitch on
-// the first interaction. Safe to call repeatedly (no-op once the element exists).
-function prebufferMusic() {
-  if (musicEl) return;
-  try {
-    musicEl = new Audio();
-    musicEl.src = MUSIC_URL.href;
-    musicEl.loop = true;
-    musicEl.preload = "auto";
-    musicEl.crossOrigin = "anonymous";
-    musicEl.load(); // kick off buffering immediately
-  } catch {
-    musicEl = null; // no <audio> support → BGM silently skipped
+  if (!ctx) return;
+  for (const [name, bed] of beds) {
+    if (bed.gain) bed.gain.gain.setTargetAtTime(musicTarget(name), ctx.currentTime, timeConstant);
   }
 }
 
-// Start the loop once, on the first user gesture (autoplay needs one). The element and
-// its bytes are already prepared by prebufferMusic() (at load), so this just wires the
-// graph and plays — no download wait. Fades in so it doesn't slam on.
+// Create a bed's <audio> element and begin BUFFERING its file now, WITHOUT playing it.
+// play() still needs the first user gesture (autoplay policy), but by then the bytes are
+// already downloaded — so the bed starts with no fetch hitch. Returns the bed record (or
+// null if <audio> is unsupported). Safe to call repeatedly (no-op once it exists).
+function makeBed(scene) {
+  if (beds.has(scene)) return beds.get(scene);
+  if (!MUSIC_SRC[scene]) return null;
+  try {
+    const el = new Audio();
+    el.src = MUSIC_SRC[scene].href;
+    el.loop = true;
+    el.preload = "auto";
+    el.crossOrigin = "anonymous";
+    el.load(); // kick off buffering immediately
+    const bed = { el, node: null, gain: null };
+    beds.set(scene, bed);
+    return bed;
+  } catch {
+    return null; // no <audio> support → this bed silently skipped
+  }
+}
+
+// Buffer BOTH beds now (the carousel loop and the open theme) — the player browses
+// the deck for a while before choosing, so the open theme is fully downloaded by the
+// time it's needed and the cross-fade has no fetch hitch.
+function prebufferMusic() {
+  makeBed("carousel");
+  makeBed("open");
+}
+
+// Wire a bed into the audio graph (once per element). createMediaElementSource can
+// only be called once on a given element, so this is guarded and lazy.
+function wireBed(bed) {
+  if (!bed || bed.node || !ctx) return;
+  try {
+    bed.node = ctx.createMediaElementSource(bed.el);
+    bed.gain = ctx.createGain();
+    bed.gain.gain.value = 0.0001; // start silent, fade up on play
+    bed.node.connect(bed.gain).connect(ctx.destination);
+  } catch {
+    /* no MediaElementSource support — this bed silently skips */
+  }
+}
+
+// Begin playing a bed and glide it to its target. `restart` rewinds it to 0 first —
+// used for the open theme so its emotional build-up restarts each time a pack is chosen.
+function playBed(scene, timeConstant = 1.2, restart = false) {
+  const bed = makeBed(scene);
+  if (!bed || !ctx) return;
+  wireBed(bed);
+  if (!bed.gain) return;
+  if (restart) { try { bed.el.currentTime = 0; } catch { /* ignore */ } }
+  if (bed.el.paused) bed.el.play().catch(() => {});
+  bed.gain.gain.setTargetAtTime(musicTarget(scene), ctx.currentTime, timeConstant);
+}
+
+// Start the music once, on the first user gesture (autoplay needs one). The elements and
+// their bytes are already prepared by prebufferMusic() (at load), so this just wires the
+// current scene's bed and plays — no download wait. Fades in so it doesn't slam on.
 function startMusic() {
   if (musicStarted || !ctx) return;
   musicStarted = true;
   try {
-    prebufferMusic();   // ensure the element exists (no-op if already preloaded)
-    if (!musicNode) {   // createMediaElementSource is once-per-element
-      musicNode = ctx.createMediaElementSource(musicEl);
-      musicGain = ctx.createGain();
-      musicGain.gain.value = 0.0001; // start silent, fade up on play
-      musicNode.connect(musicGain).connect(ctx.destination);
-    }
-    musicEl
+    prebufferMusic();
+    const bed = makeBed(currentScene);
+    if (!bed) { musicStarted = false; return; } // no <audio> support
+    wireBed(bed);
+    bed.el
       .play()
       .then(() => rampMusic(1.2)) // gentle ~3.5s fade-in to the resting bed
       .catch(() => {
@@ -215,12 +262,33 @@ function startMusic() {
   }
 }
 
+// Switch the audible bed. Fades the new scene up and the old one down over `seconds`,
+// then parks the old element so a hidden loop isn't burning cycles. No-op if already on
+// that scene; if the music hasn't started yet, this just records which bed plays first.
+export function setMusicScene(scene, seconds = 1.6) {
+  if (!MUSIC_SRC[scene] || scene === currentScene) return;
+  const prev = currentScene;
+  currentScene = scene;
+  if (!ctx || !musicStarted) return; // first gesture will start the right bed
+  const tc = Math.max(0.05, seconds / 3); // ~95% of the way there by `seconds`
+  // The open theme restarts so its build-up plays from the top each pull; the calm
+  // carousel loop resumes where it left off (it's ambient — no "beginning" to hear).
+  playBed(scene, tc, scene === "open");
+  const old = beds.get(prev);
+  if (old?.gain) {
+    old.gain.gain.setTargetAtTime(0, ctx.currentTime, tc);
+    setTimeout(() => {
+      if (currentScene !== prev) { try { old.el.pause(); } catch { /* ignore */ } }
+    }, seconds * 1000 + 200);
+  }
+}
+
 // DUCK the music for a big moment so the cue cuts through, then ease it back.
 // `depth` is the multiplier the bed dips to (0.3 = −10 dB-ish); overlapping
 // events keep the DEEPEST dip and the LATEST release, so a burst→reveal→chime
 // run stays ducked as one continuous beat instead of pumping between cues.
 export function duck(depth = 0.3, holdMs = 650, releaseMs = 800) {
-  if (!musicGain || !ctx) return;
+  if (!ctx) return;
   duckFactor = Math.min(duckFactor, Math.max(0, Math.min(1, depth)));
   rampMusic(0.06); // pull down fast
   if (duckTimer) clearTimeout(duckTimer);
@@ -231,11 +299,11 @@ export function duck(depth = 0.3, holdMs = 650, releaseMs = 800) {
   }, holdMs);
 }
 
-// Let the UI / other modules toggle the bed if needed.
+// Let the UI / other modules toggle the music if needed.
 export function setMusicEnabled(on) {
   if (on) startMusic();
-  else if (musicEl) {
-    try { musicEl.pause(); } catch { /* ignore */ }
+  else for (const bed of beds.values()) {
+    try { bed.el.pause(); } catch { /* ignore */ }
   }
 }
 
@@ -286,10 +354,14 @@ document.addEventListener("visibilitychange", () => {
   if (!ctx) return;
   if (document.hidden) {
     ctx.suspend?.();
-    musicEl?.pause(); // pause the bed too so it doesn't drift while hidden
+    for (const bed of beds.values()) { try { bed.el.pause(); } catch { /* ignore */ } } // pause beds so they don't drift while hidden
   } else {
     if (ctx.state === "suspended") ctx.resume?.();
-    if (musicStarted && musicEl?.paused) musicEl.play().catch(() => {});
+    // resume ONLY the current scene's bed — the parked one stays silent at 0 gain
+    if (musicStarted) {
+      const bed = beds.get(currentScene);
+      if (bed?.el.paused) bed.el.play().catch(() => {});
+    }
   }
 });
 
@@ -832,7 +904,7 @@ export function burst(power = 0.7, tier = 5) {
   // pack pops open — clear room for the whump AND hold the bed low across the
   // anticipation window (longer for a chase) so the music doesn't swell back before
   // the cards arrive; it then rises again as the haul settles.
-  duck(0.35, 1050 + tgs * 450, 850); // hold the bed low across the ~1 s god-light → ~1.5 s for a chase
+  duck(0.35, 760 + tgs * 540, 820); // hold the bed low across the anticipation hold → longer for a chase
   if (playSample("open_burst", { gain: 0.7 + Math.max(0, Math.min(1, power)) * 0.5, rate: 1 - tgs * 0.06, send: 0.35 })) return;
   const c = live();
   if (!c) return;

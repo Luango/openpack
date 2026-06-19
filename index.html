@@ -476,12 +476,12 @@
            dissolve (delay), then darken into the page bg over ~0.85s — the settle */
         transition: opacity 0.85s ease 0.34s;
         background:
-          /* warm stage-glow pooled where the focused pack sits (centre, a little high) */
-          radial-gradient(58% 46% at 50% 40%, rgba(255, 209, 133, 0.30), transparent 66%),
-          /* soft vignette so the corners settle, like the shader's */
-          radial-gradient(120% 120% at 50% 50%, transparent 42%, rgba(6, 8, 20, 0.55) 100%),
-          /* vertical palette: deep indigo base → indigo → electric blue (bottom → top) */
-          linear-gradient(to top, #121738 0%, #2b3d99 56%, #4780e0 100%);
+          /* soft warm-white stage pool behind the focused pack (centre, a little high) */
+          radial-gradient(58% 46% at 50% 40%, rgba(255, 228, 200, 0.20), transparent 66%),
+          /* gentle vignette so the corners settle, like the shader's */
+          radial-gradient(120% 120% at 50% 50%, transparent 44%, rgba(6, 7, 16, 0.45) 100%),
+          /* vertical palette: deep ink-violet → muted indigo → soft periwinkle (bottom → top) */
+          linear-gradient(to top, #131526 0%, #1f2140 56%, #3c436e 100%);
       }
       /* entering/holding the picker: snap lit (it's hidden behind the opaque canvas
          anyway) with no settle delay, so a quick back-to-picker re-arms cleanly */
@@ -1307,6 +1307,7 @@
           await ready;                                // pre-armed → resolves instantly
           document.body.classList.remove("picking");  // real pack appears at the matched rect
           startDissolve();                            // cross-dissolve the canvas into it, then park
+          sfx.setMusicScene?.("open");                // pack stands ready to tear — swell into the open theme
         },
         // The entrance animation has finished — only NOW pre-arm the first pack.
         // buildBooster + reveal.prepare build and render the card-stack DOM (plus
@@ -1319,6 +1320,7 @@
       function backToSelect() {
         stageEl.style.filter = ""; // clear the tint until the next choice
         hintEl.textContent = ""; // the picker has its own hint; tear hint returns on select
+        sfx.setMusicScene?.("carousel"); // back to the deck — settle into the calm browsing bed
         document.body.classList.add("picking"); // hide the resealed tear-pack behind the canvas
         // REPLAY the queue-in entrance as the transition back from a collected pull, so we
         // re-enter through the packs-flying-in animation rather than cutting straight to the
