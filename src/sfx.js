@@ -317,11 +317,53 @@ export function setMusicScene(scene, seconds = 1.6) {
   }
 }
 
+// ---- open theme: intro-hold ------------------------------------------------
+// The open theme is split into two beats so the MUSIC lands with the gesture:
+//   1) startOpenTheme() — the RIP. Swell the theme up from the top, play just the
+//      short INTRO, then HOLD (pause) it right at the end of that intro. The music
+//      hangs there, charged, while the foil parts — it does NOT spill into the main
+//      body yet. This is the anticipation beat.
+//   2) resumeOpenTheme() — the pack FULLY splits open. Release the hold so the rest
+//      of the theme pours in on the burst. If the open happens mid-intro (a fast
+//      yank), this just cancels the pending hold so the music plays straight through.
+const OPEN_INTRO_SEC = 2.4; // how much of the theme plays during the tear, before the hold
+let openHoldHandler = null; // the timeupdate listener that pauses the open bed at the intro end
+
+function clearOpenHold() {
+  const bed = beds.get("open");
+  if (bed?.el && openHoldHandler) bed.el.removeEventListener("timeupdate", openHoldHandler);
+  openHoldHandler = null;
+}
+
+// THE RIP — swell the open theme up out of the quiet ready screen, but only play its
+// intro: pause the bed once it reaches `introSec` so the music holds, charged, until
+// the pack actually opens (resumeOpenTheme).
+export function startOpenTheme(introSec = OPEN_INTRO_SEC) {
+  setMusicScene("open", 0.9); // swell the open theme up from the top (restarts the bed)
+  const bed = beds.get("open");
+  if (!bed?.el) return; // music not started yet (no gesture) — nothing to hold
+  clearOpenHold(); // drop any stale handler from a prior tear
+  openHoldHandler = () => {
+    if (bed.el.currentTime < introSec) return;
+    clearOpenHold();
+    try { bed.el.pause(); } catch { /* ignore */ } // HOLD here — wait for the open
+  };
+  bed.el.addEventListener("timeupdate", openHoldHandler);
+}
+
+// THE OPEN — release the intro hold and let the rest of the open theme play through.
+export function resumeOpenTheme() {
+  clearOpenHold(); // cancel a still-pending hold (open landed mid-intro)
+  const bed = beds.get("open");
+  if (currentScene === "open" && bed?.el?.paused) bed.el.play().catch(() => {});
+}
+
 // Fade EVERY bed out to silence — the deliberately quiet ready-to-tear screen,
 // where the open theme is held back until the rip starts. currentScene becomes a
 // sentinel no real bed matches, so musicTarget() returns 0 for all of them; the
 // now-silent elements are parked so a hidden loop isn't burning cycles. Idempotent.
 export function silenceMusic(seconds = 1.2) {
+  clearOpenHold(); // a tear that never opened drops its pending intro-hold
   if (currentScene === "silent") return;
   currentScene = "silent";
   if (!ctx || !musicStarted) return; // nothing playing yet — first gesture handles it

@@ -588,6 +588,16 @@
         aspect-ratio: 1;
         perspective: 620px;
         animation: gateBall 2s ease-in-out infinite;
+        cursor: pointer;
+      }
+      /* generous tap halo: a transparent ring around the ball so taps that land just
+         off the artwork still count as "on the ball" (forgiving on small screens) */
+      #start-gate .start-gate__ball::after {
+        content: "";
+        position: absolute;
+        inset: -28%;
+        border-radius: 50%;
+        z-index: 1;
       }
       /* breathing glow halo behind the ball */
       #start-gate .start-gate__ball::before {
@@ -1291,6 +1301,48 @@
       // begins; the gate registers onIntroStarted to fade its open right into that frame.
       let introStarted = false, onIntroStarted = null;
 
+      // ---- start-gate reveal — wired FIRST, before any heavy init ------------
+      // The gate opens to "Loading…"; it must flip to "Tap to open" no matter what. We set
+      // this up BEFORE createSelector (three.js) and the rest below, so if anything THERE
+      // throws on a given device (a WebGL/mobile failure was stranding the gate on "Loading…"
+      // forever), the reveal still happens. Three independent guarantees: real sfx decode
+      // progress fills the bar, sfx.whenReady() flips the label, and a standalone backstop
+      // timer flips it regardless — even if the audio module never loaded. The bar also rides
+      // a time-based synthetic floor so it always advances, never sits frozen at 0. The actual
+      // tap/open handlers live further down (they need `selector`); `launched`/`gateRevealed`
+      // are shared so an early tap or an early reveal each win exactly once.
+      const startGate = document.getElementById("start-gate");
+      const gateLabel = startGate.querySelector(".start-gate__label");
+      const gateBarFill = startGate.querySelector(".start-gate__bar-fill");
+      const GATE_FALLBACK_MS = 3500; // never sit on "Loading…" longer than this, audio or not
+      let launched = false;     // set true on the opening tap (shared with the handlers below)
+      let gateRevealed = false; // set true once the gate flips to "Tap to open"
+      (() => {
+        startGate.classList.add("loading");
+        const startT = performance.now();
+        let realProgress = 0;
+        const paintBar = () => {
+          if (gateRevealed || launched) return; // revealed/opened → stop the rAF loop
+          const synthetic = Math.min(0.9, (performance.now() - startT) / GATE_FALLBACK_MS);
+          const p = Math.max(realProgress, synthetic); // real decode progress wins when it leads
+          if (gateBarFill) gateBarFill.style.width = `${Math.round(p * 100)}%`;
+          requestAnimationFrame(paintBar);
+        };
+        requestAnimationFrame(paintBar);
+        const revealGate = () => {
+          if (gateRevealed || launched) return;
+          gateRevealed = true;
+          if (gateBarFill) gateBarFill.style.width = "100%";
+          startGate.classList.remove("loading"); // fades the bar out (CSS)
+          gateLabel.textContent = "Tap to open";
+        };
+        try {
+          sfx.onReadyProgress?.((p) => { realProgress = Math.max(realProgress, p); });
+          sfx.whenReady?.().then(revealGate);
+        } catch { /* audio module unavailable — the backstop below still reveals */ }
+        setTimeout(revealGate, GATE_FALLBACK_MS); // immune to any failure in the init below
+      })();
+
       // Sound control — mute toggle + volume slider. sfx.js loaded the persisted
       // volume/mute already; we just reflect it in the UI and write changes back
       // (sfx persists them itself, shared with the gallery page).
@@ -1440,34 +1492,16 @@
       // pointerdown), THEN we play the entrance — so the fly-in has its whoosh/tap foley
       // instead of being silently dropped into a suspended context. Assets keep loading
       // behind the gate, so by the time the intro fires the textures are usually ready.
-      const startGate = document.getElementById("start-gate");
-      const gateCenter = startGate.querySelector(".start-gate__center");
-      const gateLabel = startGate.querySelector(".start-gate__label");
-      const gateBarFill = startGate.querySelector(".start-gate__bar-fill");
-      // The gate opens to "Loading…" with a bar that fills as the audio the first moment
-      // needs decodes (real foley, not synth): every SFX sample + the carousel bed. Progress
-      // comes from sfx.onReadyProgress; whenReady() resolves at 100% (with a ~2.5s backstop
-      // so a missing manifest / slow network never traps it here), and only THEN does the
-      // bar fade out and the label flip to "Tap to open". The button stays tappable the whole
-      // time — tapping early just falls back to synth for that first cue — so this never
-      // blocks. Skip the swap if the gate already launched (fast tapper).
-      startGate.classList.add("loading");
-      sfx.onReadyProgress?.((p) => {
-        if (gateBarFill) gateBarFill.style.width = `${Math.round(p * 100)}%`;
-      });
-      sfx.whenReady?.().then(() => {
-        if (launched) return;
-        startGate.classList.remove("loading"); // fades the bar out (CSS)
-        gateLabel.textContent = "Tap to open";
-      });
-      // finger-down squash → a tactile press, ONLY when it lands on the button
-      gateCenter.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
+      // startGate / gateLabel / launched / gateRevealed are declared up top (the gate's
+      // loading→reveal is wired there, before the heavy init, so it can't be stranded).
+      const gateBall = startGate.querySelector(".start-gate__ball");
+      // finger-down squash → a tactile press, anywhere on the ball (not just the dot)
+      gateBall.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
       const unpress = () => startGate.classList.remove("pressing");
-      gateCenter.addEventListener("pointerup", unpress);
-      gateCenter.addEventListener("pointercancel", unpress);
-      gateCenter.addEventListener("pointerleave", unpress);
+      gateBall.addEventListener("pointerup", unpress);
+      gateBall.addEventListener("pointercancel", unpress);
+      gateBall.addEventListener("pointerleave", unpress);
 
-      let launched = false;
       const openBall = () => {
         if (launched) return;
         launched = true;
@@ -1508,9 +1542,10 @@
 
         selector.show(); // intro pre-arms the pack via onIntroEnd — runs under the open
       };
-      // ONLY the centre button opens the ball
-      gateCenter.addEventListener("click", (e) => { e.stopPropagation(); openBall(); });
-      // tap anywhere else: nudge the eye back to the button instead of opening
+      // Tapping anywhere on the ball opens it (the whole Poké Ball is the target, not
+      // just the tiny centre dot — a far more forgiving hit area on mobile).
+      gateBall.addEventListener("click", (e) => { e.stopPropagation(); openBall(); });
+      // tap further out (the dimmed backdrop): nudge the eye back to the ball
       startGate.addEventListener("click", () => {
         if (launched) return;
         startGate.classList.remove("nudge");

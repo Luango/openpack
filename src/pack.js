@@ -553,7 +553,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (!tearing && pathLen(path) > START_DIST) {
       tearing = true;
       sfx.tearStart(tellTier); // rarer pack inside → brighter, more energetic foil rip
-      sfx.setMusicScene?.("open", 0.9); // THE RIP — swell the open theme up out of the quiet ready screen
+      sfx.startOpenTheme?.(); // THE RIP — swell the open theme up, but play only its intro then HOLD until the pack splits open
     }
     if (!tearing) return;
 
@@ -648,6 +648,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
+    sfx.resumeOpenTheme?.(); // FULLY OPEN — release the held intro so the rest of the theme pours in on the burst
     sfx.tearRelease(); // the small joyful "pop" — a bright resolve the chime-up built toward
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
