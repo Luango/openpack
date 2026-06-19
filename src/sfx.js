@@ -265,8 +265,17 @@ function startMusic() {
     const bed = makeBed(currentScene);
     if (!bed) { musicStarted = false; return Promise.resolve(false); } // no <audio> support
     wireBed(bed);
-    return bed.el
-      .play()
+    // The VERY FIRST gesture races the context awake: a freshly-created context is
+    // "suspended" and ctx.resume() is async. If we ramp the bed up before the context is
+    // actually running, its audio pumps into a FROZEN graph and the first open is SILENT
+    // (the second works because the context is already running by then). So fire BOTH
+    // synchronously here — resume() AND play() — to keep the single user-gesture
+    // activation for each, then wait for the context to truly be running before we ramp
+    // the gain up (and re-assert play() in case the cold start stalled the element).
+    const resumed = ctx.state === "running" ? Promise.resolve() : Promise.resolve(ctx.resume?.()).catch(() => {});
+    const played = bed.el.play();
+    return Promise.all([resumed, played])
+      .then(() => (bed.el.paused ? bed.el.play() : null)) // resume may have stalled it — re-assert
       .then(() => { rampMusic(1.2); return true; }) // gentle ~3.5s fade-in to the resting bed
       .catch(() => {
         musicStarted = false; // autoplay blocked — let the next gesture retry
