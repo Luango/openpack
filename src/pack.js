@@ -58,8 +58,8 @@ const TURN_CUM_RAD = Math.PI * 0.39; // max cumulative net turn (~70°) — catc
 // DEEPER at the four corners than across the middle (the crimp's notch shape). The
 // side seams and the inner face just scratch (you can't tear from inside the pack).
 const TEAR_CORNER_X = 0.10; // how wide each corner block is (fraction of the width) — 30u of the 300u width
-const TEAR_CORNER_Y = 0.13; // corner strip depth — the taller "green" part (fraction of the height)
-const TEAR_MID_Y = 0.07; // middle strip depth — the shorter "red" part (fraction of the height)
+const TEAR_CORNER_Y = 0.22; // corner strip depth — the taller "green" part (fraction of the height); widened so a grab a little off the seam still catches
+const TEAR_MID_Y = 0.15; // middle strip depth — the shorter "red" part (fraction of the height); widened to forgive presses just inside the crimp
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];

@@ -374,8 +374,107 @@ export function preload() {
     }
     loadSamples(ctx);  // fetch + decode all foley into AudioBuffers now
     prebufferMusic();  // download + buffer the music bed now (play() still waits for a gesture)
+    trackReady();      // resolve whenReady() once the decode + bed buffer above land
   } catch {
     /* no Web Audio support → cues fall back to synth / silence; nothing to preload */
+    signalReady();     // nothing to wait on — never trap the start-gate on "Loading…"
+  }
+}
+
+// ---- readiness signal -------------------------------------------------------
+// Resolves once the audio the FIRST screen needs is actually playable from RECORDED
+// samples (not the synth fallback): every foley sample decoded + the carousel music
+// bed buffered enough to begin. The start-gate awaits this to swap "Loading…" →
+// "Press the button", so the first tap's spark/burst/riser + carousel bed land as real
+// foley instead of synth. CRITICAL: the sample layer is OPTIONAL (synth fallback), so a
+// missing manifest, slow network, or decode failure must NEVER trap the gate — a backstop
+// timer resolves it regardless, and any error path calls signalReady() too. Idempotent.
+const READY_BACKSTOP_MS = 2500; // resolve anyway after this, real samples or not
+let readyResolve;
+const readyPromise = new Promise((res) => { readyResolve = res; });
+let readySignalled = false;
+let readyTracked = false;
+function signalReady() {
+  if (readySignalled) return;
+  readySignalled = true;
+  setReadyProgress(1); // a resolved gate always shows a full bar
+  readyResolve();
+}
+export function whenReady() {
+  // Lazy backstop: even if preload() never ran (e.g. no Web Audio), don't hang forever.
+  if (!readyTracked) setTimeout(signalReady, READY_BACKSTOP_MS);
+  return readyPromise;
+}
+
+// ---- load progress (drives the start-gate's loading bar) --------------------
+// A 0→1 estimate of how much of the first-screen audio is ready, split between the
+// foley decode (samplesProgress, weighted 0.8 — it's the bulk of the work) and the
+// carousel bed buffering (bedProgress, 0.2). MONOTONIC — we never let the bar jump
+// backward. Subscribers fire on every step + once immediately with the current value.
+let samplesProgress = 0; // 0→1 across all manifest files decoded
+let bedProgress = 0;     // 0 or 1 — carousel bed buffered enough to start
+let readyProgress = 0;
+const readyProgressCbs = new Set();
+function setReadyProgress(p) {
+  const next = Math.max(readyProgress, Math.min(1, p)); // monotonic
+  if (next === readyProgress) return;
+  readyProgress = next;
+  for (const cb of readyProgressCbs) { try { cb(readyProgress); } catch { /* ignore */ } }
+}
+function recomputeProgress() {
+  setReadyProgress(samplesProgress * 0.8 + bedProgress * 0.2);
+}
+// Subscribe to load progress (0→1). Fires immediately with the current value, then on
+// each advance. Returns an unsubscribe fn. The start-gate uses this to fill its bar.
+export function onReadyProgress(cb) {
+  readyProgressCbs.add(cb);
+  try { cb(readyProgress); } catch { /* ignore */ }
+  return () => readyProgressCbs.delete(cb);
+}
+
+// Resolve when the carousel bed has buffered enough to start (canplay), or give up on a
+// load error — either way we don't block. Resolves immediately if there's no bed/element.
+function whenBedBuffered(scene) {
+  return new Promise((resolve) => {
+    const bed = makeBed(scene);
+    const el = bed?.el;
+    const finish = () => { bedProgress = 1; recomputeProgress(); resolve(); };
+    if (!el) { finish(); return; }
+    if (el.readyState >= 3) { finish(); return; } // HAVE_FUTURE_DATA — enough to begin
+    const done = () => {
+      el.removeEventListener("canplay", done);
+      el.removeEventListener("canplaythrough", done);
+      el.removeEventListener("error", done);
+      finish();
+    };
+    el.addEventListener("canplay", done);        // enough buffered to start playback
+    el.addEventListener("canplaythrough", done); // fully buffered
+    el.addEventListener("error", done);          // network/decode fail → don't block
+  });
+}
+
+// Wait on the (cached) sample decode + the carousel bed buffer, with a hard backstop.
+function trackReady() {
+  if (readyTracked) return;
+  readyTracked = true;
+  setTimeout(signalReady, READY_BACKSTOP_MS); // backstop: slow/failed load can't hang the gate
+  Promise.all([loadSamples(ctx), whenBedBuffered("carousel")]).then(signalReady, signalReady);
+}
+
+// Resume the context, wake the output, and start the music — the full first-gesture
+// unlock sequence, made callable so a KNOWN user gesture (the start-gate "tap to open",
+// see index.html) can guarantee it runs in-gesture instead of leaving it solely to the
+// passive listener below. Idempotent: safe to call on every gesture. Returns startMusic's
+// promise so the caller knows whether the bed actually began playing.
+export function kickAudio() {
+  gestureSeen = true; // cues may now schedule into a still-resuming context (see live())
+  try {
+    ensure();
+    unlockOutput(); // wake the output INSIDE the gesture so iOS un-mutes the whole context
+    return startMusic();
+  } catch {
+    /* no Web Audio support */
+    return Promise.resolve(false);
   }
 }
 
@@ -383,25 +482,18 @@ export function preload() {
 // the pack's own pointerdown handler — the context is created + resume()'d first,
 // so the very first grab/tear isn't swallowed while the context is still cold.
 const unlock = () => {
-  gestureSeen = true; // cues may now schedule into a still-resuming context (see live())
-  try {
-    ensure();
-    unlockOutput(); // wake the output INSIDE the gesture so iOS un-mutes the whole context
-    // Only stop listening once the bed ACTUALLY started. startMusic() flips its flag
-    // synchronously but play() resolves async — on mobile that play often rejects (cold
-    // buffer / autoplay heuristics), which previously left the listeners removed and the
-    // music dead for the whole session. Wait for the real result and retry on the next
-    // gesture if it failed. (On iOS, getting the bed to play is also what promotes the
-    // audio session to "playback", so even the synth SFX stop being silent-switched.)
-    startMusic().then((ok) => {
-      if (ok) {
-        window.removeEventListener("pointerdown", unlock, true);
-        window.removeEventListener("keydown", unlock, true);
-      }
-    });
-  } catch {
-    /* no Web Audio support */
-  }
+  // Only stop listening once the bed ACTUALLY started. startMusic() flips its flag
+  // synchronously but play() resolves async — on mobile that play often rejects (cold
+  // buffer / autoplay heuristics), which previously left the listeners removed and the
+  // music dead for the whole session. Wait for the real result and retry on the next
+  // gesture if it failed. (On iOS, getting the bed to play is also what promotes the
+  // audio session to "playback", so even the synth SFX stop being silent-switched.)
+  kickAudio().then((ok) => {
+    if (ok) {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    }
+  });
 };
 window.addEventListener("pointerdown", unlock, true);
 window.addEventListener("keydown", unlock, true);
@@ -450,37 +542,49 @@ function live() {
 // + format guidance in assets/sfx/README.md.
 const samples = new Map(); // cue name -> [AudioBuffer, ...]
 const rr = {}; // round-robin index per cue
-let samplesLoading = false;
+let samplesPromise = null; // cached: the in-flight (or settled) decode pass
 
-async function loadSamples(c) {
-  if (samplesLoading || samples.size) return;
-  samplesLoading = true;
-  try {
-    const base = new URL("../assets/sfx/", import.meta.url);
-    const res = await fetch(new URL("manifest.json", base));
-    if (!res.ok) return; // no manifest → synth-only, no console noise
-    const manifest = await res.json();
-    await Promise.all(
-      Object.entries(manifest).map(async ([name, files]) => {
-        if (!Array.isArray(files)) return;
-        const bufs = [];
-        for (const f of files) {
-          try {
-            const r = await fetch(new URL(f, base));
-            if (!r.ok) continue;
-            bufs.push(await c.decodeAudioData(await r.arrayBuffer()));
-          } catch {
-            /* skip a bad/missing file — that cue just falls back to synth */
+// Fetch + decode every cue in the manifest. The promise is CACHED so repeat callers
+// (ensure() on first gesture, preload() at idle, whenReady() below) all await the SAME
+// pass instead of one returning early — that's what lets whenReady() trust it. Resolves
+// (never rejects) once all files are decoded, or immediately if the manifest is absent.
+function loadSamples(c) {
+  if (samplesPromise) return samplesPromise;
+  samplesPromise = (async () => {
+    try {
+      const base = new URL("../assets/sfx/", import.meta.url);
+      const res = await fetch(new URL("manifest.json", base));
+      if (!res.ok) return; // no manifest → synth-only, no console noise
+      const manifest = await res.json();
+      // count every file up front so the loading bar reflects real decode progress
+      const all = Object.values(manifest).filter(Array.isArray).flat();
+      const total = all.length || 1;
+      let processed = 0;
+      const step = () => { processed++; samplesProgress = processed / total; recomputeProgress(); };
+      await Promise.all(
+        Object.entries(manifest).map(async ([name, files]) => {
+          if (!Array.isArray(files)) return;
+          const bufs = [];
+          for (const f of files) {
+            try {
+              const r = await fetch(new URL(f, base));
+              if (r.ok) bufs.push(await c.decodeAudioData(await r.arrayBuffer()));
+            } catch {
+              /* skip a bad/missing file — that cue just falls back to synth */
+            }
+            step(); // advance the bar whether the file decoded or was skipped
           }
-        }
-        if (bufs.length) samples.set(name, bufs);
-      })
-    );
-  } catch {
-    /* missing / invalid manifest → synth-only */
-  } finally {
-    samplesLoading = false;
-  }
+          if (bufs.length) samples.set(name, bufs);
+        })
+      );
+    } catch {
+      /* missing / invalid manifest → synth-only */
+    } finally {
+      samplesProgress = 1; // no manifest / partial failure still completes the samples leg
+      recomputeProgress();
+    }
+  })();
+  return samplesPromise;
 }
 
 function hasSample(name) {

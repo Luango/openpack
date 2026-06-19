@@ -80,8 +80,8 @@ const POP_S     = 0.42;  // extra scale added to the focused pack
 // whatever pack the wheel turns to the front LIGHTS UP and the rest recede — the lift
 // is in the pack's own material, on top of the shared rig + front spot, so it reads
 // even on the side/back facings the spot can't reach.
-const FOCUS_EMI_DIM = 0.08, FOCUS_EMI_HOT = 0.58; // emissive self-light: side → front
-const FOCUS_ENV_DIM = 0.70, FOCUS_ENV_HOT = 1.70; // foil env sheen:      side → front
+const FOCUS_EMI_DIM = 0.18, FOCUS_EMI_HOT = 0.82; // emissive self-light: side → front
+const FOCUS_ENV_DIM = 0.95, FOCUS_ENV_HOT = 2.10; // foil env sheen:      side → front
 // How far each pack YAWS toward "radially outward". 1.0 = a true REVOLVER: the front
 // pack faces you, the side packs turn, and the back packs face AWAY from the screen.
 // (Even lighting across all those facings is handled by using only azimuth-uniform
@@ -148,11 +148,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xffffff, 1.45)); // ~2× fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
-  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 2.6)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
+  scene.add(new THREE.AmbientLight(0xffffff, 2.05)); // strong fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
+  scene.add(new THREE.HemisphereLight(0xe4e9ff, 0x46406a, 3.4)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
-  const key = new THREE.DirectionalLight(0xfff1da, 1.2);
+  const key = new THREE.DirectionalLight(0xfff1da, 1.55);
   key.position.set(-4, 5, 8);
   scene.add(key);
   // (3) RIM — cool, from behind/above, peels the back of the wheel off the black bg.
@@ -166,7 +166,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // intensity tripled (was 30) + decay eased (was 1.4) so the centred pack actually
   // POPS — the cone+decay still keep it pooled on the front dock, so side/back packs
   // stay on the cool base and don't get washed out.
-  const frontSpot = new THREE.SpotLight(0xfff0d6, 150, 14, 0.66, 0.65, 1.15);
+  const frontSpot = new THREE.SpotLight(0xfff0d6, 230, 14, 0.66, 0.65, 1.15);
   frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
   frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
   scene.add(frontSpot);
@@ -253,7 +253,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const aspect = mesh.userData.aspect || 1.4;
     const half = mesh.scale.y * aspect * 0.5;        // half the pack's on-screen height
     const bottom = mesh.position.y - half;           // world-y of the pack's base
-    r.position.set(mesh.position.x, 2 * bottom - mesh.position.y, mesh.position.z);
+    const gap = half * 0.16;                          // small air between pack base and its floor mirror
+    r.position.set(mesh.position.x, 2 * bottom - mesh.position.y - gap, mesh.position.z);
     r.rotation.y = mesh.rotation.y;                  // yaw is unchanged by a vertical mirror
     r.scale.set(mesh.scale.x, -mesh.scale.y, mesh.scale.z); // negative-y → mirror vertically
     r.renderOrder = mesh.renderOrder - 1;            // sit just behind its own pack
@@ -324,6 +325,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // under the body's mid bulge) so head-on it still reads as the outline glow.
     if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.046, RIM_Z));
     const mat = makeRimMaterial();
+    // Randomise each pack's comet so they DON'T flow in sync: a random start position
+    // around the loop, plus a small speed jitter so they keep drifting apart instead of
+    // holding a fixed offset.
+    mat.uniforms.uPhase.value = Math.random();
+    mat.uniforms.uSpeed.value = 0.16 + Math.random() * 0.12; // ~0.16–0.28 loops/sec
     const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
     // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) so the
     // rim sits in the transparent pass on top of its own art, while still depth-tested
@@ -495,7 +501,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     particles.update(dt);
     rising.update(dt);
     backdrop.update(t);                                   // drift the aurora
-    for (const m of rimMats) m.uniforms.uTime.value = t; // sweep every pack's beam in sync
+    for (const m of rimMats) m.uniforms.uTime.value = t; // one clock; each beam's own phase/speed offsets it
     // While dissolving we hold the hero frozen on its landed frame — running layout()
     // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
     if (!selecting && !introing && !dissolving) layout();
@@ -834,6 +840,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         fadeRimByFacing(m); // back-facing ring members keep their rim hidden too
         m.renderOrder = Math.round(m.position.z * 10);
       }
+      focusLight(m, front); // light each pack for its ring slot DURING the fly-in, so the
+                            // front pack is already lit on arrival — no lighting pop when
+                            // layout() takes over after landing (slot is at the back while
+                            // in flight → packs fly in dim and brighten as carried to front)
       placeReflection(m); // the reflection rides along through the fly-in too
     }
     if (introOutro) {
@@ -1149,12 +1159,15 @@ const RIM_FRAG = `
   precision mediump float;
   varying float vU; varying float vV;
   uniform float uTime; uniform float uOpacity;
+  uniform float uPhase; uniform float uSpeed;
   uniform vec3 uWarm; uniform vec3 uHot;
   void main() {
     float edge = max(0.0, 1.0 - abs(vV));
     float body = pow(edge, 1.1);                       // broad soft glow across the ribbon
     float hot  = pow(edge, 4.0);                       // a hotter thin core inside it
-    float head = fract(uTime * 0.22);                  // the comet's position around the loop
+    // per-pack phase + speed (set in addRimBeam) so each comet sits at a DIFFERENT spot
+    // on its loop and drifts independently — the packs no longer flow in lockstep.
+    float head = fract(uTime * uSpeed + uPhase);       // the comet's position around the loop
     float ahead = fract(vU - head);
     float behind = fract(head - vU);
     float ring = min(ahead, behind);                   // circular distance to the head
@@ -1171,6 +1184,8 @@ function makeRimMaterial() {
     uniforms: {
       uTime: { value: 0 },
       uOpacity: { value: 1 },
+      uPhase: { value: 0 },   // per-pack offset around the loop (set in addRimBeam)
+      uSpeed: { value: 0.22 }, // per-pack sweep speed (jittered in addRimBeam)
       uWarm: { value: new THREE.Color(0xffc24a) },
       uHot: { value: new THREE.Color(0xfffdf2) },
     },
@@ -1279,9 +1294,9 @@ const BG_FRAG = `
     // DESATURATED — the old top was an electric sky-blue (0.28,0.50,0.88) that read as
     // default game-UI; pulling the saturation and value down lets the lit packs be the
     // only vivid thing in frame, which is the whole point of the stage.
-    vec3 base = vec3(0.043, 0.047, 0.082);
-    vec3 mid  = vec3(0.123, 0.130, 0.250);
-    vec3 top  = vec3(0.235, 0.262, 0.430);
+    vec3 base = vec3(0.085, 0.092, 0.150);
+    vec3 mid  = vec3(0.185, 0.196, 0.360);
+    vec3 top  = vec3(0.320, 0.355, 0.560);
     vec3 col = mix(base, mid, smoothstep(0.0, 0.55, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
     // two slow aurora bands — desaturated teal ↔ violet, tuned to HARMONISE with the
@@ -1290,15 +1305,15 @@ const BG_FRAG = `
     float b1 = sin(uv.x * 3.1 + t * 2.0) * 0.5 + 0.5;
     float b2 = sin(uv.x * 5.7 - uv.y * 2.3 - t * 3.0) * 0.5 + 0.5;
     vec3 aur = mix(vec3(0.16, 0.34, 0.42), vec3(0.30, 0.24, 0.46), b1);
-    float aurAmt = (1.0 - 0.55 * uMobile) * 0.20;
+    float aurAmt = (1.0 - 0.55 * uMobile) * 0.28;
     col += aur * pow(b2, 2.0) * smoothstep(0.15, 0.95, uv.y) * aurAmt;
     // a soft warm-WHITE stage pool behind the focused pack — a gallery spotlight, not
     // the old orange wash that fought both the cool field and the purple foil. A
     // restrained warm key against a cool ambient is the classic premium-product look.
     vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
-    col += vec3(1.0, 0.93, 0.82) * smoothstep(0.60, 0.0, length(d)) * 0.22;
+    col += vec3(1.0, 0.93, 0.82) * smoothstep(0.66, 0.0, length(d)) * 0.34;
     // gentle vignette — settle the corners without crushing them to near-black
-    col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.42;
+    col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.30;
     gl_FragColor = vec4(col, 1.0);
   }`;
 function makeBackground() {

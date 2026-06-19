@@ -34,19 +34,26 @@ varying float vU; varying float vV; varying float vTaper;
 uniform float uTime;
 void main() {
   // cross-section, two layers: a BROAD luminous body that bleeds out of the seam,
-  // plus a thin SEARING filament riding down its centre (the white-hot core).
+  // plus a thin filament riding down its centre (the white-hot core).
   float edge = max(0.0, 1.0 - abs(vV));
   float body = pow(edge, 1.6);  // wider soft halo (was pow(..,2.2) → tight & dim)
-  float hot  = pow(edge, 6.0);  // the white-hot filament inside it
-  // travelling pulses down the seam — the "流" (flow): bright packets sliding along
-  float streak = 0.5 + 0.5 * sin(vU * 30.0 - uTime * 7.5);
-  streak *= 0.6 + 0.4 * sin(vU * 11.0 - uTime * 3.3); // a second, slower train for life
-  // sharp glints RACING down the rip — discrete bright packets; the exciting punch
-  float glint = pow(0.5 + 0.5 * sin(vU * 18.85 - uTime * 10.0), 6.0);
+  // The filament + glints used to be sharp, sub-pixel spikes (pow(..,6) and
+  // sin(vU*30)/sin(vU*18.85)). On a phone's lower-res raster those narrow features
+  // alias into a blocky/dotted line — the "马赛克". Widen them (lower powers, lower
+  // spatial frequencies, smoothstep instead of pow) so the light reads SMOOTH at any
+  // resolution and never breaks into pixel blocks.
+  float hot  = pow(edge, 3.5);  // softer, wider white-hot filament (was pow(..,6) → spiky)
+  // travelling pulses down the seam — the "流" (flow): bright packets sliding along.
+  // frequencies roughly halved so the packets stay several pixels wide on a phone.
+  float streak = 0.5 + 0.5 * sin(vU * 16.0 - uTime * 7.5);
+  streak *= 0.6 + 0.4 * sin(vU * 8.0 - uTime * 3.3); // a second, slower train for life
+  // glints RACING down the rip — rounded (smoothstep) instead of a pow(..,6) spike
+  float g = 0.5 + 0.5 * sin(vU * 11.0 - uTime * 10.0);
+  float glint = smoothstep(0.55, 1.0, g) * g; // wide, soft packets — no aliasing
   // a global breath so the whole streak pulses even when you hold still
   float breathe = 0.85 + 0.2 * sin(uTime * 2.6);
   float i = body * (1.0 + 1.2 * streak) * breathe * vTaper; // brighter base + bigger gain
-  i += body * glint * 1.6 * vTaper;  // racing glints
+  i += body * glint * 1.5 * vTaper;  // racing glints
   i += hot * 1.1 * vTaper;           // ever-present white-hot filament
   vec3 gold  = vec3(1.0, 0.80, 0.38);
   vec3 white = vec3(1.0, 1.0, 0.96);
@@ -61,8 +68,11 @@ const GAP = 10; // matches pack.js GAP_TEAR — openW is normalised against this
 export function createFlowLight(canvas) {
   let gl;
   try {
-    gl = canvas.getContext("webgl", { premultipliedAlpha: false, alpha: true, antialias: true })
-      || canvas.getContext("experimental-webgl", { premultipliedAlpha: false, alpha: true, antialias: true });
+    // antialias OFF: the glow is a soft-falloff additive ribbon (no hard geometry
+    // edges to jag), so MSAA buys nothing visible but costs a per-frame resolve —
+    // pure overhead on mobile. Dropping it frees fill-rate budget for the rip.
+    const opts = { premultipliedAlpha: false, alpha: true, antialias: false };
+    gl = canvas.getContext("webgl", opts) || canvas.getContext("experimental-webgl", opts);
   } catch {
     return null;
   }
@@ -113,7 +123,6 @@ export function createFlowLight(canvas) {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive — light accumulates
   gl.clearColor(0, 0, 0, 0);
 
-  const COARSE = window.matchMedia?.("(pointer: coarse)").matches ?? false;
   let vb = { w: 300, h: 500 };
   let path = [];
   let openW = 0;
@@ -126,11 +135,12 @@ export function createFlowLight(canvas) {
   function setViewBox(w, h) { if (w && h) vb = { w, h }; }
 
   function resize() {
-    // Render the backing store at the REAL device pixel ratio. The glow is a single
-    // soft-falloff ribbon — cheap even at 2–3×. The old `COARSE ? 1` forced the canvas
-    // to 1× on phones (DPR 2–3), so the CSS `width:100%` stretch upsampled the gradient
-    // → the visible "马赛克"/blocky halo. Cap at 2.5 so a 3× phone stays bounded.
-    const dpr = Math.min(COARSE ? 2.5 : 2, window.devicePixelRatio || 1);
+    // Backing-store resolution. The old `COARSE ? 1` forced phones to 1× → a stretched,
+    // blocky halo ("马赛克"); the over-correction to 2.5× then cost mobile fill-rate
+    // (掉帧) compositing this screen-blended overlay every frame. Now the shader's
+    // features are smooth (no sub-pixel spikes to alias), so 2× is plenty crisp even
+    // upscaled on a 3× phone — and noticeably cheaper to composite than 2.5×.
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const r = canvas.getBoundingClientRect();
     canvas.width = Math.max(1, Math.round(r.width * dpr));
     canvas.height = Math.max(1, Math.round(r.height * dpr));

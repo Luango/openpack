@@ -25,6 +25,14 @@ const FOIL_Y = 17;
 const TILT_TRACK = [0.12, 0.82]; // soft spring [stiffness, damping] while the tilt follows the pointer — smooth, no shake
 const TILT_SNAP = [0.3, 0.5]; // snap every card flat fast but CLEAN — low damping = heavy friction, so it settles without bouncing
 const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ advance)
+// Minimum gap between two tap-advances. A finger MASHING the deck can otherwise fire
+// many advances in a fraction of a second, each stacking its own WAAPI animations,
+// particle burst, audio nodes and timers — a memory/compositor SPIKE that, on iOS
+// Safari (a tight per-tab memory budget, with the still-resident WebGL carousel
+// already near it), tips the tab over its ceiling and Safari silently RELOADS the
+// page. Coalescing rapid taps to ~human cadence removes that spike. ~7 cards/sec
+// still feels instant; it only swallows the inhuman machine-gun mashing.
+const ADVANCE_MIN_MS = 140;
 const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this it's a tap)
 const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
 const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — the parallel cascade step
@@ -69,7 +77,6 @@ export function createReveal({ mountEl, onAgain }) {
       <p class="hc-best"></p>
     </div>
     <div class="reveal__status">
-      <div class="reveal__pips" aria-hidden="true"></div>
       <p class="reveal__hint"></p>
     </div>
     <p class="reveal__sr" aria-live="polite"></p>
@@ -104,7 +111,6 @@ export function createReveal({ mountEl, onAgain }) {
   const shockEl = host.querySelector(".reveal__shock");
   const stampEl = host.querySelector(".reveal__stamp");
   const haulCapEl = host.querySelector(".reveal__haul-cap");
-  const pipsEl = host.querySelector(".reveal__pips");
   const srEl = host.querySelector(".reveal__sr");
   const particles = createParticles(host.querySelector(".reveal__fx"));
 
@@ -125,6 +131,7 @@ export function createReveal({ mountEl, onAgain }) {
   let peeking = true; // true while still inside the pack (peeking through the gap)
   let anticipating = false; // true during the held "something rare is coming" beat
   let anticTimer = null; // the pending uncover after the anticipation tell
+  let lastAdvanceT = 0; // timestamp of the last tap-advance — throttles machine-gun tapping (ADVANCE_MIN_MS)
 
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
@@ -246,8 +253,6 @@ export function createReveal({ mountEl, onAgain }) {
     slots = [];
     againEl.hidden = true;
     hintEl.textContent = ""; // no hint until the cards are out
-    // a count pip per card — built up front so the haul size is structural
-    pipsEl.innerHTML = cards.map(() => `<span class="pip"></span>`).join("");
     srEl.textContent = "";
     // the arrival glow + embers read the rarest card's colour
     peakTier = cards.length ? Math.max(...cards.map(rarityToTier)) : 0;
@@ -321,7 +326,7 @@ export function createReveal({ mountEl, onAgain }) {
     flourishIfRare();
     // the count + teach line fade in AFTER the card lands (the eye hits the card first)
     arrivalTimers.push(setTimeout(() => host.classList.add("show-status"), 380));
-    // …and the pips articulate the haul size with a soft ascending tick per card
+    // …and a soft ascending tick per card articulates the haul size
     for (let i = 0; i < cards.length; i++) {
       arrivalTimers.push(setTimeout(() => sfx.pipTone(i), 420 + i * 70));
     }
@@ -524,6 +529,12 @@ export function createReveal({ mountEl, onAgain }) {
   function advance() {
     if (pos >= cards.length || anticipating) return;
     if (host.classList.contains("held")) return; // a top-tier hit briefly holds taps
+    // coalesce machine-gun tapping → one advance per ADVANCE_MIN_MS (see the const).
+    // Rare pulls already self-pace via `anticipating`/`held`; this guards the COMMONS,
+    // which otherwise advance instantly and let a fast finger stack a crash-spike.
+    const tNow = performance.now();
+    if (tNow - lastAdvanceT < ADVANCE_MIN_MS) return;
+    lastAdvanceT = tNow;
     const next = slots[pos + 1];
     const nextTier = next ? rarityToTier(next.card) : -1;
     sfx.flick();
@@ -628,11 +639,6 @@ export function createReveal({ mountEl, onAgain }) {
   function endOfPack() {
     host.classList.remove("iridescent");
     clearHit();
-    const pips = pipsEl.children;
-    for (let i = 0; i < pips.length; i++) {
-      pips[i].classList.remove("is-current");
-      pips[i].classList.add("is-seen");
-    }
     showHaul(); // fan the spent cards back into a hand, rarest popped forward + glowing
     againEl.hidden = false;
     sfx.concludeChime(); // a gentle resolving cadence — the haul closes on a chord, not silence
@@ -674,7 +680,7 @@ export function createReveal({ mountEl, onAgain }) {
     startHaulLoop();
     // let the fan-in animate on the CSS transition, THEN switch to 1:1 rAF control
     setTimeout(() => { if (host.classList.contains("haul")) host.classList.add("haul-live"); }, 620);
-    hintEl.textContent = "Drag / swipe to switch the centre card";
+    hintEl.textContent = "";
     srEl.textContent = `That's your pack. Best pull: ${tierOf(slots[hero].card).label}. Drag to browse, or open another.`;
   }
 
@@ -897,15 +903,8 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.remove("telling", "held");
   }
 
-  // Drive the count pips (current + seen), the teach sub-line, and the SR status.
-  // Pips are the primary, glanceable count/position read; the text is secondary.
+  // Announce the current card to screen readers (the SR live region).
   function updateHint() {
-    const pips = pipsEl.children;
-    for (let i = 0; i < pips.length; i++) {
-      pips[i].classList.toggle("is-current", i === pos);
-      pips[i].classList.toggle("is-seen", i < pos);
-    }
-    hintEl.textContent = "tap for next · drag to spread";
     const card = slots[pos]?.card;
     if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap for the next card.`;
   }

@@ -480,8 +480,12 @@
         pointer-events: none;
         opacity: 0;
         /* leaving the picker (body.picking removed): hold lit THROUGH the ~0.4s canvas
-           dissolve (delay), then darken into the page bg over ~0.85s — the settle */
-        transition: opacity 0.85s ease 0.34s;
+           dissolve (delay), THEN darken into the page bg over a long, gentle settle.
+           The old 0.85s ease dropped the lit field too fast and bottomed out hard — a
+           visible bright→black snap. A ~1.7s ease-in-out is slow at BOTH ends (no sudden
+           start, no hard landing on black), so the aurora recedes into the dark rip
+           backdrop as one continuous brightness ramp rather than a cut. */
+        transition: opacity 1.7s ease-in-out 0.38s;
         background:
           /* soft warm-white stage pool behind the focused pack (centre, a little high) */
           radial-gradient(58% 46% at 50% 40%, rgba(255, 228, 200, 0.20), transparent 66%),
@@ -490,9 +494,10 @@
           /* vertical palette: deep ink-violet → muted indigo → soft periwinkle (bottom → top) */
           linear-gradient(to top, #131526 0%, #1f2140 56%, #3c436e 100%);
       }
-      /* entering/holding the picker: snap lit (it's hidden behind the opaque canvas
-         anyway) with no settle delay, so a quick back-to-picker re-arms cleanly */
-      body.picking #scene-bg { opacity: 1; transition: opacity 0.4s ease; }
+      /* entering/holding the picker: brighten the lit field back UP. The canvas fades
+         in over it (REENTER_FADE ~0.6s), so this rides a touch slower (~0.8s ease-in-out)
+         to match — a gentle dark→bright ramp on the way back, not a 0.4s pop. */
+      body.picking #scene-bg { opacity: 1; transition: opacity 0.8s ease-in-out; }
 
       /* Floating Poké Ball icons — monochrome (grey/white/black) balls drifting up
          through the dark at different depths and angles, behind the pack and the
@@ -662,6 +667,34 @@
         transition: transform 0.14s ease, opacity 0.2s ease;
       }
       @keyframes gatePulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+      /* before the audio is ready the gate reads as "Loading…": the label breathes
+         slower + dimmer and the button's attract-pulse is held back, so the invitation
+         to tap only arrives once whenReady() swaps the label (the button stays tappable). */
+      #start-gate.loading .start-gate__label  { animation-duration: 2.8s; opacity: 0.75; }
+      #start-gate.loading .start-gate__center { animation-duration: 2.8s; }
+      /* the loading bar: a thin track whose fill tracks sfx audio-decode progress
+         (set in JS from sfx.onReadyProgress). It only exists while loading — once the
+         audio is ready it fades out and the label flips to "Tap to open". */
+      #start-gate .start-gate__bar {
+        display: block;
+        width: clamp(120px, 40vw, 220px);
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(190, 208, 255, 0.18);
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 0.45s ease;
+      }
+      #start-gate.loading .start-gate__bar { opacity: 1; } /* visible only while loading */
+      #start-gate .start-gate__bar-fill {
+        display: block;
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #8cb2ff, #f4f4f6);
+        box-shadow: 0 0 10px rgba(150, 188, 255, 0.75);
+        transition: width 0.3s ease;
+      }
       @keyframes gateBall {
         0%, 100% { transform: translateY(0) scale(1); }
         50%      { transform: translateY(-5px) scale(1.04); }
@@ -691,45 +724,26 @@
       }
       @keyframes gateLabelKick { 0%, 100% { opacity: 0.55; } 40% { opacity: 1; transform: scale(1.07); } }
 
-      /* ---- the open: the ball cracks apart, light pours out --------------- */
-      #start-gate.opening .start-gate__ball     { animation: none; }
-      #start-gate.opening .start-gate__center   { animation: gateBtnPop 0.42s cubic-bezier(0.2, 1.2, 0.4, 1) forwards; }
-      #start-gate.opening .start-gate__half--top    { animation: gateLidUp 0.62s cubic-bezier(0.16, 0.9, 0.3, 1) forwards; }
-      #start-gate.opening .start-gate__half--bottom { animation: gateBaseDown 0.62s cubic-bezier(0.16, 0.9, 0.3, 1) forwards; }
-      #start-gate.opening .start-gate__burst    { animation: gateGodLight 0.7s ease-out forwards; }
-      #start-gate.opening .start-gate__shock    { animation: gateShock 0.6s cubic-bezier(0.1, 0.7, 0.3, 1) forwards; }
+      /* ---- the open: the whole ball snaps up, then shrinks away ----------
+         A quick pop (overshoot up) immediately followed by a collapse to nothing
+         — a clean, snappy transition wipe into the carousel. The ball is one unit
+         (halves + button scale with it); the burst/shock are no longer used. */
+      #start-gate.opening .start-gate__ball     { animation: gatePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      #start-gate.opening .start-gate__center,
+      #start-gate.opening .start-gate__half--top,
+      #start-gate.opening .start-gate__half--bottom { animation: none; }
+      #start-gate.opening .start-gate__burst,
+      #start-gate.opening .start-gate__shock    { opacity: 0; }
       #start-gate.opening .start-gate__label    { opacity: 0; }
-      /* the button flares white, then collapses into the bursting light */
-      @keyframes gateBtnPop {
-        0%   { transform: translate(-50%, -50%) scale(0.82); }
-        35%  { transform: translate(-50%, -50%) scale(1.35); background: radial-gradient(circle, #fff, #fff); box-shadow: inset 0 0 0 2px #fff, 0 0 30px rgba(210, 230, 255, 1); }
-        100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-      }
-      @keyframes gateLidUp {
-        0%   { transform: translateY(0) rotateX(0) scale(1); }
-        100% { transform: translateY(-62%) rotateX(46deg) scale(0.92); opacity: 0.85; }
-      }
-      @keyframes gateBaseDown {
-        0%   { transform: translateY(0) rotateX(0) scale(1); }
-        100% { transform: translateY(48%) rotateX(-26deg) scale(0.92); opacity: 0.85; }
-      }
-      @keyframes gateGodLight {
-        0%   { opacity: 0; transform: scale(0.25); }
-        30%  { opacity: 1; transform: scale(1.5); }
-        100% { opacity: 0.92; transform: scale(3.4); }
-      }
-      @keyframes gateShock {
-        0%   { opacity: 0.95; transform: scale(1); border-width: 3px; }
-        100% { opacity: 0; transform: scale(2.8); border-width: 0.5px; }
+      @keyframes gatePop {
+        0%   { transform: translateY(0)    scale(1);    opacity: 1; }
+        34%  { transform: translateY(-8px) scale(1.26); opacity: 1; } /* snap UP */
+        100% { transform: translateY(-4px) scale(0);    opacity: 0; } /* shrink + vanish */
       }
       @media (prefers-reduced-motion: reduce) {
         #start-gate .start-gate__ball, #start-gate .start-gate__center,
         #start-gate .start-gate__label { animation: none; }
-        #start-gate.opening .start-gate__half--top,
-        #start-gate.opening .start-gate__half--bottom { animation: none; opacity: 0; }
-        #start-gate.opening .start-gate__center { animation: none; opacity: 0; }
-        #start-gate.opening .start-gate__burst { animation: none; opacity: 1; }
-        #start-gate.opening .start-gate__shock,
+        #start-gate.opening .start-gate__ball { animation: none; opacity: 0; }
         #start-gate.nudge .start-gate__center, #start-gate.nudge .start-gate__label { animation: none; }
       }
       /* While the picker is up, the WebGL canvas is transparent — so the armed SVG
@@ -866,9 +880,8 @@
           0 40px 80px rgba(0, 0, 0, 0.6);
       }
 
-      /* status block — count PIPS (primary, glanceable) + a teach sub-line. Fades
-         in after the card lands; rides above the stage with a legibility floor so
-         it survives the flash + iridescent aura. */
+      /* status block — a teach sub-line. Fades in after the card lands; rides above
+         the stage with a legibility floor so it survives the flash + iridescent aura. */
       .reveal__status {
         position: fixed;
         left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom, 0px));
@@ -882,19 +895,6 @@
         z-index: 330;
       }
       .reveal.show-status .reveal__status { opacity: 1; }
-      .reveal__pips { display: flex; gap: 7px; }
-      .pip {
-        width: 7px; height: 7px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.28);
-        transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
-      }
-      .pip.is-seen { background: color-mix(in srgb, var(--tier-color, #fff) 45%, rgba(255, 255, 255, 0.22)); }
-      .pip.is-current {
-        background: #fff;
-        transform: scale(1.45);
-        box-shadow: 0 0 8px color-mix(in srgb, var(--tier-color, #fff) 80%, #fff);
-      }
       .reveal__hint {
         margin: 0;
         text-align: center;
@@ -1273,7 +1273,8 @@
         <span class="start-gate__shock" aria-hidden="true"></span>
         <button class="start-gate__center" type="button" aria-label="Press the Poké Ball button to open packs"></button>
       </div>
-      <span class="start-gate__label">Press the button</span>
+      <span class="start-gate__label">Loading…</span>
+      <span class="start-gate__bar" aria-hidden="true"><span class="start-gate__bar-fill"></span></span>
     </div>
 
     <script type="module">
@@ -1285,7 +1286,6 @@
       import * as sfx from "./src/sfx.js";
 
       const hintEl = document.querySelector(".hint");
-      const TEAR_HINT = "Drag a line across the pack to tear it open — it rips along your path.";
       let pack, reveal, ready, selector, chosenPack = DEFAULT_PACKS[0];
       // start-gate ↔ carousel handoff sync: flips true the frame the fly-in actually
       // begins; the gate registers onIntroStarted to fade its open right into that frame.
@@ -1340,7 +1340,7 @@
             // foreshadow the pull: tint the idle pack toward the rarest card inside
             pack.setTell(Math.max(...cards.map(rarityToTier)));
             pack.setArmed(true); // stack is fully built — now it's safe to tear
-            hintEl.textContent = TEAR_HINT;
+            hintEl.textContent = "";
             resolve();
           };
           if (window.requestIdleCallback) requestIdleCallback(build, { timeout: 800 });
@@ -1422,7 +1422,7 @@
 
       function backToSelect() {
         stageEl.style.filter = ""; // clear the tint until the next choice
-        hintEl.textContent = ""; // the picker has its own hint; tear hint returns on select
+        hintEl.textContent = ""; // the picker has its own hint
         sfx.setMusicScene?.("carousel"); // back to the deck — settle into the calm browsing bed
         document.body.classList.add("picking"); // hide the resealed tear-pack behind the canvas
         // REPLAY the queue-in entrance as the transition back from a collected pull, so we
@@ -1443,6 +1443,23 @@
       const startGate = document.getElementById("start-gate");
       const gateCenter = startGate.querySelector(".start-gate__center");
       const gateLabel = startGate.querySelector(".start-gate__label");
+      const gateBarFill = startGate.querySelector(".start-gate__bar-fill");
+      // The gate opens to "Loading…" with a bar that fills as the audio the first moment
+      // needs decodes (real foley, not synth): every SFX sample + the carousel bed. Progress
+      // comes from sfx.onReadyProgress; whenReady() resolves at 100% (with a ~2.5s backstop
+      // so a missing manifest / slow network never traps it here), and only THEN does the
+      // bar fade out and the label flip to "Tap to open". The button stays tappable the whole
+      // time — tapping early just falls back to synth for that first cue — so this never
+      // blocks. Skip the swap if the gate already launched (fast tapper).
+      startGate.classList.add("loading");
+      sfx.onReadyProgress?.((p) => {
+        if (gateBarFill) gateBarFill.style.width = `${Math.round(p * 100)}%`;
+      });
+      sfx.whenReady?.().then(() => {
+        if (launched) return;
+        startGate.classList.remove("loading"); // fades the bar out (CSS)
+        gateLabel.textContent = "Tap to open";
+      });
       // finger-down squash → a tactile press, ONLY when it lands on the button
       gateCenter.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
       const unpress = () => startGate.classList.remove("pressing");
@@ -1454,20 +1471,25 @@
       const openBall = () => {
         if (launched) return;
         launched = true;
+        // GUARANTEE music for the carousel: this tap is the definitive first gesture, so
+        // resume the ctx + start the carousel bed right here in-gesture, rather than leaving
+        // it to the passive pointerdown listener (whose single play() attempt can be rejected
+        // on a cold mobile/desktop session, dropping you into a silent deck).
+        sfx.kickAudio?.();
         // satisfying confirm: crisp glint NOW (also unlocks the audio ctx in-gesture),
-        // the ball cracking open, and a riser swelling straight into the carousel fly-in
+        // a pop burst, and a riser swelling straight into the carousel fly-in
         sfx.spark?.();
         sfx.burst?.(0.6, 5);
         sfx.riser?.(6, 620);
         startGate.classList.remove("pressing", "nudge");
-        startGate.classList.add("opening"); // lid hinges up, base drops, light bursts out
+        startGate.classList.add("opening"); // ball pops up, then shrinks away to nothing
         gateLabel.textContent = "";
 
-        // Fade the gate ONLY once both are true: (1) the open has had time to read, and
-        // (2) the packs are actually flying in — so the god-light dissolves straight into
-        // the fly-in. show()'s intro waits on asset decode (up to a 1.5s backstop), so a
-        // fixed timer would either gap (light gone before packs) or hide the launch.
-        const MIN_OPEN = 560; // let the ball crack + light burst land before handing off
+        // Fade the gate ONLY once both are true: (1) the pop has had time to read, and
+        // (2) the packs are actually flying in — so the ball shrinks straight into the
+        // fly-in. show()'s intro waits on asset decode (up to a 1.5s backstop), so a
+        // fixed timer would either gap (ball gone before packs) or hide the launch.
+        const MIN_OPEN = 400; // let the ball pop + shrink away land before handing off
         const openStart = performance.now();
         let faded = false;
         const fadeGate = () => {
