@@ -29,6 +29,16 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // itself down there: no MSAA, a lower pixel-ratio cap, and thinner ambient particle
 // fields. Desktop keeps the full-fat render. One flag drives every mobile dial below.
 const COARSE = matchMedia("(pointer: coarse)").matches;
+// On phones (COARSE) the carousel maps a SMALLER texture onto each pack — ~half the
+// bytes AND under half the pixels to decode + upload to the GPU, which is the single
+// biggest per-texture cost on a phone. Only the known shared art has a -720 variant;
+// any custom pack art falls through and loads at its own resolution. The index.html
+// <link rel=preload media="(pointer:coarse)"> mirrors this so the right file is fetched.
+const MOBILE_TEX = COARSE ? {
+  "assets/pack-hi.webp": "assets/pack-hi-720.webp",
+  "assets/pack-back-hi.webp": "assets/pack-back-hi-720.webp",
+} : {};
+const texSrc = (path) => MOBILE_TEX[path] || path;
 // Seconds the canvas takes to cross-dissolve into the 2D tear-pack once the hero lands.
 // (Mirrors #select-stage's CSS opacity transition; set inline so it's self-contained.)
 const DISSOLVE = 0.4;
@@ -585,12 +595,29 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     let started = false;
     const begin = () => {
       if (started) return; started = true;
-      // Compile every shader program + upload every texture used by the scene NOW,
-      // in one synchronous warm-up, while the canvas is still blank. This moves the
-      // lazy first-render compile/upload cost OFF the animation's critical path —
-      // the first intro frame then runs clean.
-      try { renderer.compile(scene, camera); } catch { /* warm-up is best-effort */ }
+      // Arm the entrance FIRST (every pack opacity→0) so the throwaway warm-up render
+      // below paints nothing visible — otherwise the full ring would flash for a frame.
       initIntro();
+      // Warm the GPU NOW, while the canvas shows nothing, so the first ANIMATED frame
+      // is clean. Two distinct costs, both otherwise paid lazily mid-entrance (the bulk
+      // of the first-open 卡顿):
+      //   1. SHADER COMPILE — renderer.compile() builds every program (packs, rim beam,
+      //      edge wall, particles) up front.
+      //   2. TEXTURE UPLOAD — compile() does NOT upload textures; the big 1083×1794 foil
+      //      WebPs (front + back) would otherwise decode-upload on the first draw and hitch
+      //      the motion. initTexture() forces each onto the GPU here, and one throwaway
+      //      render() uploads anything else actually drawn (env sheen, particles, motes).
+      try {
+        renderer.compile(scene, camera);
+        const texes = new Set();
+        if (scene.environment) texes.add(scene.environment);
+        meshes.forEach((m) => (Array.isArray(m.material) ? m.material : [m.material]).forEach((mm) => {
+          if (mm?.map) texes.add(mm.map);
+          if (mm?.emissiveMap) texes.add(mm.emissiveMap);
+        }));
+        texes.forEach((tx) => { try { renderer.initTexture(tx); } catch { /* ignore */ } });
+        renderer.render(scene, camera); // packs are at opacity 0 → invisible, but textures upload
+      } catch { /* warm-up is best-effort */ }
       play();
     };
     Promise.all(assetsReady).then(begin);
@@ -1172,7 +1199,7 @@ const _texCache = new Map();
 function loadFaceTexture(p) {
   const key = `${p.img}|${p.hue || 0}`;
   if (_texCache.has(key)) return _texCache.get(key);
-  const pr = loadImg(p.img).then((im) => {
+  const pr = loadImg(texSrc(p.img)).then((im) => {
     let source = im;
     if (p.hue) {
       const c = document.createElement("canvas");
@@ -1198,7 +1225,7 @@ const BACK_IMG = "assets/pack-back-hi.webp";
 let _backArtTex = null;
 function loadBackTexture() {
   if (_backArtTex) return _backArtTex;
-  _backArtTex = loadImg(BACK_IMG).then((im) => {
+  _backArtTex = loadImg(texSrc(BACK_IMG)).then((im) => {
     const tex = new THREE.Texture(im);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 16;

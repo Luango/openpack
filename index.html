@@ -6,11 +6,37 @@
     <title>OpenPack — tear it open</title>
     <link rel="stylesheet" href="src/base.css" />
     <link rel="stylesheet" href="src/card.css" />
-    <!-- the pack art is the LCP — fetch it first, ahead of the JS modules -->
+    <!-- FIRST-OPEN: kick the slow critical resources off at HTML-parse time instead of
+         waiting for the ESM waterfall to discover them. Without these, three.js only
+         downloads after index→select3d.js download+parse, and the hi-res foil textures
+         only after select3d.js runs — so on a cold first open they start 2–3 round-trips
+         late. Over HTTP/2 these hints fetch everything in parallel up front. -->
+    <!-- the carousel engine, SELF-HOSTED (vendored MINIFIED build, ~167KB gz): served
+         same-origin over the connection already open for the page — no third-party DNS/TLS
+         to a CDN on first open — and pulled NOW rather than after the ESM waterfall finds it -->
+    <link rel="modulepreload" href="vendor/three.module.min.js" />
+    <!-- the SVG tear-pack LCP + the two hi-res WebPs the 3D carousel maps onto its packs.
+         The hi-res pair GATES the visible intro (it waits on their decode), so start them
+         at parse time rather than when select3d.js gets around to loadImg().
+         crossorigin REQUIRED — select3d.js loads them via an Image with crossOrigin
+         ="anonymous" (CORS mode); a no-CORS preload wouldn't match and would fetch twice.
+         The pair is device-split: phones (pointer:coarse) fetch the smaller -720 variants
+         the carousel actually maps there, desktops the full-res ones — so neither pulls
+         a texture it won't use. (Mirrors MOBILE_TEX in select3d.js.) -->
     <link rel="preload" as="image" href="assets/pack.webp" fetchpriority="high" />
-    <!-- three.js for the 3D pack-selection carousel (no build step → ESM via CDN) -->
+    <link rel="preload" as="image" href="assets/pack-hi.webp"          media="(pointer: fine)"   fetchpriority="high" crossorigin />
+    <link rel="preload" as="image" href="assets/pack-hi-720.webp"      media="(pointer: coarse)" fetchpriority="high" crossorigin />
+    <link rel="preload" as="image" href="assets/pack-back-hi.webp"     media="(pointer: fine)"   crossorigin />
+    <link rel="preload" as="image" href="assets/pack-back-hi-720.webp" media="(pointer: coarse)" crossorigin />
+    <!-- flatten the local module waterfall too (each is small, but ESM discovers them
+         level by level — preloading the entry points collapses ~2 round-trips into one) -->
+    <link rel="modulepreload" href="src/select3d.js" />
+    <link rel="modulepreload" href="src/sfx.js" />
+    <link rel="modulepreload" href="src/reveal.js" />
+    <link rel="modulepreload" href="src/pack.js" />
+    <!-- three.js for the 3D pack-selection carousel (no build step → vendored ESM) -->
     <script type="importmap">
-      { "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js" } }
+      { "imports": { "three": "./vendor/three.module.min.js" } }
     </script>
     <style>
       :root {
@@ -223,6 +249,23 @@
         pointer-events: none;
         z-index: 2; /* just over the dark crack */
         mix-blend-mode: screen;
+      }
+      /* THE SHATTER SEAMS — when the tear commits, golden cracks fork across the
+         whole foil (a beat of 期待) before it bursts into shards. Drawn in the
+         .pack-cut overlay (outside the drop-shadow .pack, so writing them never
+         re-rasters the foil). screen-blend + a soft gold glow so the seams read as
+         light splitting the pack open. Driven by pack.js (buildShatter/drawCracks). */
+      .shatter-cracks {
+        fill: none;
+        stroke: #ffe6a2;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0;
+        mix-blend-mode: screen;
+        filter:
+          drop-shadow(0 0 3px #ffd24a)
+          drop-shadow(0 0 9px rgba(255, 178, 60, 0.85));
       }
 
       /* PERF: while a tear is underway (.pack-wrap.tearing, set in floatOn) freeze
@@ -1046,6 +1089,12 @@
         syncAudioUI();
       });
       syncAudioUI();
+
+      // Front-load ALL audio (decode every SFX sample + buffer the BGM) during the idle
+      // gaps of the load/entrance, so the first carousel drag never pays the fetch+decode
+      // cost. Scheduled at idle so it yields to the gating texture/three load that the
+      // visible intro waits on; the ~5s entrance is ample time to finish in the background.
+      (window.requestIdleCallback || ((fn) => setTimeout(fn, 200)))(() => sfx.preload());
 
       // Build a booster AND render its card stack (hidden) up front, then ARM the
       // pack. The pack can't be torn until its cards are ready, so the reveal is

@@ -628,6 +628,7 @@ export function createReveal({ mountEl, onAgain }) {
   // `haulCenter` so the switch is smooth and dynamic.
   let haulOrder = [], haulN = 0, haulW = 240, haulStep = 80;
   let haulCenter = 0, haulTarget = 0, haulDragging = false, haulRAF = null, haulT = 0, haulLastIdx = -1;
+  let haulLayoutC = NaN; // last centre we laid out at → skip the full layout on idle frames
 
   function showHaul() {
     if (!slots.length) return;
@@ -646,9 +647,11 @@ export function createReveal({ mountEl, onAgain }) {
     slots.forEach((s) => {
       s.slot.classList.remove("flung", "front", "entering", "gleaming", "rare");
       s.slot.style.pointerEvents = "auto"; // tappable → centre that card
+      s._centre = undefined; s._zi = undefined; // force the first layout to write z + foil
     });
     haulCenter = haulTarget = haulOrder.indexOf(hero); // open centred on the hero
     haulLastIdx = -1;
+    haulLayoutC = NaN;
     layoutHaul();
     startHaulLoop();
     // let the fan-in animate on the CSS transition, THEN switch to 1:1 rAF control
@@ -674,10 +677,17 @@ export function createReveal({ mountEl, onAgain }) {
       // continuously — no z-index flip snapping it from behind to in front in one frame.
       const tz = -ao * 16; // px; ~16/1100 perspective ⇒ negligible size change, clean sort
       s.slot.style.transform = `translateZ(${tz.toFixed(1)}px) translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
-      s.slot.style.zIndex = String(Math.round(200 - ao * 10)); // fallback ordering if 3D is flattened
+      // z-index + foil only change when a card crosses the centre boundary — writing them
+      // every frame needlessly repaints the (blend-mode) foil layers of every side card,
+      // which is what janks the drag on mobile. Dirty-track and only write on transition.
+      const zi = Math.round(200 - ao * 10); // fallback ordering if 3D is flattened
+      if (zi !== s._zi) { s.slot.style.zIndex = String(zi); s._zi = zi; }
       const isCentre = ao < 0.5;
-      s.slot.classList.toggle("haul-hero", isCentre);
-      if (!isCentre) resetCardFoil(s.cardEl); // side cards flat; centre gets the idle holo
+      if (isCentre !== s._centre) {
+        s._centre = isCentre;
+        s.slot.classList.toggle("haul-hero", isCentre);
+        if (!isCentre) resetCardFoil(s.cardEl); // reset foil once, as the card leaves centre
+      }
     }
     const idx = Math.max(0, Math.min(n - 1, Math.round(c)));
     if (idx !== haulLastIdx) {            // the centred card changed → update glow + label
@@ -700,7 +710,9 @@ export function createReveal({ mountEl, onAgain }) {
       haulCenter += (haulTarget - haulCenter) * 0.18; // eased snap
       if (Math.abs(haulTarget - haulCenter) < 0.001) haulCenter = haulTarget;
     }
-    layoutHaul();
+    // only re-lay-out when the centre actually moved — once snapped + idle, the fan is
+    // static so the only per-frame work left is the centre card's holo sheen below
+    if (haulCenter !== haulLayoutC) { layoutHaul(); haulLayoutC = haulCenter; }
     // a gentle holo sheen on the centred card so it feels alive
     const ce = slots[haulOrder[Math.max(0, Math.min(haulN - 1, Math.round(haulCenter)))]]?.cardEl;
     if (ce && !haulDragging && !REDUCED) {

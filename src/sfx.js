@@ -172,21 +172,38 @@ function rampMusic(timeConstant = 0.05) {
   musicGain.gain.setTargetAtTime(musicTarget(), ctx.currentTime, timeConstant);
 }
 
-// Start the loop once, on the first user gesture (autoplay needs one). Streams
-// the file rather than decoding it whole, and fades in so it doesn't slam on.
-function startMusic() {
-  if (musicStarted || !ctx) return;
-  musicStarted = true;
+// Create the BGM <audio> element and begin BUFFERING the file now, WITHOUT playing it.
+// play() still needs the first user gesture (autoplay policy), but by then the bytes are
+// already downloaded and the graph is ready — so the bed starts with no fetch hitch on
+// the first interaction. Safe to call repeatedly (no-op once the element exists).
+function prebufferMusic() {
+  if (musicEl) return;
   try {
     musicEl = new Audio();
     musicEl.src = MUSIC_URL.href;
     musicEl.loop = true;
     musicEl.preload = "auto";
     musicEl.crossOrigin = "anonymous";
-    musicNode = ctx.createMediaElementSource(musicEl);
-    musicGain = ctx.createGain();
-    musicGain.gain.value = 0.0001; // start silent, fade up on play
-    musicNode.connect(musicGain).connect(ctx.destination);
+    musicEl.load(); // kick off buffering immediately
+  } catch {
+    musicEl = null; // no <audio> support → BGM silently skipped
+  }
+}
+
+// Start the loop once, on the first user gesture (autoplay needs one). The element and
+// its bytes are already prepared by prebufferMusic() (at load), so this just wires the
+// graph and plays — no download wait. Fades in so it doesn't slam on.
+function startMusic() {
+  if (musicStarted || !ctx) return;
+  musicStarted = true;
+  try {
+    prebufferMusic();   // ensure the element exists (no-op if already preloaded)
+    if (!musicNode) {   // createMediaElementSource is once-per-element
+      musicNode = ctx.createMediaElementSource(musicEl);
+      musicGain = ctx.createGain();
+      musicGain.gain.value = 0.0001; // start silent, fade up on play
+      musicNode.connect(musicGain).connect(ctx.destination);
+    }
     musicEl
       .play()
       .then(() => rampMusic(1.2)) // gentle ~3.5s fade-in to the resting bed
@@ -219,6 +236,27 @@ export function setMusicEnabled(on) {
   if (on) startMusic();
   else if (musicEl) {
     try { musicEl.pause(); } catch { /* ignore */ }
+  }
+}
+
+// ---- front-load everything at page load ------------------------------------
+// Browsers gate audio PLAYBACK behind a user gesture, but NOT the expensive prep. So at
+// load time we create the (suspended) context, build the bus, fetch + decodeAudioData
+// every SFX sample, and buffer the BGM file. Then the first gesture only has to resume()
+// + play() — instant — instead of kicking off ~5MB of audio fetches and a decode pass
+// right as the player starts dragging the carousel (a big part of the first-open 卡顿).
+// decodeAudioData works on a suspended context, so nothing here needs the gesture; this
+// just moves all the audio cost into the load beat. Idempotent — call it once at startup.
+export function preload() {
+  try {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+      buildBus(ctx);
+    }
+    loadSamples(ctx);  // fetch + decode all foley into AudioBuffers now
+    prebufferMusic();  // download + buffer the music bed now (play() still waits for a gesture)
+  } catch {
+    /* no Web Audio support → cues fall back to synth / silence; nothing to preload */
   }
 }
 
