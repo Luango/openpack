@@ -27,10 +27,9 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 // ---- background music (BGM) ------------------------------------------------
 // TWO looping music beds that CROSS-FADE as the player moves between scenes:
 //   • "carousel" — the calm Moonlit Drift loop while browsing the deck of packs.
-//   • "open"     — the energetic Starlight Symphony theme, held back until the
-//                  player actually RIPS the pack (setMusicScene("open") on tearStart).
-//                  The ready-to-tear screen is deliberately SILENT (silenceMusic())
-//                  so the rip lands as a sudden swell out of quiet anticipation.
+//   • "open"     — the energetic Starlight Symphony theme. Swells up the moment a pack
+//                  is SELECTED, but only plays its INTRO and then HOLDS (see the intro-
+//                  hold block below); the rest pours in when the pack fully splits open.
 // Only one is audible at a time; switching scenes fades the other out under it.
 // Each bed streams from its own <audio> element into its own gain node, routed
 // STRAIGHT to the destination — parallel to the SFX limiter, NOT through it — so
@@ -319,43 +318,62 @@ export function setMusicScene(scene, seconds = 1.6) {
 
 // ---- open theme: intro-hold ------------------------------------------------
 // The open theme is split into two beats so the MUSIC lands with the gesture:
-//   1) startOpenTheme() — the RIP. Swell the theme up from the top, play just the
-//      short INTRO, then HOLD (pause) it right at the end of that intro. The music
-//      hangs there, charged, while the foil parts — it does NOT spill into the main
-//      body yet. This is the anticipation beat.
-//   2) resumeOpenTheme() — the pack FULLY splits open. Release the hold so the rest
-//      of the theme pours in on the burst. If the open happens mid-intro (a fast
+//   1) startOpenTheme() — the pack is SELECTED (flown forward, ready to tear). Swell
+//      the theme up from the top, play just the short INTRO, then HOLD (pause) it right
+//      at the end of that intro. The music hangs there, charged, through the whole
+//      ready-to-tear + tearing window — it does NOT spill into the main body yet.
+//   2) resumeOpenTheme() — the pack FULLY splits open. Release the hold so the rest of
+//      the theme pours in on the burst. If the open happens mid-intro (a fast select →
 //      yank), this just cancels the pending hold so the music plays straight through.
-const OPEN_INTRO_SEC = 2.4; // how much of the theme plays during the tear, before the hold
-let openHoldHandler = null; // the timeupdate listener that pauses the open bed at the intro end
+const OPEN_INTRO_SEC = 6.1; // how much of the theme plays on select, before it holds for the open
+const OPEN_FADE = 0.25;     // the quick fade-out into the hold / fade-in out of it (seconds)
+let openHoldHandler = null; // the timeupdate listener that fades + pauses the open bed at the intro end
+let openPauseTimer = null;  // pending "pause at the bottom of the fade-out"
 
 function clearOpenHold() {
   const bed = beds.get("open");
   if (bed?.el && openHoldHandler) bed.el.removeEventListener("timeupdate", openHoldHandler);
   openHoldHandler = null;
+  if (openPauseTimer) { clearTimeout(openPauseTimer); openPauseTimer = null; }
 }
 
-// THE RIP — swell the open theme up out of the quiet ready screen, but only play its
-// intro: pause the bed once it reaches `introSec` so the music holds, charged, until
-// the pack actually opens (resumeOpenTheme).
+// PACK SELECTED — swell the open theme up from the calm carousel bed, but only play its
+// intro: at the end of the intro QUICK-FADE the bed down and pause it, so the music holds
+// (silent + parked), charged, until the pack actually opens (resumeOpenTheme).
 export function startOpenTheme(introSec = OPEN_INTRO_SEC) {
   setMusicScene("open", 0.9); // swell the open theme up from the top (restarts the bed)
   const bed = beds.get("open");
   if (!bed?.el) return; // music not started yet (no gesture) — nothing to hold
-  clearOpenHold(); // drop any stale handler from a prior tear
+  clearOpenHold(); // drop any stale handler from a prior pull
   openHoldHandler = () => {
     if (bed.el.currentTime < introSec) return;
-    clearOpenHold();
-    try { bed.el.pause(); } catch { /* ignore */ } // HOLD here — wait for the open
+    clearOpenHold(); // stop watching (no pause timer pending yet)
+    // quick fade DOWN, then pause at the bottom so the hold lands without a click
+    if (bed.gain && ctx) bed.gain.gain.setTargetAtTime(0.0001, ctx.currentTime, OPEN_FADE / 3);
+    openPauseTimer = setTimeout(() => {
+      openPauseTimer = null;
+      try { bed.el.pause(); } catch { /* ignore */ } // HOLD here — wait for the open
+    }, OPEN_FADE * 1000 + 60);
   };
   bed.el.addEventListener("timeupdate", openHoldHandler);
 }
 
-// THE OPEN — release the intro hold and let the rest of the open theme play through.
+// THE OPEN — release the intro hold and let the rest of the open theme play through,
+// with a quick fade-IN so it eases back rather than slamming on. If the open landed
+// mid-intro (a fast select → yank), the bed is still playing, so this just keeps it
+// going (no forced dip); only a truly HELD bed gets reset to silent and faded up.
 export function resumeOpenTheme() {
-  clearOpenHold(); // cancel a still-pending hold (open landed mid-intro)
+  const wasHeld = !!openPauseTimer || !!beds.get("open")?.el?.paused; // fading out / parked
+  clearOpenHold(); // cancel any pending hold + pending pause-timer
   const bed = beds.get("open");
-  if (currentScene === "open" && bed?.el?.paused) bed.el.play().catch(() => {});
+  if (currentScene !== "open" || !bed?.el || !ctx) return;
+  if (wasHeld && bed.gain) {
+    // reset to silent under the (paused) bed so the resume is a real fade-IN
+    bed.gain.gain.cancelScheduledValues(ctx.currentTime);
+    bed.gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  }
+  if (bed.el.paused) bed.el.play().catch(() => {});
+  if (bed.gain) bed.gain.gain.setTargetAtTime(musicTarget("open"), ctx.currentTime, OPEN_FADE / 3); // quick fade-in
 }
 
 // Fade EVERY bed out to silence — the deliberately quiet ready-to-tear screen,

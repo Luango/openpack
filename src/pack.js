@@ -553,7 +553,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (!tearing && pathLen(path) > START_DIST) {
       tearing = true;
       sfx.tearStart(tellTier); // rarer pack inside → brighter, more energetic foil rip
-      sfx.startOpenTheme?.(); // THE RIP — swell the open theme up, but play only its intro then HOLD until the pack splits open
+      // (the open theme already started + held at its intro the moment the pack was
+      //  selected — the rip just tears into that charged hold; it resumes on full open)
     }
     if (!tearing) return;
 
@@ -743,7 +744,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     } else {
       if (!invalid) sfx.tearEnd(false); // (a void tear already cut its sound)
       spring.set({ w: 0 }); // didn't cross (or was voided) — the crack eases shut
-      sfx.silenceMusic?.(); // tear abandoned — settle back into the quiet ready screen (no-op if it never started)
+      // leave the open theme HELD at its intro — the pack is still selected + ready to
+      // tear, so the music stays charged; it only continues once the pack fully opens
       floatOn(true); // stayed one piece — resume the idle float
       setTimeout(() => {
         if (!dragging && !opened) clearTear();
