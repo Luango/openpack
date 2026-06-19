@@ -33,20 +33,29 @@ precision mediump float;
 varying float vU; varying float vV; varying float vTaper;
 uniform float uTime;
 void main() {
-  // soft cross-section: bright hot core, fading to nothing at the ribbon edges
-  float core = pow(max(0.0, 1.0 - abs(vV)), 2.2);
+  // cross-section, two layers: a BROAD luminous body that bleeds out of the seam,
+  // plus a thin SEARING filament riding down its centre (the white-hot core).
+  float edge = max(0.0, 1.0 - abs(vV));
+  float body = pow(edge, 1.6);  // wider soft halo (was pow(..,2.2) → tight & dim)
+  float hot  = pow(edge, 6.0);  // the white-hot filament inside it
   // travelling pulses down the seam — the "流" (flow): bright packets sliding along
-  float streak = 0.5 + 0.5 * sin(vU * 30.0 - uTime * 6.5);
-  streak *= 0.6 + 0.4 * sin(vU * 11.0 - uTime * 3.1); // a second, slower train for life
-  // a global breath so the whole streak pulses gently even when you hold still
-  float breathe = 0.8 + 0.2 * sin(uTime * 2.4);
-  float i = core * (0.4 + 0.7 * streak) * breathe * vTaper;
-  vec3 gold = vec3(1.0, 0.84, 0.45);
-  vec3 col = mix(gold, vec3(1.0, 0.98, 0.92), pow(core, 2.0)); // white-hot centre
-  gl_FragColor = vec4(col * i, i); // additive (blendFunc SRC_ALPHA, ONE)
+  float streak = 0.5 + 0.5 * sin(vU * 30.0 - uTime * 7.5);
+  streak *= 0.6 + 0.4 * sin(vU * 11.0 - uTime * 3.3); // a second, slower train for life
+  // sharp glints RACING down the rip — discrete bright packets; the exciting punch
+  float glint = pow(0.5 + 0.5 * sin(vU * 18.85 - uTime * 10.0), 6.0);
+  // a global breath so the whole streak pulses even when you hold still
+  float breathe = 0.85 + 0.2 * sin(uTime * 2.6);
+  float i = body * (1.0 + 1.2 * streak) * breathe * vTaper; // brighter base + bigger gain
+  i += body * glint * 1.6 * vTaper;  // racing glints
+  i += hot * 1.1 * vTaper;           // ever-present white-hot filament
+  vec3 gold  = vec3(1.0, 0.80, 0.38);
+  vec3 white = vec3(1.0, 1.0, 0.96);
+  vec3 col = mix(gold, white, pow(edge, 1.4));  // goes white-hot well before the centre
+  col += hot * vec3(0.5, 0.5, 0.55);            // overdrive the filament past white → blooms on screen-blend
+  gl_FragColor = vec4(col * i, i); // additive (blendFunc SRC_ALPHA, ONE) → on-screen ≈ col*i²
 }`;
 
-const W0 = 26; // base half-width of the glow halo, in viewBox units (soft falloff trims it)
+const W0 = 38; // base half-width of the glow halo, in viewBox units (soft falloff trims it)
 const GAP = 10; // matches pack.js GAP_TEAR — openW is normalised against this
 
 export function createFlowLight(canvas) {
@@ -148,11 +157,11 @@ export function createFlowLight(canvas) {
       const s = cum[i] / total; // 0..1 along the seam
       // flowing width: two travelling sines → bulges + pinches that MOVE over time
       let flow = 0.5 + 0.34 * Math.sin(s * 9.0 - t * 3.0) + 0.18 * Math.sin(s * 17.0 + t * 2.0 + 1.7);
-      flow = Math.max(0.16, Math.min(1.0, flow));
+      flow = Math.max(0.3, Math.min(1.0, flow)); // higher floor → no thin/dead stretches
       // taper to a point at the finger tip (last ~30%), like a real crack pinching shut
       const tip = s < 0.7 ? 1 : Math.max(0, 1 - (s - 0.7) / 0.3);
-      const hw = W0 * flow * tip * (0.55 + 0.45 * open);
-      const taper = (0.3 + 0.7 * open) * tip;
+      const hw = W0 * flow * tip * (0.65 + 0.35 * open);     // wider halo, even early in the rip
+      const taper = (0.5 + 0.5 * open) * tip;                // already bright at first contact
       const px = path[i].x;
       const py = path[i].y;
       verts[o++] = px + nx * hw; verts[o++] = py + ny * hw; verts[o++] = s; verts[o++] = -1; verts[o++] = taper;
