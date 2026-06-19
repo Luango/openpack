@@ -667,8 +667,14 @@ export function createReveal({ mountEl, onAgain }) {
       const tx = off * haulStep;
       const ty = ao * (w * 0.085) - foc * (w * 0.12);  // arc dip − centre lift
       const sc = 0.48 + 0.12 * foc - Math.max(0, ao - 1) * 0.02;
-      s.slot.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
-      s.slot.style.zIndex = String(Math.round(200 - ao * 10));
+      // REAL depth (preserve-3d on .reveal__stack) instead of an integer z-index: the
+      // farther from centre, the farther back. translateZ comes FIRST so it's an
+      // untransformed depth offset (the later scale/rotate stay in-plane). The browser
+      // depth-sorts by this, so the card sliding to centre rises through the others
+      // continuously — no z-index flip snapping it from behind to in front in one frame.
+      const tz = -ao * 16; // px; ~16/1100 perspective ⇒ negligible size change, clean sort
+      s.slot.style.transform = `translateZ(${tz.toFixed(1)}px) translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+      s.slot.style.zIndex = String(Math.round(200 - ao * 10)); // fallback ordering if 3D is flattened
       const isCentre = ao < 0.5;
       s.slot.classList.toggle("haul-hero", isCentre);
       if (!isCentre) resetCardFoil(s.cardEl); // side cards flat; centre gets the idle holo

@@ -24,6 +24,22 @@ let master; // user-volume node — every voice (dry) connects here
 let makeup; // post-limiter gain, the bus output into destination
 let reverbIn; // feed a voice in here (via send) for the wet tail
 
+// ---- background music (BGM) ------------------------------------------------
+// A looping music bed, streamed from an <audio> element into its own gain node.
+// It routes STRAIGHT to the destination — parallel to the SFX limiter, NOT
+// through it — so a loud cue can't pump/duck the music as a side effect. The
+// only thing that modulates the bed is the explicit duck() below: on a big
+// moment (open, reveal, chime) the music dips so the cue cuts through, then
+// eases back. User volume + mute apply to the bed too (see musicTarget()).
+let musicEl = null; // the streaming HTMLAudioElement (loops the mp3)
+let musicNode = null; // MediaElementAudioSourceNode wrapping musicEl
+let musicGain = null; // bed level = userVol * MUSIC_BASE * duckFactor (0 if muted)
+let musicStarted = false;
+let duckFactor = 1; // 1 = full bed; <1 while a big moment ducks it
+let duckTimer = null; // pending release back to full bed
+const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
+const MUSIC_URL = new URL("../assets/bgm-moonlit-drift.mp3", import.meta.url);
+
 // Persisted user preferences (shared across pages via localStorage). Read once at
 // module load so BOTH the gallery and the pack honour a saved volume/mute, even
 // before any UI mounts. The bus reads these for its initial gain.
@@ -124,8 +140,9 @@ function send(node, amt = 0.3) {
 
 // Apply the current volume/mute to the bus with a short fade (no click on mute).
 function applyMasterGain() {
-  if (!master || !ctx) return;
-  master.gain.setTargetAtTime(muted ? 0 : userVol, ctx.currentTime, 0.02);
+  if (!ctx) return;
+  if (master) master.gain.setTargetAtTime(muted ? 0 : userVol, ctx.currentTime, 0.02);
+  rampMusic(); // the bed follows the same volume/mute knob
 }
 
 // ---- public volume / mute API (driven by the UI; persisted) ----------------
@@ -142,17 +159,85 @@ export function setMute(m) {
 export function getVolume() { return userVol; }
 export function isMuted() { return muted; }
 
+// ---- background music control ----------------------------------------------
+// Where the bed should sit RIGHT NOW given volume, mute and any active duck.
+function musicTarget() {
+  return muted ? 0 : userVol * MUSIC_BASE * duckFactor;
+}
+
+// Glide the bed gain to its current target (no clicks). Called whenever volume,
+// mute, or the duck factor changes.
+function rampMusic(timeConstant = 0.05) {
+  if (!musicGain || !ctx) return;
+  musicGain.gain.setTargetAtTime(musicTarget(), ctx.currentTime, timeConstant);
+}
+
+// Start the loop once, on the first user gesture (autoplay needs one). Streams
+// the file rather than decoding it whole, and fades in so it doesn't slam on.
+function startMusic() {
+  if (musicStarted || !ctx) return;
+  musicStarted = true;
+  try {
+    musicEl = new Audio();
+    musicEl.src = MUSIC_URL.href;
+    musicEl.loop = true;
+    musicEl.preload = "auto";
+    musicEl.crossOrigin = "anonymous";
+    musicNode = ctx.createMediaElementSource(musicEl);
+    musicGain = ctx.createGain();
+    musicGain.gain.value = 0.0001; // start silent, fade up on play
+    musicNode.connect(musicGain).connect(ctx.destination);
+    musicEl
+      .play()
+      .then(() => rampMusic(1.2)) // gentle ~3.5s fade-in to the resting bed
+      .catch(() => {
+        musicStarted = false; // autoplay blocked — let the next gesture retry
+      });
+  } catch {
+    musicStarted = false; // no MediaElementSource support — silently skip BGM
+  }
+}
+
+// DUCK the music for a big moment so the cue cuts through, then ease it back.
+// `depth` is the multiplier the bed dips to (0.3 = −10 dB-ish); overlapping
+// events keep the DEEPEST dip and the LATEST release, so a burst→reveal→chime
+// run stays ducked as one continuous beat instead of pumping between cues.
+export function duck(depth = 0.3, holdMs = 650, releaseMs = 800) {
+  if (!musicGain || !ctx) return;
+  duckFactor = Math.min(duckFactor, Math.max(0, Math.min(1, depth)));
+  rampMusic(0.06); // pull down fast
+  if (duckTimer) clearTimeout(duckTimer);
+  duckTimer = setTimeout(() => {
+    duckTimer = null;
+    duckFactor = 1;
+    rampMusic(releaseMs / 1000 / 3); // ~95% recovered by releaseMs
+  }, holdMs);
+}
+
+// Let the UI / other modules toggle the bed if needed.
+export function setMusicEnabled(on) {
+  if (on) startMusic();
+  else if (musicEl) {
+    try { musicEl.pause(); } catch { /* ignore */ }
+  }
+}
+
 // First gesture unlocks audio. We listen in the CAPTURE phase so this runs BEFORE
 // the pack's own pointerdown handler — the context is created + resume()'d first,
 // so the very first grab/tear isn't swallowed while the context is still cold.
 const unlock = () => {
   try {
     ensure();
+    startMusic(); // first gesture also satisfies the autoplay policy for the bed
   } catch {
     /* no Web Audio support */
   }
-  window.removeEventListener("pointerdown", unlock, true);
-  window.removeEventListener("keydown", unlock, true);
+  // Only stop listening once the bed actually started — if autoplay was blocked
+  // (startMusic reset the flag), keep waiting for the next gesture to retry.
+  if (musicStarted) {
+    window.removeEventListener("pointerdown", unlock, true);
+    window.removeEventListener("keydown", unlock, true);
+  }
 };
 window.addEventListener("pointerdown", unlock, true);
 window.addEventListener("keydown", unlock, true);
@@ -161,8 +246,13 @@ window.addEventListener("keydown", unlock, true);
 // return. (Audio can only resume from a gesture the first time; after that it's free.)
 document.addEventListener("visibilitychange", () => {
   if (!ctx) return;
-  if (document.hidden) ctx.suspend?.();
-  else if (ctx.state === "suspended") ctx.resume?.();
+  if (document.hidden) {
+    ctx.suspend?.();
+    musicEl?.pause(); // pause the bed too so it doesn't drift while hidden
+  } else {
+    if (ctx.state === "suspended") ctx.resume?.();
+    if (musicStarted && musicEl?.paused) musicEl.play().catch(() => {});
+  }
 });
 
 function live() {
@@ -700,6 +790,7 @@ export function reseal() {
 // bright "TINK-shrrk" transient on top — the foil giving way. `power` 0–1; `tier`
 // (the rarest card inside) makes a chase open hit deeper + brighter than a dud.
 export function burst(power = 0.7, tier = 5) {
+  duck(0.35, 700, 800); // pack pops open — clear room for the whump
   const tgs = Math.max(0, Math.min(1, (tier - 4) / 5));
   if (playSample("open_burst", { gain: 0.7 + Math.max(0, Math.min(1, power)) * 0.5, rate: 1 - tgs * 0.06, send: 0.35 })) return;
   const c = live();
@@ -781,6 +872,7 @@ export function burst(power = 0.7, tier = 5) {
 // top tiers. Fired ~just before the chime so impact → arpeggio → glitter reads as
 // one rising arc, not three separate sounds.
 export function revealImpact(tier = 5) {
+  duck(0.22, 950, 950); // the money moment — the deepest dip
   const ps = Math.max(0, Math.min(1, (tier - 4) / 5));
   if (playSample("reveal_impact", { gain: 0.8 + ps * 0.5, rate: 1 - ps * 0.08, send: 0.4 })) return;
   const c = live();
@@ -858,6 +950,7 @@ export function revealImpact(tier = 5) {
 // bridging straight into the revealImpact downbeat instead of dissolving into
 // dead air. Call with ms = the actual hold length so the climax lands on the hit.
 export function riser(tier = 5, ms = 600) {
+  duck(0.3, ms + 150, 600); // hold the dip across the whole swell into the hit
   if (playSample("riser", { fitMs: ms, send: 0.22 })) return;
   const c = live();
   if (!c) return;
@@ -1162,6 +1255,7 @@ export function spark() {
 //   • tier 6+: an octave-up sparkle voice + an extra arpeggio note
 //   • tier 8+: a soft detuned-saw pad chord under it + a final top "ding"
 export function chime(tier = 5) {
+  duck(0.3, 1100, 1100); // long bell tail — keep the bed low while it rings
   if (playSample("chime", { rate: 1 + Math.max(0, Math.min(4, tier - 5)) / 24, send: 0.18 })) return;
   const c = live();
   if (!c) return;
@@ -1248,6 +1342,7 @@ export function chime(tier = 5) {
 // two-note fall settling onto a soft low pad, so the haul closes on a cadence
 // instead of silence.
 export function concludeChime() {
+  duck(0.4, 1000, 1300); // gentle, longer release — the haul settles, bed swells back
   if (playSample("conclude", { send: 0.3 })) return;
   const c = live();
   if (!c) return;

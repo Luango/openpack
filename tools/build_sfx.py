@@ -37,8 +37,13 @@ def load(pat):
         n = int(round(len(x) * SR / sr)); x = np.interp(np.linspace(0, len(x), n, endpoint=False), np.arange(len(x)), x)
     return x.astype(np.float32)
 
-def trim_head(x, db=-45, keep_ms=2):
-    thr = 10 ** (db / 20); a = np.abs(x)
+def trim_head(x, rel_db=-24, floor_db=-50, keep_ms=5):
+    # PEAK-RELATIVE head trim: drop everything before the signal first climbs to within
+    # rel_db of its own peak (keeping keep_ms of pre-roll). An absolute threshold kept
+    # quiet wind-ups (a card sliding before its snap) as "signal" → the cue sounded late.
+    a = np.abs(x); pk = a.max()
+    if pk < 1e-9: return x
+    thr = max(pk * 10 ** (rel_db / 20), 10 ** (floor_db / 20))
     idx = np.argmax(a > thr) if np.any(a > thr) else 0
     return x[max(0, idx - int(keep_ms * SR / 1000)):]
 

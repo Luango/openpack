@@ -29,6 +29,9 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // itself down there: no MSAA, a lower pixel-ratio cap, and thinner ambient particle
 // fields. Desktop keeps the full-fat render. One flag drives every mobile dial below.
 const COARSE = matchMedia("(pointer: coarse)").matches;
+// Seconds the canvas takes to cross-dissolve into the 2D tear-pack once the hero lands.
+// (Mirrors #select-stage's CSS opacity transition; set inline so it's self-contained.)
+const DISSOLVE = 0.4;
 
 // The default roster — a wheel of identical sealed packs to pick from (the gacha
 // feel: same art, you choose which one to open). `img` is the source art; `hue`
@@ -106,7 +109,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;z-index:1;";
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b0d12, FOG_NEAR, FOG_FAR); // matches the page bg → seamless depth
+  scene.fog = new THREE.Fog(0x16181f, FOG_NEAR, FOG_FAR); // matches the page bg → seamless depth
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
@@ -119,15 +122,15 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
-  scene.add(new THREE.HemisphereLight(0xd6deff, 0x241d3a, 1.0)); // cool sky / violet floor → mood + shape
+  scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 1.3)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
-  const key = new THREE.DirectionalLight(0xfff1da, 0.5);
+  const key = new THREE.DirectionalLight(0xfff1da, 0.62);
   key.position.set(-4, 5, 8);
   scene.add(key);
   // (3) RIM — cool, from behind/above, peels the back of the wheel off the black bg.
-  const rim = new THREE.DirectionalLight(0xbcd2ff, 0.5);
+  const rim = new THREE.DirectionalLight(0xbcd2ff, 0.6);
   rim.position.set(0, 5, -10);
   scene.add(rim);
   // (4) FRONT SPOT — the focused pack's dedicated light. A warm cone pooled on the
@@ -168,7 +171,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       envMapIntensity: 1.2,
       emissive: 0xffffff,
       emissiveMap: faceTex,
-      emissiveIntensity: 0.2,  // self-light so the art reads vivid even in shadow
+      emissiveIntensity: 0.32, // self-light so the art reads vivid even in shadow
       side: THREE.DoubleSide,  // closed pouch — keeps both sheets lit at any angle
       alphaTest: 0.5,          // the art has a TRANSPARENT bg → cut those pixels away,
                                // else they render as solid black (the dark edge fill)
@@ -205,15 +208,18 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const wall = new THREE.Mesh(wallGeoCache.get(key), makeEdgeMaterial());
     mesh.add(wall);
     mesh.userData.wall = wall;
-    // a flat outline ribbon hugging the silhouette, CENTRED in the foil thickness (z=0)
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, 0));
+    // a flat outline ribbon hugging the silhouette, floated just PROUD of its own front
+    // sheet (z=RIM_Z). depthTest is ON (see makeRimMaterial), so the ribbon must clear its
+    // own pack body or that body would bury it — but a pack physically IN FRONT on the
+    // wheel writes nearer depth and correctly OCCLUDES this rim. The float is tiny (well
+    // under the body's mid bulge) so head-on it still reads as the outline glow.
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, RIM_Z));
     const mat = makeRimMaterial();
     const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
-    // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) and
-    // with depthTest off (set in makeRimMaterial), so the centred ribbon isn't buried in
-    // the pack body — head-on it reads as the outline glow, and centred at z=0 it sits
-    // at the middle of the edge (no float) instead of proud of the front face. The
-    // layout() facing-fade keeps far-back packs from bleeding their rim forward.
+    // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) so the
+    // rim sits in the transparent pass on top of its own art, while still depth-tested
+    // against the opaque pack bodies. The layout() facing-fade keeps far-back packs from
+    // bleeding their rim forward.
     rimMesh.renderOrder = 1000;
     mesh.add(rimMesh);        // child → inherits the pack's rotation / pop / scale
     mesh.userData.rim = rimMesh;
@@ -314,7 +320,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   }
 
   // --- render loop (parked while hidden) ------------------------------------
-  let raf = null, last = 0, selecting = false, lastIdx = -1;
+  let raf = null, last = 0, selecting = false, lastIdx = -1, dissolving = false;
   // intro entrance state (see INTRO_* tuning above)
   let introing = false, introDone = false, introT = 0, introSettle = 0, wheelAngle = 0;
   let introOutro = false, wheelVel = 0, targetWheel = 0; // inertial spring-settle at the end
@@ -358,7 +364,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     particles.update(dt);
     rising.update(dt);
     for (const m of rimMats) m.uniforms.uTime.value = t; // sweep every pack's beam in sync
-    if (!selecting && !introing) layout();
+    // While dissolving we hold the hero frozen on its landed frame — running layout()
+    // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
+    if (!selecting && !introing && !dissolving) layout();
 
     // Tell the host when the focused pack changes (a tick + name plate). During a
     // FAST fling we update the index silently (no host tick) — firing the per-pack
@@ -366,7 +374,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // trailed the spin. Below TICK_VEL it ratchets pack-by-pack into the settle, which
     // is the satisfying feel anyway. The final landing always ticks (vel → 0).
     const idx = modIndex();
-    if (idx !== lastIdx && !selecting && !introing) {
+    if (idx !== lastIdx && !selecting && !introing && !dissolving) {
       const spinning = Math.abs(vel) > TICK_VEL;
       lastIdx = idx;
       if (!spinning) onChange?.(packs[idx], idx);
@@ -400,7 +408,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // --- pointer: spin the wheel, tap to focus / flip / choose ----------------
   let down = null;
   function onDown(e) {
-    if (selecting || introing) return;
+    if (selecting || introing || dissolving) return;
     dragging = true;
     vel = 0; targetPos = null; // a fresh grab cancels any in-flight goto / fling
     down = { x: e.clientX, y: e.clientY, pos, moved: 0, t: now(), lastX: e.clientX, lastT: now() };
@@ -470,7 +478,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // --- selection: breakaway fly-in + cross-dissolve handoff -----------------
   let selT = 0, heroMesh = null, restPose = null, heroTarget = null;
   function choose() {
-    if (selecting) return;
+    if (selecting || dissolving) return;
     selecting = true;
     selT = 0; vel = 0;
     sfx.grab?.(); // foil crinkle as it leaps forward
@@ -538,14 +546,33 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     if (selT >= 1) finishSelect();
   }
   function setHeroFlash(v) { setFaceFlash(heroMesh, v); }
-  // Landed: the hero now sits exactly over the (still-hidden) SVG pack. Hand control
-  // to the host, which reveals the real pack and then drops this canvas — a clean
-  // swap at the matched rect. (Falls back to hiding immediately if no onLand.)
+  // Landed: the hero now sits exactly over the (still-hidden) SVG pack. We DON'T hard-cut
+  // to it — a straight swap pops, because the 3D pack carries lighting, a foil specular
+  // and a slight pillow bulge the flat SVG print doesn't, so even at a matched rect the
+  // switch reads as a visible "cutoff". Instead we FREEZE the hero on its landed frame
+  // (dissolving makes frame() skip the idle layout that would otherwise snap it back to
+  // the ring) and hand the host a `reveal` callback. The host shows the SVG pack UNDER
+  // the still-opaque canvas, then calls reveal() → the canvas cross-dissolves (opacity
+  // 1→0) over the identical SVG pack and only then parks. 3D melts into 2D, no seam.
   function finishSelect() {
     selecting = false;
-    const hideCanvas = () => { pause(); mountEl.classList.add("gone"); };
-    if (onLand) onLand(hideCanvas);
-    else hideCanvas();
+    dissolving = true; // hold the hero put; frame() skips layout() while this is set
+    if (onLand) onLand(startDissolve);
+    else startDissolve();
+  }
+  // Cross-dissolve the canvas (showing the frozen, landed hero) out over the SVG pack the
+  // host just revealed beneath it, then park the layer. rAF keeps running through the fade
+  // so the hero stays painted; only after it's fully transparent do we pause + .gone.
+  function startDissolve() {
+    mountEl.style.transition = `opacity ${DISSOLVE}s ease`;
+    // flip on the NEXT frame so the browser has committed opacity:1 before transitioning
+    requestAnimationFrame(() => { mountEl.style.opacity = "0"; });
+    setTimeout(() => {
+      pause();
+      mountEl.classList.add("gone");
+      mountEl.style.opacity = ""; mountEl.style.transition = ""; // reset for the next show()
+      dissolving = false;
+    }, DISSOLVE * 1000 + 40);
   }
 
   // ---- intro entrance: queue the packs in to build the ring ----------------
@@ -677,15 +704,20 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // ---- public API ----------------------------------------------------------
   return {
     el: mountEl,
-    show() {
+    // show({ intro }) — reveal the carousel. The first show always plays the queue-in
+    // entrance; later shows reveal the ring directly UNLESS `intro: true` is passed, which
+    // REPLAYS the entrance (used as the transition back after a pull is collected, so you
+    // re-enter through the same packs-flying-in animation rather than a hard cut to the ring).
+    show({ intro = false } = {}) {
       mountEl.classList.remove("gone");
       mountEl.style.opacity = "1";
-      selecting = false; heroMesh = null; lastIdx = -1; vel = 0;
+      selecting = false; dissolving = false; heroMesh = null; lastIdx = -1; vel = 0;
       meshes.forEach((m) => { applyOpacity(m, 1); m.userData.flip = m.userData.flipTo = 0; setFaceFlash(m, 0); });
       particles.points.material.opacity = 0.6;
       resize();
-      // first entrance plays the queue-in intro; later shows reveal the ring directly
-      if (!introDone) { introDone = true; startIntroWhenReady(); }
+      // first entrance — OR an explicit replay — plays the queue-in intro (and hands off
+      // via onIntroEnd, which pre-arms the next pack); otherwise reveal the ring directly.
+      if (!introDone || intro) { introDone = true; startIntroWhenReady(); }
       else { layout(); play(); }
     },
     hide() { pause(); mountEl.classList.add("gone"); },
@@ -718,11 +750,11 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 // How bright a pack's rim/beam should be for its facing — full on the front & side
-// packs, faded to nothing on the ones turned to the back. The rim draws with depthTest
-// off (so its own pack body can't bury the centred ribbon), which means a back-facing
-// pack would otherwise bleed its glow FORWARD over the front of the wheel. This fade is
-// the judgment that keeps a pack behind from drawing its highlight on top — applied both
-// in the idle layout() and, crucially, through the intro entrance (stepIntro).
+// packs, faded to nothing on the ones turned to the back. depthTest now occludes a rim
+// behind a nearer pack body, but a pack turned to the BACK floats its rim on the side
+// AWAY from the lens (no body in between to hide it), so it would still bleed its glow
+// forward. This facing-fade is the judgment that kills a back-turned pack's highlight —
+// applied both in the idle layout() and, crucially, through the intro entrance (stepIntro).
 function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 
 // Procedural foil-pack geometry — a "pillow": a front and back sheet that bulge
@@ -798,17 +830,32 @@ function traceOutline(img) {
   let data; try { data = ctx.getImageData(0, 0, CW, CH).data; } catch { return null; } // tainted → skip the rim
   const A = 18; // low cutoff → the outline sits right at the true outer edge, not inside it
   const left = new Array(CH).fill(-1), right = new Array(CH).fill(-1);
-  let yTop = -1, yBot = -1;
+  let maxW = 0;
   for (let y = 0; y < CH; y++) {
     let l = -1, r = -1;
     for (let x = 0; x < CW; x++) if (data[(y * CW + x) * 4 + 3] > A) { if (l < 0) l = x; r = x; }
-    if (l >= 0) { left[y] = l; right[y] = r; if (yTop < 0) yTop = y; yBot = y; }
+    if (l >= 0) { left[y] = l; right[y] = r; if (r - l > maxW) maxW = r - l; }
   }
+  if (maxW <= 0) return null;
+  // Drop the 1px serration TIPS at the very top/bottom seal: a real booster's crimp
+  // ends in a tiny saw-tooth nub that traces as a single narrow row and spikes the
+  // outline right at the corners. Keep only rows at least ~45% as wide as the body, so
+  // the silhouette is the clean pouch rectangle and its four corners sit square.
+  const MINW = maxW * 0.45;
+  const wide = (y) => right[y] >= 0 && right[y] - left[y] >= MINW;
+  let yTop = -1, yBot = -1;
+  for (let y = 0; y < CH; y++) if (wide(y)) { if (yTop < 0) yTop = y; yBot = y; }
   if (yTop < 0) return null;
   let pts = [];
-  for (let y = yTop; y <= yBot; y++) if (right[y] >= 0) pts.push([right[y] + 1, y + 0.5]); // right edge ↓
-  for (let y = yBot; y >= yTop; y--) if (left[y] >= 0) pts.push([left[y], y + 0.5]);        // left edge ↑
-  pts = chaikin(rdp(pts, 1.0), 1); // simplify, then ONE light corner-cut → smooth but still tight
+  for (let y = yTop; y <= yBot; y++) if (wide(y)) pts.push([right[y] + 1, y + 0.5]); // right edge ↓
+  for (let y = yBot; y >= yTop; y--) if (wide(y)) pts.push([left[y], y + 0.5]);        // left edge ↑
+  // Simplify the pixel staircase into clean straight edges WITH SHARP CORNERS. The old
+  // code then ran a Chaikin corner-cut, but Chaikin trims 25% off each adjacent edge —
+  // and after RDP those edges are the pack's full height/width, so the "light" cut
+  // rounded every corner inward by ~a quarter of the pack and the flowing rim never
+  // reached the four corners. Keep RDP only; corners stay square, and makeRimGeometry
+  // miters them so the ribbon wraps each corner fully (the 流光 covers all four).
+  pts = rdp(pts, 1.2);
   const aspect = ih / iw;
   const out = pts.map(([px, py]) => [px / CW - 0.5, (0.5 - py / CH) * aspect]); // → local mesh coords
   _outlineCache.set(img, out);
@@ -818,6 +865,12 @@ function traceOutline(img) {
 // Half-thickness of the sealed foil EDGE — matches the pillow's LIP so the wall meets
 // the front/back sheets right at the silhouette and closes the open slit between them.
 const EDGE_T = 0.014;
+
+// Forward float of the rim ribbon, in local z. With depthTest ON, the ribbon must sit
+// just PROUD of its own front sheet (which peaks ~0.035 under the ribbon) or that sheet
+// would occlude it head-on. Far below the body's mid bulge (~0.076), so the float reads
+// as "at the edge", not hovering — yet a pack in front on the wheel still occludes it.
+const RIM_Z = 0.045;
 
 // Build a solid EDGE WALL: a band standing along the closed outline, from z=+halfT to
 // z=−halfT, so the open pillow becomes a closed pouch. Edge-on it fills the see-through
@@ -864,13 +917,24 @@ function makeRimGeometry(outline, halfW, z) {
   let acc = 0;
   for (let i = 0; i <= n; i++) {                 // n+1 verts: the last duplicates the first (arc=1)
     const cur = outline[i % n], prev = outline[(i - 1 + n) % n], next = outline[(i + 1) % n];
-    let tx = next[0] - prev[0], ty = next[1] - prev[1];
-    const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
-    const nx = -ty, ny = tx;                     // unit normal (perp to the tangent)
+    // MITER the offset at corners. The incoming and outgoing edges each have their own
+    // normal; the ribbon vertex rides their bisector, lengthened by 1/cos(θ/2) so the
+    // OUTER edge reaches the true corner instead of cutting across it (an averaged
+    // single normal under-reaches a 90° corner by ~30%, leaving the corner uncovered).
+    let e1x = cur[0] - prev[0], e1y = cur[1] - prev[1];
+    let e2x = next[0] - cur[0], e2y = next[1] - cur[1];
+    const L1 = Math.hypot(e1x, e1y) || 1, L2 = Math.hypot(e2x, e2y) || 1;
+    const n1x = -e1y / L1, n1y = e1x / L1;       // unit normal of the incoming edge
+    const n2x = -e2y / L2, n2y = e2x / L2;       // unit normal of the outgoing edge
+    let mx = n1x + n2x, my = n1y + n2y;          // miter direction = sum of edge normals
+    const mL = Math.hypot(mx, my) || 1; mx /= mL; my /= mL;
+    let denom = mx * n1x + my * n1y;             // = cos(θ/2): miter length is halfW/denom
+    if (denom < 0.35) denom = 0.35;              // cap the spike on very sharp corners
+    const hw = halfW / denom;
     const u = i < n ? acc / total : 1;
     if (i < n) acc += seg[i];
-    pos.push(cur[0] + nx * halfW, cur[1] + ny * halfW, z); aArc.push(u); aSide.push(1);
-    pos.push(cur[0] - nx * halfW, cur[1] - ny * halfW, z); aArc.push(u); aSide.push(-1);
+    pos.push(cur[0] + mx * hw, cur[1] + my * hw, z); aArc.push(u); aSide.push(1);
+    pos.push(cur[0] - mx * hw, cur[1] - my * hw, z); aArc.push(u); aSide.push(-1);
   }
   for (let i = 0; i < n; i++) {
     const i0 = i * 2, i1 = i * 2 + 1, j0 = (i + 1) * 2, j1 = (i + 1) * 2 + 1;
@@ -923,8 +987,9 @@ function makeRimMaterial() {
     fragmentShader: RIM_FRAG,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false,        // the centred tube would otherwise be buried in the body
+    depthWrite: false,       // glow never occludes — but IS occluded (depthTest below)
+    depthTest: true,         // a pack in front on the wheel must hide this rim; the
+                             // RIM_Z float keeps its OWN body from burying it
     side: THREE.DoubleSide,
   });
 }
@@ -941,21 +1006,6 @@ function rdp(pts, eps) {
   }
   if (maxD <= eps) return [pts[0], pts[pts.length - 1]];
   return [...rdp(pts.slice(0, idx + 1), eps).slice(0, -1), ...rdp(pts.slice(idx), eps)];
-}
-
-// Chaikin corner-cutting — rounds a polyline into a smooth closed loop.
-function chaikin(pts, passes) {
-  let p = pts;
-  for (let k = 0; k < passes; k++) {
-    const out = [];
-    for (let i = 0; i < p.length; i++) {
-      const a = p[i], b = p[(i + 1) % p.length];
-      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
-      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
-    }
-    p = out;
-  }
-  return p;
 }
 
 function setFaceFlash(mesh, v) {
