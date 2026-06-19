@@ -325,6 +325,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let shatterP = []; // the perimeter points the wedges fan to (also the crack tips)
   let shardO = null; // the burst origin in pack coords (near the rip, biased to centre)
   let shardRAF = null; // the fly-apart tween handle
+  let anticRAF = null; // the build-up tween handle (cracks spread → brighten → high-gloss)
   let zoomAnim = null; // the camera push-in WAAPI handle (on .pack-wrap)
 
   // `w` = gap width while tearing; `sep` = how far the two pieces have parted.
@@ -498,56 +499,109 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // shards that fly apart and fade while the camera pushes in and the inner light
   // floods out — then we hand off to the reveal. The crimped-half slide-off
   // (makePieces) is kept only for the reduced-motion path.
+  const ANTIC_MS = 1500; // the slow build: cracks spread from the rip → brighten → high-gloss
+  const TOTAL_MS = ANTIC_MS + 480; // ≈ 2s, end to handoff
+
   function shatterOpen(power) {
     const centre = { x: VB.w / 2, y: VB.h / 2 };
     const sm = tearSeamMid();
-    // origin near the rip, pulled toward centre so the fracture engulfs the whole pack
-    const O = { x: centre.x + (sm.x - centre.x) * 0.3, y: centre.y + (sm.y - centre.y) * 0.3 };
+    // origin AT the rip (only nudged a touch toward centre so the wedge fan still
+    // tiles cleanly) — the fracture is BORN from where the foil was torn and races out
+    const O = { x: sm.x + (centre.x - sm.x) * 0.15, y: sm.y + (centre.y - sm.y) * 0.15 };
 
     buildShatter(O); // slice the foil into wedge fragments, sitting in place
+    buildCrackPath(O); // the jagged seam geometry (drawn/grown by runAnticipation)
     setLightFullPack(); // the card's glow can now bloom through the whole cracking foil
-    split = true; // the spring tick now drives the opening bloom/rays…
-    moverEl = null; stayEl = null; // …but no half slides off — the shards own the motion
+    moverEl = null; stayEl = null; // no half slides off — the shards own the motion
 
-    // the tear's running crack/flow hands off to the shatter seams
+    // hand the tear's running crack/flow off to the shatter build (and stop the
+    // tear spring re-drawing the old slit each tick: split=false + tearPath=null)
+    split = false;
+    tearPath = null;
+    spring.stop?.();
     gapCrack.style.opacity = 0; gapCrack.setAttribute("points", "");
     gapGlow.style.opacity = 0; gapGlow.setAttribute("points", "");
     flow?.stop();
 
-    drawCracks(); // the golden seams fork across the foil
-    spring.set({ sep: 1 }); // the inner light blooms up under the seams
-
-    // CAMERA PUSH-IN — kill the idle float and rush the pack toward the lens, easing
-    // in through the crack beat then accelerating as it bursts (it dissolves into the
-    // cards as #pack-stage fades on body.revealing).
+    // CAMERA PUSH-IN — kill the idle float and ease the pack toward the lens through
+    // the whole build, then RUSH it forward on the burst (it dissolves into the cards
+    // as #pack-stage fades on body.revealing).
     zoomAnim?.cancel();
     wrap.style.animation = "none";
     zoomAnim = wrap.animate(
       [
         { transform: "scale(1)" },
-        { transform: "scale(1.06)", offset: 0.4 },
-        { transform: "scale(1.34)" },
+        { transform: "scale(1.08)", offset: ANTIC_MS / TOTAL_MS }, // slow push during the build
+        { transform: "scale(1.45)" }, // rush past the lens on the burst
       ],
-      { duration: 780, easing: "cubic-bezier(0.42, 0, 0.5, 1)", fill: "forwards" }
+      { duration: TOTAL_MS, easing: "cubic-bezier(0.4, 0, 0.5, 1)", fill: "forwards" }
     );
 
-    sfx.riser?.(tellTier, 300); // a short rising tell while the seams light up
-    if (navigator.vibrate) navigator.vibrate(8);
+    sfx.riser?.(tellTier, ANTIC_MS); // a long rising tell that climbs across the whole build
+    if (navigator.vibrate) navigator.vibrate(6);
 
-    const CRACK_MS = 300; // the held anticipation before it blows
-    setTimeout(() => {
+    // THE BUILD: cracks extend from the rip, the seams brighten (变亮), then a rising
+    // high-gloss (高光) flares along them — and on the peak it BURSTS.
+    runAnticipation(O, () => {
       sfx.tearEnd(true, power); // the fibrous snap
       sfx.burst(power, tellTier); // chest-thump under the open
       sfx.tearRelease(); // the bright joyful pop
-      if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
+      if (navigator.vibrate) navigator.vibrate([22, 40, 16, 40, 26]);
       fadeCracksOut(); // the seams flare out as the gaps open
-      burstShards(560); // the fragments fly apart + fade
+      burstShards(640); // the fragments fly apart + fade
       goldBurst(power); // a radial gold explosion of light + foil
       kick(power); // the screen-kick — the foil giving way lands with weight
-    }, CRACK_MS);
+      // the inner light spikes bright on the peak, then douses before the foil exits
+      openBloom.style.opacity = "0.95";
+      lightRays.style.opacity = "0.9";
+      fadeLightOut(170);
+    });
 
-    fadeLightOut(CRACK_MS + 280); // douse the inner light before the foil dissolves out
-    setTimeout(() => onOpen?.(), CRACK_MS + 440); // hand off to the reveal (~740ms total)
+    setTimeout(() => onOpen?.(), TOTAL_MS); // hand off to the reveal (~2s total)
+  }
+
+  // The build-up loop (rAF, ANTIC_MS long): cracks GROW out from the rip (a scale
+  // from O so the seams visibly race to the edges), the seams brighten, and a
+  // high-gloss flare rises along them through the last third — then it bursts.
+  function runAnticipation(O, onBurst) {
+    if (anticRAF) cancelAnimationFrame(anticRAF);
+    const t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3); // ease-out cubic
+    const cx = VB.w / 2, cy = VB.h / 2;
+    openBloom.setAttribute("cx", cx.toFixed(1));
+    openBloom.setAttribute("cy", cy.toFixed(1));
+    const tick = (now) => {
+      const prog = Math.min(1, (now - t0) / ANTIC_MS);
+      // 1) the cracks extend from the rip — fully reached the edges by ~62% of the build
+      const grow = ease(Math.min(1, prog / 0.62));
+      const k = 0.05 + grow * 0.95; // scale the seam geometry up from the rip origin O
+      cracksEl.setAttribute(
+        "transform",
+        `translate(${O.x.toFixed(1)} ${O.y.toFixed(1)}) scale(${k.toFixed(3)}) translate(${(-O.x).toFixed(1)} ${(-O.y).toFixed(1)})`
+      );
+      // 2) 变亮 — the seams brighten, their glow halo swelling as light builds in them
+      const lum = ease(prog);
+      // 3) 高光 — a rising specular flare on the last third, peaking at the burst
+      const hi = Math.max(0, (prog - 0.68) / 0.32);
+      const inner = 2 + lum * 1.5 + hi * 3;
+      const halo = 4 + lum * 10 + hi * 18;
+      cracksEl.style.opacity = Math.min(1, prog / 0.1).toFixed(3); // snap in as it starts to fork
+      cracksEl.style.strokeWidth = (1.6 + lum * 1.4 + hi * 2.4).toFixed(2);
+      cracksEl.style.stroke = `color-mix(in srgb, #ffffff ${Math.round(hi * 70)}%, #ffe2a0)`;
+      cracksEl.style.filter =
+        `drop-shadow(0 0 ${inner.toFixed(1)}px #fff6d8) drop-shadow(0 0 ${halo.toFixed(1)}px rgba(255,205,110,${(0.6 + lum * 0.4).toFixed(2)}))`;
+      // the inner card-glow swells behind the foil (mostly read at the burst, but it
+      // primes the flood) + the rays wind up
+      const r = 40 + lum * VB.w * 0.6;
+      openBloom.setAttribute("rx", r.toFixed(1));
+      openBloom.setAttribute("ry", r.toFixed(1));
+      openBloom.style.opacity = (lum * 0.5 + hi * 0.3).toFixed(3);
+      lightRays.setAttribute("transform", `translate(${cx.toFixed(1)} ${cy.toFixed(1)}) scale(${(0.2 + lum * 0.6).toFixed(3)})`);
+      lightRays.style.opacity = (lum * 0.4 + hi * 0.35).toFixed(3);
+      if (prog < 1) { anticRAF = requestAnimationFrame(tick); }
+      else { anticRAF = null; onBurst(); }
+    };
+    anticRAF = requestAnimationFrame(tick);
   }
 
   // The midpoint of the tear line (its two snapped edge ends) — the rip the shatter
@@ -616,33 +670,38 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     shardsG.style.display = "";
   }
 
-  // The golden seams: a jagged spoke from O to each wedge tip, plus a rough web ring
-  // partway out — drawn in the unfiltered .pack-cut overlay, screen-blended to read
-  // as light cracking the foil. They flare in over the anticipation beat.
-  function drawCracks() {
+  // The golden seams: a JAGGED fork from the rip origin O out to each wedge tip, plus
+  // a rough web ring partway out. Drawn in the unfiltered .pack-cut overlay,
+  // screen-blended to read as light splitting the foil. runAnticipation grows + lights
+  // these; here we only lay down the (full-extent) geometry, starting hidden.
+  function buildCrackPath(O) {
     if (!shatterP.length) return;
     let d = "";
-    for (const P of shatterP) {
-      d += `M${shardO.x.toFixed(1)} ${shardO.y.toFixed(1)}L${P.x.toFixed(1)} ${P.y.toFixed(1)}`;
-    }
     shatterP.forEach((P, i) => {
-      const f = 0.4 + hashJit(i * 2.3) * 0.18; // jagged ring radius
-      const x = shardO.x + (P.x - shardO.x) * f, y = shardO.y + (P.y - shardO.y) * f;
+      d += `M${O.x.toFixed(1)} ${O.y.toFixed(1)}`;
+      const dx = P.x - O.x, dy = P.y - O.y, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len; // perpendicular → the crack wanders off-axis
+      const segs = 3;
+      for (let s = 1; s <= segs; s++) {
+        const f = s / segs;
+        const wob = (hashJit(i * 7.1 + s * 2.3) - 0.5) * 9 * (s < segs ? 1 : 0.2); // settle onto the tip
+        const x = O.x + dx * f + nx * wob;
+        const y = O.y + dy * f + ny * wob;
+        d += `L${x.toFixed(1)} ${y.toFixed(1)}`;
+      }
+    });
+    // a jagged web ring partway out, tying the forks together like fracturing glass
+    shatterP.forEach((P, i) => {
+      const f = 0.42 + hashJit(i * 2.3) * 0.16;
+      const x = O.x + (P.x - O.x) * f, y = O.y + (P.y - O.y) * f;
       d += (i === 0 ? "M" : "L") + `${x.toFixed(1)} ${y.toFixed(1)}`;
     });
     d += "Z";
     cracksEl.setAttribute("d", d);
-    cracksEl.animate(
-      [
-        { opacity: 0, strokeWidth: 0.6 },
-        { opacity: 1, strokeWidth: 2.8, offset: 0.6 },
-        { opacity: 1, strokeWidth: 2.2 },
-      ],
-      { duration: 300, easing: "ease-out", fill: "forwards" }
-    );
+    cracksEl.style.opacity = "0";
   }
   function fadeCracksOut() {
-    cracksEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: "ease-in", fill: "forwards" });
+    cracksEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-in", fill: "forwards" });
   }
 
   // Fling every shard out along its own facing, rotating + shrinking + fading. The
@@ -727,6 +786,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   // tear down the shard fragments + their clipPaths (between opens / on reset)
   function clearShards() {
     if (shardRAF) { cancelAnimationFrame(shardRAF); shardRAF = null; }
+    if (anticRAF) { cancelAnimationFrame(anticRAF); anticRAF = null; }
     shardsG.innerHTML = "";
     shardClipEls.forEach((el) => el.remove());
     shardClipEls = [];
@@ -735,7 +795,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     shardO = null;
     cracksEl.getAnimations?.().forEach((a) => a.cancel());
     cracksEl.setAttribute("d", "");
-    cracksEl.style.opacity = 0;
+    cracksEl.removeAttribute("transform");
+    cracksEl.style.cssText = ""; // drop the inline opacity/stroke/width/filter the build-up set
   }
 
   function onDown(e) {

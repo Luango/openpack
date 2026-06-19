@@ -43,7 +43,8 @@ changes needed.
 | `sparkle` | glitter over the hit | a **single short sparkle/twinkle** grain | the engine **scatters many** of these with random pitch + timing → shimmer |
 | `flick` | tap a card to the next | an airy **card whoosh / flick** | round-robin + jitter (fires a lot — give it 2–3 variants) |
 | `setdown` | the hand lands on arrival | a soft **glossy card set-down** (a "pap" + contact click) | round-robin + jitter |
-| `cardtap` | deeper cards riffle in | a quiet **card-on-card riffle tap** | quieter the deeper the card; round-robin |
+| `cardtap` | deeper cards riffle in / a pack docks onto the ring | a quiet **card-on-card riffle tap** | quieter the deeper the card; round-robin |
+| `pack_in` | a pack flies into the carousel ring (queue-in entrance) | an airy **pack whoosh** with a little weight (heavier than a thin card flick) | pitched up per pack so the queue ascends; round-robin + jitter (give it 2–3 variants) |
 | `pip` | the count pips fade in | a tiny **UI tick / blip** | pitched up per card (ascending) |
 | `spark` | idle edge glints on the sealed pack | a soft **high glint / shimmer** | round-robin + jitter (fires every few seconds) |
 | `reject` | a tear is voided (hooks back) | a dull descending **"nope" / blocked** stab | one-shot |

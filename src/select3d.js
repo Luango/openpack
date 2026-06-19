@@ -119,7 +119,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;z-index:1;";
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x16181f, FOG_NEAR, FOG_FAR); // matches the page bg → seamless depth
+  // Fog tinted to the aurora's mid-horizon indigo (not the old near-black) so the back
+  // of the ring recedes into a LIT haze that blends with the shader backdrop, instead
+  // of fading every far pack into a dark halo against the brighter background.
+  scene.fog = new THREE.Fog(0x2b3168, FOG_NEAR, FOG_FAR);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
@@ -132,8 +135,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.58));
-  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 1.3)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
+  scene.add(new THREE.AmbientLight(0xffffff, 0.72)); // lifted a touch so packs read bright against the lit backdrop
+  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 1.35)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
   const key = new THREE.DirectionalLight(0xfff1da, 0.62);
@@ -157,6 +160,16 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // moving holographic sheen (metalness reflects it) as packs rotate — cheap, no HDR.
   scene.environment = makeEnvTexture();
 
+  // --- shader backdrop: a lit Pokémon-palette aurora ------------------------
+  // The canvas is transparent, so the carousel used to sit on the page's near-black
+  // bg → "太黑太暗". This fills the frame FIRST with a drifting aurora (deep indigo →
+  // electric blue → cyan, a warm stage-glow pooled behind the front pack, soft
+  // vignette). It's ONE fullscreen quad drawn in clip space (camera-independent, no
+  // fog/projection) with a loop-free fragment shader — the brightness lift at almost
+  // no GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
+  const backdrop = makeBackground();
+  scene.add(backdrop.mesh);
+
   // --- ambiance: drifting glow particles -----------------------------------
   const particles = makeParticles();
   scene.add(particles.points);
@@ -170,6 +183,49 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   const group = new THREE.Group();
   scene.add(group);
   const meshes = [];
+  // Glossy-floor reflections live in their own group so the whole set can be hidden in
+  // one flag (during the breakaway). Each is a flat textured quad mirrored about its
+  // pack's base — see buildReflection / placeReflection.
+  const reflGroup = new THREE.Group();
+  scene.add(reflGroup);
+  const reflGeoCache = new Map();
+  function reflGeometry(aspect) {
+    const key = aspect.toFixed(3);
+    if (!reflGeoCache.has(key)) reflGeoCache.set(key, new THREE.PlaneGeometry(1, aspect));
+    return reflGeoCache.get(key);
+  }
+  // Build (once) the reflection quad for a pack: same front art, a dim cool tint, and a
+  // per-pixel vertical fade that's bright at the contact line and gone toward the floor.
+  function buildReflection(mesh, faceTex, aspect) {
+    if (mesh.userData.refl) return;
+    const mat = makeReflectionMaterial(faceTex);
+    const r = new THREE.Mesh(reflGeometry(aspect), mat);
+    r.frustumCulled = false; // it tracks its pack each frame; let the pack own visibility
+    r.visible = false;       // placeReflection turns it on once positioned
+    reflGroup.add(r);
+    mesh.userData.refl = r;
+  }
+  // Mirror a pack's CURRENT transform about its own base into its reflection quad, and
+  // set the reflection's opacity from the pack's opacity × how front-facing it is (a
+  // back-turned pack shows its back, but the flat reflection only has front art — so
+  // fade it out as the pack turns away). Called wherever packs are laid out.
+  function placeReflection(mesh) {
+    const r = mesh.userData.refl;
+    if (!r) return;
+    const aspect = mesh.userData.aspect || 1.4;
+    const half = mesh.scale.y * aspect * 0.5;        // half the pack's on-screen height
+    const bottom = mesh.position.y - half;           // world-y of the pack's base
+    r.position.set(mesh.position.x, 2 * bottom - mesh.position.y, mesh.position.z);
+    r.rotation.y = mesh.rotation.y;                  // yaw is unchanged by a vertical mirror
+    r.scale.set(mesh.scale.x, -mesh.scale.y, mesh.scale.z); // negative-y → mirror vertically
+    r.renderOrder = mesh.renderOrder - 1;            // sit just behind its own pack
+    const mat0 = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const packOp = mat0 && mat0.transparent ? mat0.opacity : 1;
+    const facing = smoothstep(-0.1, 0.35, Math.cos(mesh.rotation.y)); // front & sides on, back off
+    const op = packOp * facing;
+    r.material.uniforms.uOpacity.value = op;
+    r.visible = op > 0.01;
+  }
 
   // one MeshStandardMaterial per pack (per-mesh so opacity/flash can vary in the
   // selection animation); the curved pillow + scene env give it the foil sheen.
@@ -263,6 +319,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       const frontMat = makePackMaterial(tex);
       mesh.material = frontMat;
       addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
+      buildReflection(mesh, tex, aspect);  // glossy-floor reflection of the front art
       return loadBackTexture()
         .then((backTex) => { mesh.material = [frontMat, makePackMaterial(backTex)]; })
         .catch(() => { /* no back art → keep the front on both faces */ });
@@ -304,6 +361,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // (intro/selection drive this via applyOpacity instead.)
       const rim = m.userData.rim;
       if (rim) rim.material.uniforms.uOpacity.value = rimFade(Math.cos(a));
+      placeReflection(m);
     }
   }
 
@@ -373,6 +431,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
 
     particles.update(dt);
     rising.update(dt);
+    backdrop.update(t);                                   // drift the aurora
     for (const m of rimMats) m.uniforms.uTime.value = t; // sweep every pack's beam in sync
     // While dissolving we hold the hero frozen on its landed frame — running layout()
     // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
@@ -491,6 +550,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     if (selecting || dissolving) return;
     selecting = true;
     selT = 0; vel = 0;
+    reflGroup.visible = false; // drop the floor reflections for the fly-to-lens breakaway
     sfx.grab?.(); // foil crinkle as it leaps forward
     pos = Math.round(pos);
     heroMesh = meshes[modIndex()];
@@ -657,7 +717,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // at the BACK when it arrives (ARC later). Knowing it up front lets the flight
       // blend INTO the wheel's motion at the end, so it arrives already moving with the
       // ring (velocity-continuous) instead of landing, stopping, then being towed.
-      if (!s.launched) { s.launched = true; s.slotAngle = Math.PI - (wheelAngle + INTRO_DIR * wheelSpeed * (INTRO_ARC - tt)); }
+      if (!s.launched) { s.launched = true; s.slotAngle = Math.PI - (wheelAngle + INTRO_DIR * wheelSpeed * (INTRO_ARC - tt)); sfx.packWhoosh?.(i, N); } // airy swoosh as each pack is thrown onto its arc
       // its docked pose on the wheel RIGHT NOW (also the steady-state once docked)
       const a = s.slotAngle + wheelAngle;
       const front = Math.max(0, Math.cos(a)), pop = Math.pow(front, 5);
@@ -680,7 +740,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         applyOpacity(m, Math.min(1, p * 3));
         fadeRimByFacing(m); // a pack turning to the back must not bleed its rim forward
         m.renderOrder = Math.round(m.position.z * 10);
-        if (p >= 1) s.docked = true; // slotAngle already fixed at launch
+        if (p >= 1) { s.docked = true; sfx.cardTap?.(2); } // seats on the ring → a soft landing tap (slotAngle already fixed at launch)
       } else {                                        // a ring member, carried by the wheel
         m.position.set(rX, rY, rZ);
         m.rotation.y = a * TURN;
@@ -689,6 +749,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         fadeRimByFacing(m); // back-facing ring members keep their rim hidden too
         m.renderOrder = Math.round(m.position.z * 10);
       }
+      placeReflection(m); // the reflection rides along through the fly-in too
     }
     if (introOutro) {
       // spring has come to rest → hand off
@@ -739,6 +800,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       mountEl.classList.remove("gone");
       mountEl.style.opacity = "1";
       selecting = false; dissolving = false; heroMesh = null; lastIdx = -1; vel = 0;
+      reflGroup.visible = true; // restore the floor reflections (the breakaway hid them)
       meshes.forEach((m) => { applyOpacity(m, 1); m.userData.flip = m.userData.flipTo = 0; setFaceFlash(m, 0); });
       particles.points.material.opacity = 0.6;
       resize();
@@ -763,6 +825,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       rimMats.forEach((m) => m.dispose());
       wallGeoCache.forEach((g) => g.dispose()); // the silver edge walls
       meshes.forEach((m) => m.userData.wall?.material.dispose());
+      reflGeoCache.forEach((g) => g.dispose()); // the reflection quads
+      meshes.forEach((m) => m.userData.refl?.material.dispose());
+      backdrop.mesh.geometry.dispose(); backdrop.mesh.material.dispose();
       particles.points.geometry.dispose();
       scene.environment?.dispose?.();
       renderer.dispose();
@@ -1062,6 +1127,104 @@ function makeEnvTexture() {
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// ---- shader backdrop -------------------------------------------------------
+// A fullscreen quad painted in CLIP SPACE (the vertex shader writes gl_Position
+// directly from a 2×2 plane's xy, so it ignores the camera, fog and projection and
+// always fills the frame). The fragment shader is loop-free — a vertical palette
+// gradient, two drifting aurora bands, a warm stage-glow behind the front pack and a
+// soft vignette — so the whole lit background costs one cheap fullscreen pass. The
+// quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every pack
+// and reflection lands on top of it. uMobile dials the aurora down on phones.
+const BG_VERT = `
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }`;
+const BG_FRAG = `
+  precision mediump float;
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uAspect;  // viewport w/h → keeps the radial glow round
+  uniform float uMobile;  // 1 on phones → calmer aurora
+  void main() {
+    vec2 uv = vUv;
+    // vertical palette: deep base (for reflection contrast) → indigo → electric blue
+    vec3 base = vec3(0.035, 0.045, 0.12);
+    vec3 mid  = vec3(0.10,  0.14,  0.40);
+    vec3 top  = vec3(0.18,  0.34,  0.66);
+    vec3 col = mix(base, mid, smoothstep(0.0, 0.55, uv.y));
+    col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
+    // two slow aurora bands sweeping across the upper field (cyan ↔ violet)
+    float t = uTime * 0.06;
+    float b1 = sin(uv.x * 3.1 + t * 2.0) * 0.5 + 0.5;
+    float b2 = sin(uv.x * 5.7 - uv.y * 2.3 - t * 3.0) * 0.5 + 0.5;
+    vec3 aur = mix(vec3(0.16, 0.55, 0.78), vec3(0.42, 0.28, 0.72), b1);
+    float aurAmt = (1.0 - 0.55 * uMobile) * 0.20;
+    col += aur * pow(b2, 2.0) * smoothstep(0.15, 0.95, uv.y) * aurAmt;
+    // warm stage-glow pooled where the focused pack sits (centre, a little high)
+    vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
+    col += vec3(1.0, 0.82, 0.52) * smoothstep(0.62, 0.0, length(d)) * 0.20;
+    // soft vignette so the corners settle and the packs stay the focus
+    col *= 1.0 - smoothstep(0.45, 1.15, length(uv - vec2(0.5))) * 0.55;
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+function makeBackground() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uAspect: { value: 1 },
+      uMobile: { value: COARSE ? 1 : 0 },
+    },
+    vertexShader: BG_VERT,
+    fragmentShader: BG_FRAG,
+    depthTest: false,
+    depthWrite: false,
+    fog: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  mesh.frustumCulled = false; // clip-space quad has no meaningful world bounds
+  mesh.renderOrder = -1000;   // always behind packs, reflections and motes
+  return {
+    mesh,
+    update(time) {
+      mat.uniforms.uTime.value = time;
+      mat.uniforms.uAspect.value = (window.innerWidth || 1) / (window.innerHeight || 1);
+    },
+  };
+}
+
+// ---- glossy-floor reflection ----------------------------------------------
+// Reflections are flat quads (no lighting math — MeshBasic-equivalent via a tiny
+// shader) mirrored under each pack. The shader cuts the art's transparent bg, tints
+// it cool, dims it, and fades it OUT with vertical distance from the contact line
+// (strongest at uv.y=0 — the pack's base after the vertical mirror — gone toward the
+// floor) so it reads as a reflection dissolving into a glossy surface, not a copy.
+const REFL_VERT = `
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const REFL_FRAG = `
+  precision mediump float;
+  varying vec2 vUv;
+  uniform sampler2D uMap;
+  uniform float uOpacity;
+  void main() {
+    vec4 tx = texture2D(uMap, vUv);
+    if (tx.a < 0.5) discard;                      // drop the pack art's transparent bg
+    float fade = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 1.4); // bright at the contact, gone below
+    vec3 tint = tx.rgb * vec3(0.78, 0.84, 1.0);   // cool, glossy-floor cast
+    gl_FragColor = vec4(tint, tx.a * fade * 0.42 * uOpacity);
+  }`;
+function makeReflectionMaterial(faceTex) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: faceTex }, uOpacity: { value: 0 } },
+    vertexShader: REFL_VERT,
+    fragmentShader: REFL_FRAG,
+    transparent: true,
+    depthWrite: false, // a reflection never occludes; the pack in front still hides it
+    depthTest: true,
+    side: THREE.DoubleSide, // negative-y scale flips winding
+    fog: false,
+  });
 }
 
 // A few Poké Ball icons that drift slowly UPWARD at the middle depth of the wheel

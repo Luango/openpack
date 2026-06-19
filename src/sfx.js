@@ -1096,6 +1096,53 @@ export function flick() {
   src.stop(t + dur);
 }
 
+// A soft airy WHOOSH as a pack glides into the ring during the queue-in entrance —
+// the carousel building itself one pack at a time. A bandpassed noise swish (the
+// pack cutting the air) with a little low body so a PACK reads heavier than a thin
+// card `flick`, plus a touch of room. `index`/`total` nudge the pitch UP the queue,
+// so the packs arrive as an ascending run instead of one repeated note. Jittered
+// so the ~0.3s-apart launches don't machine-gun a single swish.
+export function packWhoosh(index = 0, total = 8) {
+  const step = total > 1 ? Math.max(0, Math.min(1, index / (total - 1))) : 0; // 0..1 up the queue
+  if (playSample("pack_in", { rate: 0.95 + step * 0.22, jitterRate: 0.06, jitterGain: 0.12, send: 0.22 })) return;
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  const dur = 0.32;
+  // airy swish — a quick "fwoosh" as the pack is thrown onto its arc, bandpass
+  // sweeping UP (and a hair higher up the queue) so the run feels like it's climbing
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = 0.7;
+  bp.frequency.setValueAtTime(620 + step * 220, t);
+  bp.frequency.exponentialRampToValueAtTime(3400 + step * 1000, t + dur); // upward swish
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.06 * (0.85 + Math.random() * 0.3), t + 0.05); // fast attack — the throw
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp).connect(gain).connect(master);
+  send(gain, 0.22);
+  src.start(t);
+  src.stop(t + dur);
+
+  // a soft low body so a PACK has weight under the air (a card flick doesn't); it
+  // rises with the swish so the swoosh reads as one gesture, not hiss + a separate tone
+  const osc = c.createOscillator();
+  const og = c.createGain();
+  osc.type = "sine";
+  const base = 150 + step * 60;
+  osc.frequency.setValueAtTime(base, t);
+  osc.frequency.exponentialRampToValueAtTime(base * 1.5, t + dur * 0.8);
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.045, t + 0.04);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(og).connect(master);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
 // A soft padded "set-down" — the card hand landing when the reveal arrives. A short
 // HP contact click (the glossy card-on-card tap) + a lowpassed noise "pap" + a
 // little low sine body so it reads on a phone speaker. Deliberately HUMBLE: quieter
