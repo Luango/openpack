@@ -828,8 +828,11 @@ export function reseal() {
 // bright "TINK-shrrk" transient on top — the foil giving way. `power` 0–1; `tier`
 // (the rarest card inside) makes a chase open hit deeper + brighter than a dud.
 export function burst(power = 0.7, tier = 5) {
-  duck(0.35, 700, 800); // pack pops open — clear room for the whump
   const tgs = Math.max(0, Math.min(1, (tier - 4) / 5));
+  // pack pops open — clear room for the whump AND hold the bed low across the
+  // anticipation window (longer for a chase) so the music doesn't swell back before
+  // the cards arrive; it then rises again as the haul settles.
+  duck(0.35, 760 + tgs * 540, 820); // common ~760 ms hold → chase ~1300 ms
   if (playSample("open_burst", { gain: 0.7 + Math.max(0, Math.min(1, power)) * 0.5, rate: 1 - tgs * 0.06, send: 0.35 })) return;
   const c = live();
   if (!c) return;
@@ -1104,7 +1107,11 @@ export function flick() {
 // so the ~0.3s-apart launches don't machine-gun a single swish.
 export function packWhoosh(index = 0, total = 8) {
   const step = total > 1 ? Math.max(0, Math.min(1, index / (total - 1))) : 0; // 0..1 up the queue
-  if (playSample("pack_in", { rate: 0.95 + step * 0.22, jitterRate: 0.06, jitterGain: 0.12, send: 0.22 })) return;
+  // Prefer a dedicated pack_in foley if one's ever added; otherwise reuse the recorded
+  // FLICK samples (a card-flick swish reads fine as a pack thrown onto its arc) so the
+  // entrance uses real foley instead of the thin synth swoosh. Pitch climbs up the queue.
+  const opts = { rate: 0.95 + step * 0.22, jitterRate: 0.06, jitterGain: 0.12, send: 0.22 };
+  if (playSample("pack_in", opts) || playSample("flick", opts)) return;
   const c = live();
   if (!c) return;
   const t = c.currentTime;

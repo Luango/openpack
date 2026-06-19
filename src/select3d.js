@@ -42,6 +42,11 @@ const texSrc = (path) => MOBILE_TEX[path] || path;
 // Seconds the canvas takes to cross-dissolve into the 2D tear-pack once the hero lands.
 // (Mirrors #select-stage's CSS opacity transition; set inline so it's self-contained.)
 const DISSOLVE = 0.4;
+// Seconds the bright lit canvas takes to fade UP when we REPLAY the entrance (the
+// transition back from a collected pull). Without it the opaque WebGL backdrop snaps
+// in over the dark reveal screen — a hard dark→bright jump; fading it ramps the
+// brightness in, in step with #scene-bg's settle behind it.
+const REENTER_FADE = 0.6;
 
 // The default roster — a wheel of identical sealed packs to pick from (the gacha
 // feel: same art, you choose which one to open). `img` is the source art; `hue`
@@ -135,22 +140,25 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.72)); // lifted a touch so packs read bright against the lit backdrop
-  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 1.35)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
+  scene.add(new THREE.AmbientLight(0xffffff, 1.45)); // ~2× fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
+  scene.add(new THREE.HemisphereLight(0xdce2ff, 0x3a3354, 2.6)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
-  const key = new THREE.DirectionalLight(0xfff1da, 0.62);
+  const key = new THREE.DirectionalLight(0xfff1da, 1.2);
   key.position.set(-4, 5, 8);
   scene.add(key);
   // (3) RIM — cool, from behind/above, peels the back of the wheel off the black bg.
-  const rim = new THREE.DirectionalLight(0xbcd2ff, 0.6);
+  const rim = new THREE.DirectionalLight(0xbcd2ff, 1.15);
   rim.position.set(0, 5, -10);
   scene.add(rim);
   // (4) FRONT SPOT — the focused pack's dedicated light. A warm cone pooled on the
   //     front dock (between the lens and the ring), aimed at where the hero sits. Decay
   //     + cone keep it OFF the side/back packs, so it reads as a stage spotlight that
   //     the wheel turns each pack through — bright key + a sweeping foil highlight.
-  const frontSpot = new THREE.SpotLight(0xfff0d6, 30, 12, 0.62, 0.7, 1.4);
+  // intensity tripled (was 30) + decay eased (was 1.4) so the centred pack actually
+  // POPS — the cone+decay still keep it pooled on the front dock, so side/back packs
+  // stay on the cool base and don't get washed out.
+  const frontSpot = new THREE.SpotLight(0xfff0d6, 150, 14, 0.66, 0.65, 1.15);
   frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
   frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
   scene.add(frontSpot);
@@ -194,11 +202,31 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     if (!reflGeoCache.has(key)) reflGeoCache.set(key, new THREE.PlaneGeometry(1, aspect));
     return reflGeoCache.get(key);
   }
+  // On PHONES the reflection samples a heavily downscaled copy of the pack art (a dim,
+  // faded floor ghost doesn't need full-res foil) — far less texture bandwidth per frame.
+  // Desktop reflects the full-res art. Downscaled textures are tracked for disposal.
+  const reflTexes = [];
+  const _reflTexCache = new Map();
+  function reflTex(srcTex) {
+    if (!COARSE || !srcTex?.image) return srcTex;
+    if (_reflTexCache.has(srcTex)) return _reflTexCache.get(srcTex);
+    let out = srcTex;
+    try {
+      const img = srcTex.image, w = 160, h = Math.max(1, Math.round(w * (img.height / img.width)));
+      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+      cv.getContext("2d").drawImage(img, 0, 0, w, h);
+      out = new THREE.CanvasTexture(cv);
+      out.colorSpace = THREE.SRGBColorSpace;
+      reflTexes.push(out);
+    } catch { /* tainted/!decoded → reflect the full-res texture */ }
+    _reflTexCache.set(srcTex, out);
+    return out;
+  }
   // Build (once) the reflection quad for a pack: same front art, a dim cool tint, and a
   // per-pixel vertical fade that's bright at the contact line and gone toward the floor.
   function buildReflection(mesh, faceTex, aspect) {
     if (mesh.userData.refl) return;
-    const mat = makeReflectionMaterial(faceTex);
+    const mat = makeReflectionMaterial(reflTex(faceTex));
     const r = new THREE.Mesh(reflGeometry(aspect), mat);
     r.frustumCulled = false; // it tracks its pack each frame; let the pack own visibility
     r.visible = false;       // placeReflection turns it on once positioned
@@ -206,9 +234,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     mesh.userData.refl = r;
   }
   // Mirror a pack's CURRENT transform about its own base into its reflection quad, and
-  // set the reflection's opacity from the pack's opacity × how front-facing it is (a
-  // back-turned pack shows its back, but the flat reflection only has front art — so
-  // fade it out as the pack turns away). Called wherever packs are laid out.
+  // set the reflection's opacity from the pack's opacity × how square-on it is. The quad
+  // now carries BOTH faces (front + back art), so a pack turned away still casts a
+  // reflection — we reflect whichever face it shows and only fade through the edge-on
+  // side (where the flat quad has near-zero projected area anyway). Called wherever
+  // packs are laid out.
   function placeReflection(mesh) {
     const r = mesh.userData.refl;
     if (!r) return;
@@ -221,10 +251,15 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     r.renderOrder = mesh.renderOrder - 1;            // sit just behind its own pack
     const mat0 = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     const packOp = mat0 && mat0.transparent ? mat0.opacity : 1;
-    const facing = smoothstep(-0.1, 0.35, Math.cos(mesh.rotation.y)); // front & sides on, back off
+    const c = Math.cos(mesh.rotation.y);
+    r.material.uniforms.uBack.value = c < 0 ? 1 : 0;            // turned away → reflect the BACK art
+    const facing = smoothstep(0.06, 0.4, Math.abs(c));          // front OR back on; fade through the edge-on side
     const op = packOp * facing;
     r.material.uniforms.uOpacity.value = op;
-    r.visible = op > 0.01;
+    // Phones: only the FRONT-most packs cast a reflection — the side/back ones are small,
+    // dim and barely seen, so culling them slashes transparent overdraw (the carousel's
+    // biggest mobile cost) while the prominent hero reflection stays.
+    r.visible = op > 0.01 && (!COARSE || mesh.position.z > RING_R * 0.45);
   }
 
   // one MeshStandardMaterial per pack (per-mesh so opacity/flash can vary in the
@@ -237,7 +272,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       envMapIntensity: 1.2,
       emissive: 0xffffff,
       emissiveMap: faceTex,
-      emissiveIntensity: 0.32, // self-light so the art reads vivid even in shadow
+      emissiveIntensity: 0.5,  // self-light so the art reads vivid even in shadow (lifted for a brighter, punchier pack)
       side: THREE.DoubleSide,  // closed pouch — keeps both sheets lit at any angle
       alphaTest: 0.5,          // the art has a TRANSPARENT bg → cut those pixels away,
                                // else they render as solid black (the dark edge fill)
@@ -279,7 +314,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // own pack body or that body would bury it — but a pack physically IN FRONT on the
     // wheel writes nearer depth and correctly OCCLUDES this rim. The float is tiny (well
     // under the body's mid bulge) so head-on it still reads as the outline glow.
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.055, RIM_Z));
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.046, RIM_Z));
     const mat = makeRimMaterial();
     const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
     // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) so the
@@ -321,8 +356,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
       buildReflection(mesh, tex, aspect);  // glossy-floor reflection of the front art
       return loadBackTexture()
-        .then((backTex) => { mesh.material = [frontMat, makePackMaterial(backTex)]; })
-        .catch(() => { /* no back art → keep the front on both faces */ });
+        .then((backTex) => {
+          mesh.material = [frontMat, makePackMaterial(backTex)];
+          if (mesh.userData.refl) mesh.userData.refl.material.uniforms.uBackMap.value = reflTex(backTex); // the floor reflects the back too
+        })
+        .catch(() => { /* no back art → keep the front on both faces (refl falls back to front) */ });
     }).catch(() => { /* art failed to load → the intro timeout still fires it */ });
     assetsReady.push(pr);
   });
@@ -651,7 +689,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // just sees the page's nebula bg for the load beat — far better than animating a
   // ring that hitches every time a texture/shader finishes compiling mid-flight.
   // A timeout backstops a slow/failed asset so the entrance always plays.
-  function startIntroWhenReady() {
+  function startIntroWhenReady(fadeIn = false) {
     let started = false;
     const begin = () => {
       if (started) return; started = true;
@@ -679,6 +717,17 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         renderer.render(scene, camera); // packs are at opacity 0 → invisible, but textures upload
       } catch { /* warm-up is best-effort */ }
       play();
+      // Now that the first lit frame is painting, ramp the canvas up from 0 (a replay
+      // re-entry only — see show()). The dark reveal bg brightens into the carousel
+      // instead of the opaque backdrop popping in. Flip on the next frame so the
+      // browser has committed opacity:0 before the transition runs.
+      if (fadeIn) {
+        requestAnimationFrame(() => {
+          mountEl.style.transition = `opacity ${REENTER_FADE}s ease`;
+          mountEl.style.opacity = "1";
+          setTimeout(() => { mountEl.style.transition = ""; }, REENTER_FADE * 1000 + 60);
+        });
+      }
     };
     Promise.all(assetsReady).then(begin);
     setTimeout(begin, 1500); // never hang on a stalled asset
@@ -689,7 +738,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   function initIntro() {
     introing = true; introT = 0; introSettle = 0; wheelAngle = 0; introOutro = false; wheelVel = 0;
     introState = meshes.map((m, i) => ({ launched: false, docked: false, slotAngle: 0, t0: i * INTRO_ARR }));
-    meshes.forEach((m) => { applyOpacity(m, 0); m.userData.flip = m.userData.flipTo = 0; });
+    // Hide every pack AND its floor reflection up front. On a REPLAY entrance (the
+    // transition back after a pull is collected) the reflections were left visible by
+    // the previous idle ring — without this they'd hang on the floor under packs that
+    // haven't flown in yet (a reflection with no pack). stepIntro re-shows each as its
+    // pack launches.
+    meshes.forEach((m) => { applyOpacity(m, 0); m.userData.flip = m.userData.flipTo = 0; if (m.userData.refl) m.userData.refl.visible = false; });
   }
 
   // Each pack flies the SAME arc P0→back over INTRO_ARC (strong ease-in), docks at
@@ -712,7 +766,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     for (let i = 0; i < N; i++) {
       const s = introState[i], m = meshes[i];
       const tt = introT - s.t0;
-      if (tt < 0) { applyOpacity(m, 0); allDocked = false; continue; } // not launched yet
+      if (tt < 0) { applyOpacity(m, 0); if (m.userData.refl) m.userData.refl.visible = false; allDocked = false; continue; } // not launched yet → no pack, no reflection
       // Fix the slot this pack will own the instant it launches — the spot that will be
       // at the BACK when it arrives (ARC later). Knowing it up front lets the flight
       // blend INTO the wheel's motion at the end, so it arrives already moving with the
@@ -798,7 +852,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // re-enter through the same packs-flying-in animation rather than a hard cut to the ring).
     show({ intro = false } = {}) {
       mountEl.classList.remove("gone");
-      mountEl.style.opacity = "1";
+      // A REPLAY entrance (intro:true after the first show) re-enters from the dark reveal
+      // screen, so fade the bright canvas UP instead of snapping to opacity 1 — see
+      // REENTER_FADE. The first show sits behind the start-gate's own fade, so it snaps.
+      const reenter = introDone && intro;
+      if (reenter) { mountEl.style.transition = "none"; mountEl.style.opacity = "0"; }
+      else { mountEl.style.opacity = "1"; }
       selecting = false; dissolving = false; heroMesh = null; lastIdx = -1; vel = 0;
       reflGroup.visible = true; // restore the floor reflections (the breakaway hid them)
       meshes.forEach((m) => { applyOpacity(m, 1); m.userData.flip = m.userData.flipTo = 0; setFaceFlash(m, 0); });
@@ -806,8 +865,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       resize();
       // first entrance — OR an explicit replay — plays the queue-in intro (and hands off
       // via onIntroEnd, which pre-arms the next pack); otherwise reveal the ring directly.
-      if (!introDone || intro) { introDone = true; startIntroWhenReady(); }
-      else { layout(); play(); }
+      if (!introDone || intro) { introDone = true; startIntroWhenReady(reenter); }
+      else { mountEl.style.opacity = "1"; layout(); play(); }
     },
     hide() { pause(); mountEl.classList.add("gone"); },
     get index() { return modIndex(); },
@@ -827,6 +886,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       meshes.forEach((m) => m.userData.wall?.material.dispose());
       reflGeoCache.forEach((g) => g.dispose()); // the reflection quads
       meshes.forEach((m) => m.userData.refl?.material.dispose());
+      reflTexes.forEach((t) => t.dispose());    // the downscaled mobile reflection textures
       backdrop.mesh.geometry.dispose(); backdrop.mesh.material.dispose();
       particles.points.geometry.dispose();
       scene.environment?.dispose?.();
@@ -941,13 +1001,15 @@ function traceOutline(img) {
   let pts = [];
   for (let y = yTop; y <= yBot; y++) if (wide(y)) pts.push([right[y] + 1, y + 0.5]); // right edge ↓
   for (let y = yBot; y >= yTop; y--) if (wide(y)) pts.push([left[y], y + 0.5]);        // left edge ↑
-  // Simplify the pixel staircase into clean straight edges WITH SHARP CORNERS. The old
-  // code then ran a Chaikin corner-cut, but Chaikin trims 25% off each adjacent edge —
-  // and after RDP those edges are the pack's full height/width, so the "light" cut
-  // rounded every corner inward by ~a quarter of the pack and the flowing rim never
-  // reached the four corners. Keep RDP only; corners stay square, and makeRimGeometry
-  // miters them so the ribbon wraps each corner fully (the 流光 covers all four).
+  // Simplify the pixel staircase into clean straight edges, then put a SMALL fillet on
+  // each corner. The old code ran a Chaikin corner-cut, but Chaikin trims 25% off each
+  // adjacent edge — after RDP those edges are the pack's full height/width, so it rounded
+  // every corner inward by ~a quarter of the pack and the flowing rim never reached the
+  // four corners. roundCorners instead replaces just the corner POINT with a short arc of
+  // a fixed small radius: the rim still runs right into each corner (hugging the edge) but
+  // turns it on a gentle curve instead of a hard spike (the 流光's four corners read soft).
   pts = rdp(pts, 1.2);
+  pts = roundCorners(pts, maxW * 0.045, 5); // radius ≈ 4.5% of pack width — a tiny round-off
   const aspect = ih / iw;
   const out = pts.map(([px, py]) => [px / CW - 0.5, (0.5 - py / CH) * aspect]); // → local mesh coords
   _outlineCache.set(img, out);
@@ -1086,6 +1148,33 @@ function makeRimMaterial() {
   });
 }
 
+// Fillet the corners of a closed polygon: each vertex is replaced by a short arc of
+// `radius` (approximated by a quadratic Bézier through the original corner), so the
+// flowing rim turns each corner on a gentle curve instead of a hard point. The radius
+// is trimmed to <½ of each adjacent edge so neighbouring fillets never overlap, and
+// near-straight vertices are passed through untouched. Operates in canvas-px coords.
+function roundCorners(pts, radius, segs) {
+  const n = pts.length;
+  if (n < 3 || radius <= 0) return pts.slice();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const cur = pts[i], prev = pts[(i - 1 + n) % n], next = pts[(i + 1) % n];
+    let v1x = prev[0] - cur[0], v1y = prev[1] - cur[1];
+    let v2x = next[0] - cur[0], v2y = next[1] - cur[1];
+    const l1 = Math.hypot(v1x, v1y) || 1, l2 = Math.hypot(v2x, v2y) || 1;
+    v1x /= l1; v1y /= l1; v2x /= l2; v2y /= l2;
+    if (v1x * v2x + v1y * v2y < -0.985) { out.push([cur[0], cur[1]]); continue; } // ~straight → keep
+    const d = Math.min(radius, l1 * 0.5, l2 * 0.5);
+    const t1x = cur[0] + v1x * d, t1y = cur[1] + v1y * d; // tangent point on the incoming edge
+    const t2x = cur[0] + v2x * d, t2y = cur[1] + v2y * d; // tangent point on the outgoing edge
+    for (let s = 0; s <= segs; s++) {                     // quad Bézier t1→corner→t2
+      const u = s / segs, iu = 1 - u, w0 = iu * iu, w1 = 2 * iu * u, w2 = u * u;
+      out.push([w0 * t1x + w1 * cur[0] + w2 * t2x, w0 * t1y + w1 * cur[1] + w2 * t2y]);
+    }
+  }
+  return out;
+}
+
 // Ramer–Douglas–Peucker simplification (epsilon in px).
 function rdp(pts, eps) {
   if (pts.length < 3) return pts.slice();
@@ -1149,9 +1238,9 @@ const BG_FRAG = `
   void main() {
     vec2 uv = vUv;
     // vertical palette: deep base (for reflection contrast) → indigo → electric blue
-    vec3 base = vec3(0.035, 0.045, 0.12);
-    vec3 mid  = vec3(0.10,  0.14,  0.40);
-    vec3 top  = vec3(0.18,  0.34,  0.66);
+    vec3 base = vec3(0.07,  0.09,  0.22);
+    vec3 mid  = vec3(0.17,  0.24,  0.60);
+    vec3 top  = vec3(0.28,  0.50,  0.88);
     vec3 col = mix(base, mid, smoothstep(0.0, 0.55, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
     // two slow aurora bands sweeping across the upper field (cyan ↔ violet)
@@ -1159,11 +1248,11 @@ const BG_FRAG = `
     float b1 = sin(uv.x * 3.1 + t * 2.0) * 0.5 + 0.5;
     float b2 = sin(uv.x * 5.7 - uv.y * 2.3 - t * 3.0) * 0.5 + 0.5;
     vec3 aur = mix(vec3(0.16, 0.55, 0.78), vec3(0.42, 0.28, 0.72), b1);
-    float aurAmt = (1.0 - 0.55 * uMobile) * 0.20;
+    float aurAmt = (1.0 - 0.55 * uMobile) * 0.28;
     col += aur * pow(b2, 2.0) * smoothstep(0.15, 0.95, uv.y) * aurAmt;
     // warm stage-glow pooled where the focused pack sits (centre, a little high)
     vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
-    col += vec3(1.0, 0.82, 0.52) * smoothstep(0.62, 0.0, length(d)) * 0.20;
+    col += vec3(1.0, 0.82, 0.52) * smoothstep(0.62, 0.0, length(d)) * 0.30;
     // soft vignette so the corners settle and the packs stay the focus
     col *= 1.0 - smoothstep(0.45, 1.15, length(uv - vec2(0.5))) * 0.55;
     gl_FragColor = vec4(col, 1.0);
@@ -1206,9 +1295,14 @@ const REFL_FRAG = `
   precision mediump float;
   varying vec2 vUv;
   uniform sampler2D uMap;
+  uniform sampler2D uBackMap;
+  uniform float uBack;                            // 1 when the pack is turned away → reflect its BACK art
   uniform float uOpacity;
   void main() {
-    vec4 tx = texture2D(uMap, vUv);
+    vec2 uv = vUv;
+    vec4 tx;
+    if (uBack > 0.5) { uv.x = 1.0 - uv.x; tx = texture2D(uBackMap, uv); } // mirror x to match the pack's back UVs (1-u)
+    else { tx = texture2D(uMap, uv); }
     if (tx.a < 0.5) discard;                      // drop the pack art's transparent bg
     float fade = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 1.4); // bright at the contact, gone below
     vec3 tint = tx.rgb * vec3(0.78, 0.84, 1.0);   // cool, glossy-floor cast
@@ -1216,7 +1310,8 @@ const REFL_FRAG = `
   }`;
 function makeReflectionMaterial(faceTex) {
   return new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: faceTex }, uOpacity: { value: 0 } },
+    // uBackMap defaults to the front art so a pack with no back texture still reflects
+    uniforms: { uMap: { value: faceTex }, uBackMap: { value: faceTex }, uBack: { value: 0 }, uOpacity: { value: 0 } },
     vertexShader: REFL_VERT,
     fragmentShader: REFL_FRAG,
     transparent: true,

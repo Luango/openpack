@@ -250,23 +250,6 @@
         z-index: 2; /* just over the dark crack */
         mix-blend-mode: screen;
       }
-      /* THE SHATTER SEAMS — when the tear commits, golden cracks fork across the
-         whole foil (a beat of 期待) before it bursts into shards. Drawn in the
-         .pack-cut overlay (outside the drop-shadow .pack, so writing them never
-         re-rasters the foil). screen-blend + a soft gold glow so the seams read as
-         light splitting the pack open. Driven by pack.js (buildShatter/drawCracks). */
-      .shatter-cracks {
-        fill: none;
-        stroke: #ffe6a2;
-        stroke-width: 2.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        opacity: 0;
-        mix-blend-mode: screen;
-        filter:
-          drop-shadow(0 0 3px #ffd24a)
-          drop-shadow(0 0 9px rgba(255, 178, 60, 0.85));
-      }
 
       /* PERF: while a tear is underway (.pack-wrap.tearing, set in floatOn) freeze
          every ambient animation so the whole mobile raster/composite budget goes to
@@ -473,6 +456,37 @@
         100% { transform: translateX(330px); opacity: 0; }
       }
 
+      /* ---- pick → rip backdrop bridge -----------------------------------
+       * The 3D picker (#select-stage, z5) fills the frame with an OPAQUE, brightly
+       * lit blue/aurora WebGL backdrop; the rip scene behind it is the page's
+       * near-black bg. Cross-dissolving the canvas straight onto that dark page is a
+       * hard light→dark jump. This layer paints the SAME lit palette as the carousel
+       * shader (see BG_FRAG in select3d.js) directly behind everything, so when the
+       * canvas dissolves out it reveals a MATCHING lit field — then it gently fades to
+       * 0 (uncovering the dark page bg) AFTER the dissolve clears, so the scene settles
+       * into the dark rip backdrop instead of cutting to it. Opacity crossfade (the
+       * dark page bg shows through) — gradients can't transition smoothly, opacity can. */
+      #scene-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0; /* behind the floating balls (also z0; placed before them in DOM), the pack and the reveal */
+        pointer-events: none;
+        opacity: 0;
+        /* leaving the picker (body.picking removed): hold lit THROUGH the ~0.4s canvas
+           dissolve (delay), then darken into the page bg over ~0.85s — the settle */
+        transition: opacity 0.85s ease 0.34s;
+        background:
+          /* warm stage-glow pooled where the focused pack sits (centre, a little high) */
+          radial-gradient(58% 46% at 50% 40%, rgba(255, 209, 133, 0.30), transparent 66%),
+          /* soft vignette so the corners settle, like the shader's */
+          radial-gradient(120% 120% at 50% 50%, transparent 42%, rgba(6, 8, 20, 0.55) 100%),
+          /* vertical palette: deep indigo base → indigo → electric blue (bottom → top) */
+          linear-gradient(to top, #121738 0%, #2b3d99 56%, #4780e0 100%);
+      }
+      /* entering/holding the picker: snap lit (it's hidden behind the opaque canvas
+         anyway) with no settle delay, so a quick back-to-picker re-arms cleanly */
+      body.picking #scene-bg { opacity: 1; transition: opacity 0.4s ease; }
+
       /* Floating Poké Ball icons — monochrome (grey/white/black) balls drifting up
          through the dark at different depths and angles, behind the pack and the
          reveal. Ambient backdrop; matches the B&W balls inside the 3D carousel. */
@@ -524,6 +538,119 @@
         transition: opacity 0.45s ease;
       }
       #select-stage.gone { display: none; }
+
+      /* ---- tap-to-start gate ---------------------------------------------
+       * Browsers won't play audio before a user gesture, so the very first
+       * carousel entrance (auto-played on load) would be SILENT. This gate sits
+       * over everything on first load; the tap both unlocks the audio context and
+       * triggers the entrance — so the fly-in has its whoosh/tap foley. It only
+       * shows once (replays after a collect already have audio unlocked). */
+      #start-gate {
+        position: fixed;
+        inset: 0;
+        z-index: 6;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.4rem;
+        border: 0;
+        margin: 0;
+        cursor: pointer;
+        color: #eaf0ff;
+        font: inherit;
+        background: radial-gradient(120% 90% at 50% 42%, rgba(40, 54, 120, 0.28), rgba(6, 8, 22, 0.55) 70%);
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity 0.5s ease;
+      }
+      #start-gate.gone { opacity: 0; pointer-events: none; }
+      /* The tap target REUSES the carousel/background Poké Ball icon (same SVG as
+         .float-card), but brightened + lit so it reads as the hero, not ambient
+         backdrop. A glow halo (::before) breathes behind it; the shockwave ring
+         (::after) stays invisible until a tap snaps it outward. */
+      #start-gate .start-gate__ring {
+        width: clamp(92px, 23vw, 128px);
+        aspect-ratio: 1;
+        position: relative;
+        border-radius: 50%;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Crect width='100' height='50' fill='%23b9bcc8'/%3E%3Crect y='50' width='100' height='50' fill='%23f4f4f6'/%3E%3Crect y='41.5' width='100' height='17' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='46' fill='none' stroke='%231b1c22' stroke-width='5'/%3E%3Ccircle cx='50' cy='50' r='13.5' fill='%231b1c22'/%3E%3Ccircle cx='50' cy='50' r='8.8' fill='%23f4f4f6'/%3E%3C/svg%3E") center / contain no-repeat;
+        /* lift it out of the ambient dimness: brighter + a cool electric glow */
+        filter: brightness(1.18) contrast(1.05)
+                drop-shadow(0 0 14px rgba(150, 188, 255, 0.85))
+                drop-shadow(0 0 36px rgba(108, 150, 255, 0.5));
+        animation: gateBall 2s ease-in-out infinite;
+        transition: transform 0.12s ease;
+      }
+      /* breathing glow halo behind the ball */
+      #start-gate .start-gate__ring::before {
+        content: "";
+        position: absolute;
+        inset: -28%;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(140, 178, 255, 0.5), transparent 72%);
+        z-index: -1;
+        animation: gateHalo 2s ease-in-out infinite;
+      }
+      /* shockwave ring — invisible until a tap expands it outward */
+      #start-gate .start-gate__ring::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(195, 218, 255, 0.9);
+        opacity: 0;
+        pointer-events: none;
+      }
+      #start-gate .start-gate__label {
+        font-size: clamp(1rem, 4vw, 1.4rem);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+        animation: gatePulse 2s ease-in-out infinite;
+        transition: transform 0.14s ease, opacity 0.2s ease;
+      }
+      @keyframes gatePulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+      @keyframes gateBall {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50%      { transform: translateY(-5px) scale(1.05); }
+      }
+      @keyframes gateHalo {
+        0%, 100% { opacity: 0.55; transform: scale(1); }
+        50%      { opacity: 0.95; transform: scale(1.12); }
+      }
+
+      /* ---- tap feedback ---------------------------------------------------- */
+      /* finger down: squash the ball (quiet the idle bob) for a tactile press */
+      #start-gate.pressing .start-gate__ring { animation: none; transform: scale(0.9); }
+      /* release/commit: the ball pops + flashes, the halo blooms, a shockwave ring
+         snaps outward, the label kicks — then the whole gate fades (JS adds .gone) */
+      #start-gate.tapped .start-gate__ring { animation: gatePop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+      #start-gate.tapped .start-gate__ring::before { animation: gateBloom 0.5s ease-out both; }
+      #start-gate.tapped .start-gate__ring::after  { animation: gateShock 0.55s cubic-bezier(0.1, 0.7, 0.3, 1) both; }
+      #start-gate.tapped .start-gate__label { animation: none; opacity: 1; transform: scale(1.06); }
+      @keyframes gatePop {
+        0%   { transform: scale(0.9); }
+        45%  { transform: scale(1.22);
+               filter: brightness(1.7) contrast(1.05)
+                       drop-shadow(0 0 30px rgba(185, 214, 255, 0.95))
+                       drop-shadow(0 0 64px rgba(120, 160, 255, 0.7)); }
+        100% { transform: scale(1.1); }
+      }
+      @keyframes gateBloom {
+        0%   { opacity: 0.75; transform: scale(1); }
+        100% { opacity: 0; transform: scale(2.3); }
+      }
+      @keyframes gateShock {
+        0%   { opacity: 0.95; transform: scale(1); border-width: 3px; }
+        100% { opacity: 0; transform: scale(2.7); border-width: 0.5px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #start-gate .start-gate__ring, #start-gate .start-gate__ring::before,
+        #start-gate .start-gate__label { animation: none; }
+        #start-gate.tapped .start-gate__ring,
+        #start-gate.tapped .start-gate__ring::before,
+        #start-gate.tapped .start-gate__ring::after { animation: none; }
+      }
       /* While the picker is up, the WebGL canvas is transparent — so the armed SVG
          tear-pack (#pack-stage, z 2) would otherwise show THROUGH it. Hide it until
          a pack is actually chosen (the handoff removes .picking just before the
@@ -1024,6 +1151,8 @@
     </style>
   </head>
   <body class="holo-on">
+    <!-- lit backdrop that bridges the picker → rip light change (see #scene-bg CSS) -->
+    <div id="scene-bg" aria-hidden="true"></div>
     <div class="scene-fx" aria-hidden="true">
       <div class="float-card" style="left:4%;  --s:.30; --r:-15deg; --o:.20; --b:3px;   animation-duration:36s; animation-delay:0s"></div>
       <div class="float-card" style="left:23%; --s:.52; --r:7deg;   --o:.42; --b:.4px;  animation-duration:27s; animation-delay:9s"></div>
@@ -1052,6 +1181,13 @@
     <!-- 3D pack picker — the three.js canvas mounts here (no text chrome; spin and
          tap the front pack to open) -->
     <div id="select-stage"></div>
+
+    <!-- tap-to-start gate: first load only. The tap unlocks the audio context AND
+         kicks off the carousel entrance, so the fly-in plays with sound. -->
+    <button id="start-gate" type="button" aria-label="Tap to open packs">
+      <span class="start-gate__ring" aria-hidden="true"></span>
+      <span class="start-gate__label">Tap to open</span>
+    </button>
 
     <script type="module">
       import { createPack } from "./src/pack.js";
@@ -1193,7 +1329,31 @@
 
       hintEl.textContent = ""; // no "Preparing pack…" behind the picker
       document.body.classList.add("picking"); // tear-pack stays hidden until a pack is chosen
-      selector.show(); // open straight into the picker (intro pre-arms the pack via onIntroEnd)
+
+      // First load shows a tap-to-start gate. The tap is the user gesture that unlocks
+      // the AudioContext (sfx.js's capture-phase handler resumes it on this same
+      // pointerdown), THEN we play the entrance — so the fly-in has its whoosh/tap foley
+      // instead of being silently dropped into a suspended context. Assets keep loading
+      // behind the gate, so by the time the intro fires the textures are usually ready.
+      const startGate = document.getElementById("start-gate");
+      // finger-down squash → a tactile press before the commit
+      startGate.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
+      const unpress = () => startGate.classList.remove("pressing");
+      startGate.addEventListener("pointerup", unpress);
+      startGate.addEventListener("pointercancel", unpress);
+      startGate.addEventListener("pointerleave", unpress);
+      const launchCarousel = () => {
+        // satisfying confirm: crisp glint NOW (also unlocks the audio ctx in-gesture),
+        // then a short riser swelling straight into the carousel fly-in
+        sfx.spark?.();
+        sfx.riser?.(6, 460);
+        startGate.classList.remove("pressing");
+        startGate.classList.add("tapped"); // ball pops + flashes, halo blooms, shockwave snaps out
+        selector.show(); // intro pre-arms the pack via onIntroEnd — runs under the feedback
+        setTimeout(() => startGate.classList.add("gone"), 240); // let the pop read, then fade
+        setTimeout(() => startGate.remove(), 240 + 600);         // after the fade
+      };
+      startGate.addEventListener("click", launchCarousel, { once: true });
     </script>
   </body>
 </html>
