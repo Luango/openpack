@@ -164,6 +164,18 @@ export function createPack({ mountEl, onOpen, onGrab }) {
       <path class="tear-zone" fill-rule="evenodd" d=""/>
 
     </svg>
+      <!-- RIM LIGHT + BORDER BEAM: a faint warm ring hugs the whole foil silhouette,
+           and a bright comet sweeps continuously around the rounded border — the
+           "this is worth opening" shimmer. The foil is clipped to a rounded rect
+           (#foilclip rx16), so a rounded-rect stroke traces the silhouette exactly
+           and scales with the viewBox. Idle-only: clears the instant a tear starts,
+           and rides #pack-stage (fades on reveal). Lives OUTSIDE the drop-shadow
+           .pack, like .pack-cut, so the moving beam never re-rasters the big foil. -->
+      <svg class="pack-rim" viewBox="0 0 ${VB.w} ${VB.h}" aria-hidden="true">
+        <rect class="rim-soft"  x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
+        <rect class="beam-halo" x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
+        <rect class="beam-core" x="2" y="2" width="${VB.w - 4}" height="${VB.h - 4}" rx="15" ry="15" pathLength="100"/>
+      </svg>
       <!-- the rip overlay — drawn OVER the foil but OUTSIDE the drop-shadow-filtered
            .pack, so writing the crack each frame never re-rasters the big foil (that
            per-frame filter re-raster was the mobile slice-lag). A thin dark slit +
@@ -286,6 +298,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
   let tearing = false;
   let crossed = false;
   let split = false; // promoted to two pieces?
+  let lightClosing = false; // true once the opening light is being faded out (before the pack exits)
   let opened = false;
   let mid = { x: VB.w / 2, y: VB.h / 2 }; // pivot the flying half tilts around
   let moverEl = null; // the SMALLER half (flies off); the larger body stays put
@@ -333,9 +346,13 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         openBloom.setAttribute("cy", cardY.toFixed(1));
         openBloom.setAttribute("rx", r.toFixed(1));
         openBloom.setAttribute("ry", r.toFixed(1));
-        openBloom.style.opacity = Math.min(0.9, c.sep * 1.15).toFixed(3);
         lightRays.setAttribute("transform", `translate(${cardX.toFixed(1)} ${cardY.toFixed(1)}) scale(${(0.18 + c.sep * 0.92).toFixed(3)})`);
-        lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
+        // once we've begun fading the light out (pre-exit), don't let the spring keep
+        // re-asserting full brightness — the fade owns the opacity from here
+        if (!lightClosing) {
+          openBloom.style.opacity = Math.min(0.9, c.sep * 1.15).toFixed(3);
+          lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
+        }
       } else if (tearPath) {
         // draw the rip along the traced path — a thin dark slit OVER the foil
         // (no mask re-raster) with gold light leaking over it, brightening as the
@@ -644,6 +661,16 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
     kick(power); // a short screen-kick — the foil giving way lands with weight
+    // The opening light is the card's glow leaking out the tear. It must be GONE
+    // before the foil slides away on exit — otherwise the detached shafts hang in
+    // the air over nothing and give the trick away. So: let it shoot out, hold a
+    // beat, then fade it FULLY within this pre-exit window (done well before 750 ms).
+    lightRays.style.transition = openBloom.style.transition = "opacity 0.34s ease";
+    setTimeout(() => {
+      lightClosing = true;
+      lightRays.style.opacity = "0";
+      openBloom.style.opacity = "0";
+    }, 250);
     // let the torn-off top FULLY fly away first, THEN hand off to the reveal
     // (which drops the pack body and springs the cards up)
     setTimeout(() => onOpen?.(), 750);
@@ -730,6 +757,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     gapGlow.setAttribute("points", ""); // clear the gold leak too
     gapGlow.style.opacity = 0;
     flow?.stop(); // halt + clear the flowing-light shader
+    lightClosing = false; // reset the pre-exit fade latch for the next tear
+    lightRays.style.transition = openBloom.style.transition = ""; // instant reset, no carry-over fade
     openBloom.style.opacity = 0;
     openBloom.setAttribute("rx", 0);
     openBloom.setAttribute("ry", 0);
