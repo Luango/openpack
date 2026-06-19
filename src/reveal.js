@@ -243,7 +243,7 @@ export function createReveal({ mountEl, onAgain }) {
     stopHaulLoop();
     tiltSpring.stop();
     stackEl.innerHTML = "";
-    slots = cards.map(makeSlot);
+    slots = [];
     againEl.hidden = true;
     hintEl.textContent = ""; // no hint until the cards are out
     // a count pip per card — built up front so the haul size is structural
@@ -258,7 +258,25 @@ export function createReveal({ mountEl, onAgain }) {
     // NOTE: stay hidden. The cards (images) still load while display:none, but the
     // stack isn't shown until the pack is grabbed (wake) — so it's never exposed
     // while the pack is floating or sliding back in after "Open another".
-    layout(); // the front card sits in "peek" position behind the pack
+    //
+    // Build the slots ONE PER FRAME instead of all at once: each makeSlot parses a
+    // card's innerHTML, wires its pointer handlers and seeds an image, so rendering the
+    // whole hand on a single frame stalls the still-animating carousel behind the sealed
+    // pack — the "卡一下" right as the entrance lands. Spreading them keeps every frame
+    // light; layout() runs after the last so the peek stack is positioned in one pass.
+    // Returns a promise the caller awaits before arming the pack (so a tear can't fire
+    // mid-build); a synchronous fast path keeps an empty pack instant.
+    if (!cards.length) { layout(); return Promise.resolve(); }
+    return new Promise((resolve) => {
+      let i = 0;
+      const step = () => {
+        slots.push(makeSlot(cards[i]));
+        if (++i < cards.length) { requestAnimationFrame(step); return; }
+        layout(); // the front card sits in "peek" position behind the pack
+        resolve();
+      };
+      step();
+    });
   }
 
   // Bring the stack in behind the pack the moment it's grabbed to tear (the pack

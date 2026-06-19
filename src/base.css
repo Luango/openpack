@@ -59,6 +59,9 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation; /* no double-tap-to-zoom (iOS ignores user-scalable); panning/scroll still work */
+  /* stop a top-of-page swipe from chaining into the browser's pull-to-refresh
+     (which reloads the page); `contain` keeps normal scrolling, just no reload/bounce */
+  overscroll-behavior-y: contain;
 }
 
 .hidden {

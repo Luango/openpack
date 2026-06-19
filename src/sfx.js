@@ -27,8 +27,10 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 // ---- background music (BGM) ------------------------------------------------
 // TWO looping music beds that CROSS-FADE as the player moves between scenes:
 //   • "carousel" — the calm Moonlit Drift loop while browsing the deck of packs.
-//   • "open"     — the energetic Starlight Symphony theme the moment a pack is
-//                  chosen and standing ready to tear (setMusicScene("open")).
+//   • "open"     — the energetic Starlight Symphony theme, held back until the
+//                  player actually RIPS the pack (setMusicScene("open") on tearStart).
+//                  The ready-to-tear screen is deliberately SILENT (silenceMusic())
+//                  so the rip lands as a sudden swell out of quiet anticipation.
 // Only one is audible at a time; switching scenes fades the other out under it.
 // Each bed streams from its own <audio> element into its own gain node, routed
 // STRAIGHT to the destination — parallel to the SFX limiter, NOT through it — so
@@ -60,10 +62,19 @@ try {
   /* private mode — fall back to defaults */
 }
 
+// Set true the moment the FIRST user gesture fires (see unlock). Until then, cues
+// must not schedule into the (suspended) context; after it, they may schedule into a
+// context that's still mid-resume — see live().
+let gestureSeen = false;
+// iOS keeps the whole context muted (and behind the silent/ring switch) until a sound
+// actually plays through it inside a gesture. unlockOutput() does that once.
+let outputUnlocked = false;
+
 // throttles — kept SEPARATE so hovering the gallery grid can't starve the foil
 // scratch (and vice versa); they fire from different surfaces at the same time.
 let lastHover = 0;
 let lastScratch = 0;
+let lastSpinTick = 0;
 let lastGrab = 0;
 
 // A decaying noise impulse response — a cheap, warm hall. Built once. Kept a touch
@@ -243,22 +254,45 @@ function playBed(scene, timeConstant = 1.2, restart = false) {
 // Start the music once, on the first user gesture (autoplay needs one). The elements and
 // their bytes are already prepared by prebufferMusic() (at load), so this just wires the
 // current scene's bed and plays — no download wait. Fades in so it doesn't slam on.
+// Returns a promise that resolves TRUE only once the bed is actually playing — the
+// caller uses this to decide whether to stop listening for gestures. Resolving on the
+// real play() result (not the synchronous musicStarted flag) is what lets a mobile
+// first-tap that rejects fall through to a retry on the next gesture.
 function startMusic() {
-  if (musicStarted || !ctx) return;
+  if (musicStarted || !ctx) return Promise.resolve(musicStarted);
   musicStarted = true;
   try {
     prebufferMusic();
     const bed = makeBed(currentScene);
-    if (!bed) { musicStarted = false; return; } // no <audio> support
+    if (!bed) { musicStarted = false; return Promise.resolve(false); } // no <audio> support
     wireBed(bed);
-    bed.el
+    return bed.el
       .play()
-      .then(() => rampMusic(1.2)) // gentle ~3.5s fade-in to the resting bed
+      .then(() => { rampMusic(1.2); return true; }) // gentle ~3.5s fade-in to the resting bed
       .catch(() => {
         musicStarted = false; // autoplay blocked — let the next gesture retry
+        return false;
       });
   } catch {
     musicStarted = false; // no MediaElementSource support — silently skip BGM
+    return Promise.resolve(false);
+  }
+}
+
+// Play a 1-sample silent buffer through the context. iOS keeps WebAudio output muted
+// (and gated by the physical silent/ring switch) until a sound has played through the
+// context inside a user gesture — this wakes it so every later synth cue is audible.
+// Idempotent; must be called from within a gesture (we call it from unlock()).
+function unlockOutput() {
+  if (outputUnlocked || !ctx) return;
+  try {
+    const src = ctx.createBufferSource();
+    src.buffer = ctx.createBuffer(1, 1, 22050);
+    src.connect(ctx.destination);
+    src.start(0);
+    outputUnlocked = true;
+  } catch {
+    /* ignore — nothing to unlock */
   }
 }
 
@@ -281,6 +315,23 @@ export function setMusicScene(scene, seconds = 1.6) {
       if (currentScene !== prev) { try { old.el.pause(); } catch { /* ignore */ } }
     }, seconds * 1000 + 200);
   }
+}
+
+// Fade EVERY bed out to silence — the deliberately quiet ready-to-tear screen,
+// where the open theme is held back until the rip starts. currentScene becomes a
+// sentinel no real bed matches, so musicTarget() returns 0 for all of them; the
+// now-silent elements are parked so a hidden loop isn't burning cycles. Idempotent.
+export function silenceMusic(seconds = 1.2) {
+  if (currentScene === "silent") return;
+  currentScene = "silent";
+  if (!ctx || !musicStarted) return; // nothing playing yet — first gesture handles it
+  rampMusic(Math.max(0.05, seconds / 3)); // glide all beds to their (now 0) targets
+  const parked = [...beds.values()];
+  setTimeout(() => {
+    if (currentScene === "silent") {
+      for (const bed of parked) { try { bed.el.pause(); } catch { /* ignore */ } }
+    }
+  }, seconds * 1000 + 200);
 }
 
 // DUCK the music for a big moment so the cue cuts through, then ease it back.
@@ -332,17 +383,24 @@ export function preload() {
 // the pack's own pointerdown handler — the context is created + resume()'d first,
 // so the very first grab/tear isn't swallowed while the context is still cold.
 const unlock = () => {
+  gestureSeen = true; // cues may now schedule into a still-resuming context (see live())
   try {
     ensure();
-    startMusic(); // first gesture also satisfies the autoplay policy for the bed
+    unlockOutput(); // wake the output INSIDE the gesture so iOS un-mutes the whole context
+    // Only stop listening once the bed ACTUALLY started. startMusic() flips its flag
+    // synchronously but play() resolves async — on mobile that play often rejects (cold
+    // buffer / autoplay heuristics), which previously left the listeners removed and the
+    // music dead for the whole session. Wait for the real result and retry on the next
+    // gesture if it failed. (On iOS, getting the bed to play is also what promotes the
+    // audio session to "playback", so even the synth SFX stop being silent-switched.)
+    startMusic().then((ok) => {
+      if (ok) {
+        window.removeEventListener("pointerdown", unlock, true);
+        window.removeEventListener("keydown", unlock, true);
+      }
+    });
   } catch {
     /* no Web Audio support */
-  }
-  // Only stop listening once the bed actually started — if autoplay was blocked
-  // (startMusic reset the flag), keep waiting for the next gesture to retry.
-  if (musicStarted) {
-    window.removeEventListener("pointerdown", unlock, true);
-    window.removeEventListener("keydown", unlock, true);
   }
 };
 window.addEventListener("pointerdown", unlock, true);
@@ -372,12 +430,14 @@ function live() {
   } catch {
     return null;
   }
-  // Only schedule into a RUNNING context. ensure() already requested the resume, and
-  // the capture-phase unlock fires it on the very first pointerdown (before the
-  // pack's own handler), so by the first tear-move the context is live — without
-  // letting pre-gesture idle cues (the ambient spark timer) pile nodes into a
-  // suspended graph that never plays.
-  return c.state === "running" ? c : null;
+  if (c.state === "running") return c;
+  // A gesture has fired and ensure() requested a resume that's still settling — common
+  // on the very FIRST tap on mobile, where resume() is async and hasn't completed in the
+  // few ms before the tap-to-open glint + riser fire on click. Schedule into the resuming
+  // context anyway: the cues start from currentTime and play the instant it wakes, instead
+  // of being silently dropped. Before any gesture we still return null, so the idle ambient
+  // spark timer never piles nodes into a suspended graph that never plays.
+  return gestureSeen && c.state === "suspended" ? c : null;
 }
 
 // ---- recorded-sample layer -------------------------------------------------
@@ -505,6 +565,41 @@ export function hover() {
     osc.start(t);
     osc.stop(t + 0.13);
   }
+}
+
+// A tight ratchet "tick" for the carousel whipping past packs — the 哒哒哒 of a
+// fast riffle. Deliberately SHORT and cheap so dozens/sec read as one ratchet
+// instead of piling into a smear (the reason fast-spin ticks used to be muted).
+// `vel` = the fling speed (index/sec); faster spins tick brighter + tighter. Kept
+// on its own throttle so it can't starve hover()/scratch() and vice versa.
+export function spinTick(vel = 6) {
+  const now = performance.now();
+  // tighter throttle the faster you spin (down to ~22ms ≈ 45 ticks/sec ceiling),
+  // so a hard fling buzzes densely without every pack-crossing stacking up
+  const gap = Math.max(22, 70 - Math.abs(vel) * 4);
+  if (now - lastSpinTick < gap) return;
+  lastSpinTick = now;
+  const bright = Math.min(0.5, Math.abs(vel) * 0.03); // faster → pitched up a bit
+  if (playSample("flick", { rate: 1 + bright, jitterRate: 0.06, gain: 0.5 })) return;
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  // synth fallback: a 18ms filtered noise click — a dry woody tick, no tail
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * 0.018), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 1800 + bright * 2400 + (Math.random() - 0.5) * 200;
+  bp.Q.value = 1.2;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.06, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+  src.connect(bp).connect(g).connect(master);
+  src.start(t);
+  src.stop(t + 0.022);
 }
 
 // A SUSTAINED tearing sound for the slash: a looped bright noise crackle whose

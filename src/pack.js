@@ -553,6 +553,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (!tearing && pathLen(path) > START_DIST) {
       tearing = true;
       sfx.tearStart(tellTier); // rarer pack inside → brighter, more energetic foil rip
+      sfx.setMusicScene?.("open", 0.9); // THE RIP — swell the open theme up out of the quiet ready screen
     }
     if (!tearing) return;
 
@@ -741,6 +742,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     } else {
       if (!invalid) sfx.tearEnd(false); // (a void tear already cut its sound)
       spring.set({ w: 0 }); // didn't cross (or was voided) — the crack eases shut
+      sfx.silenceMusic?.(); // tear abandoned — settle back into the quiet ready screen (no-op if it never started)
       floatOn(true); // stayed one piece — resume the idle float
       setTimeout(() => {
         if (!dragging && !opened) clearTear();

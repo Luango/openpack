@@ -74,6 +74,14 @@ const FRONT_PUSH = 1.8;  // how far the focused pack juts toward the camera (big
 const FRONT_LIFT = 0.0;  // no vertical lift — all packs stay centred on the midline
 const BASE_S    = 0.86;  // scale of a non-focused pack
 const POP_S     = 0.42;  // extra scale added to the focused pack
+// FOCUS LIGHTING — the centred pack is the visual anchor, so it carries a brighter
+// self-glow and a hotter foil sheen than its neighbours, which dim as they curve away.
+// layout() drives this per pack from `front` (1 at the centre → 0 at the sides), so
+// whatever pack the wheel turns to the front LIGHTS UP and the rest recede — the lift
+// is in the pack's own material, on top of the shared rig + front spot, so it reads
+// even on the side/back facings the spot can't reach.
+const FOCUS_EMI_DIM = 0.08, FOCUS_EMI_HOT = 0.58; // emissive self-light: side → front
+const FOCUS_ENV_DIM = 0.70, FOCUS_ENV_HOT = 1.70; // foil env sheen:      side → front
 // How far each pack YAWS toward "radially outward". 1.0 = a true REVOLVER: the front
 // pack faces you, the side packs turn, and the back packs face AWAY from the screen.
 // (Even lighting across all those facings is handled by using only azimuth-uniform
@@ -111,7 +119,7 @@ const INTRO_C1 = { x: -5,  y: 3.5, z: 4 };     // start tangent — eases down a
 const INTRO_C2 = { x: -3,  y: 0,   z: -RING_R };// end tangent — arrives level, flattening to +x (shorter = gentler merge speed)
 const INTRO_DIR = -1;     // wheel carry direction: -1 = counter-clockwise (flip to +1 for CW)
 
-export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand, onIntroEnd }) {
+export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand, onIntroEnd, onIntroStart }) {
   // --- renderer / scene / camera -------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: !COARSE, alpha: true, powerPreference: "high-performance" });
   renderer.setClearColor(0x000000, 0); // transparent — the page's nebula bg shows through
@@ -399,6 +407,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // (intro/selection drive this via applyOpacity instead.)
       const rim = m.userData.rim;
       if (rim) rim.material.uniforms.uOpacity.value = rimFade(Math.cos(a));
+      focusLight(m, front); // front pack glows brighter; the rest dim — the visual centre
       placeReflection(m);
     }
   }
@@ -406,6 +415,22 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // a gentle vertical bob, strongest on the front pack, for a touch of life
   let t = 0;
   function bobY(front) { return REDUCED ? 0 : front * Math.sin(t * 1.0) * 0.05; }
+
+  // Brighten the centred pack and dim its neighbours by driving each pack's OWN material:
+  // emissive self-light + foil env sheen scale with `front` (1 at the centre → 0 at the
+  // sides), so the focused pack is the clear visual anchor whichever way it faces. (The
+  // intro/selection paths drive emissive themselves via setFaceFlash, so this only runs
+  // from the idle layout().)
+  function focusLight(mesh, front) {
+    const f = Math.pow(front, 1.5); // a soft falloff — neighbours dim gradually, not abruptly
+    const emi = FOCUS_EMI_DIM + (FOCUS_EMI_HOT - FOCUS_EMI_DIM) * f;
+    const env = FOCUS_ENV_DIM + (FOCUS_ENV_HOT - FOCUS_ENV_DIM) * f;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mm of mats) {
+      if (mm.emissiveMap) mm.emissiveIntensity = emi;
+      mm.envMapIntensity = env;
+    }
+  }
 
   function applyOpacity(mesh, op) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -475,16 +500,18 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
     if (!selecting && !introing && !dissolving) layout();
 
-    // Tell the host when the focused pack changes (a tick + name plate). During a
-    // FAST fling we update the index silently (no host tick) — firing the per-pack
-    // sound for every pack whipping past was an audio machine-gun that piled up and
-    // trailed the spin. Below TICK_VEL it ratchets pack-by-pack into the settle, which
-    // is the satisfying feel anyway. The final landing always ticks (vel → 0).
+    // Each pack crossing the front fires a tick. The HEAVY work (host onChange =
+    // name plate + chosenPack state, which carries a longer hover() tone) only runs
+    // below TICK_VEL — above it that piled into an audio machine-gun that trailed the
+    // spin. But a fast fling SHOULD still ratchet: above TICK_VEL we fire a dedicated
+    // short spinTick() instead — cheap + self-throttled, so it buzzes 哒哒哒 in step
+    // with the whirl without stacking up. The final landing (vel → 0) always onChanges.
     const idx = modIndex();
     if (idx !== lastIdx && !selecting && !introing && !dissolving) {
       const spinning = Math.abs(vel) > TICK_VEL;
       lastIdx = idx;
-      if (!spinning) onChange?.(packs[idx], idx);
+      if (spinning) sfx.spinTick?.(Math.abs(vel));
+      else onChange?.(packs[idx], idx);
     }
     renderer.render(scene, camera);
   }
@@ -717,6 +744,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         renderer.render(scene, camera); // packs are at opacity 0 → invisible, but textures upload
       } catch { /* warm-up is best-effort */ }
       play();
+      // The packs are NOW launching — let the host sync to the real motion start (the
+      // start-gate holds its god-light through the asset wait, then fades into this
+      // exact frame so the open dissolves straight into the fly-in, no gap, no cut).
+      onIntroStart?.();
       // Now that the first lit frame is painting, ramp the canvas up from 0 (a replay
       // re-entry only — see show()). The dark reveal bg brightens into the carousel
       // instead of the opaque backdrop popping in. Flip on the next frame so the
@@ -794,7 +825,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         applyOpacity(m, Math.min(1, p * 3));
         fadeRimByFacing(m); // a pack turning to the back must not bleed its rim forward
         m.renderOrder = Math.round(m.position.z * 10);
-        if (p >= 1) { s.docked = true; sfx.cardTap?.(2); } // seats on the ring → a soft landing tap (slotAngle already fixed at launch)
+        if (p >= 1) { s.docked = true; } // seats on the ring (slotAngle already fixed at launch)
       } else {                                        // a ring member, carried by the wheel
         m.position.set(rX, rY, rZ);
         m.rotation.y = a * TURN;
