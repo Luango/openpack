@@ -832,7 +832,7 @@ export function burst(power = 0.7, tier = 5) {
   // pack pops open — clear room for the whump AND hold the bed low across the
   // anticipation window (longer for a chase) so the music doesn't swell back before
   // the cards arrive; it then rises again as the haul settles.
-  duck(0.35, 760 + tgs * 540, 820); // common ~760 ms hold → chase ~1300 ms
+  duck(0.35, 1050 + tgs * 450, 850); // hold the bed low across the ~1 s god-light → ~1.5 s for a chase
   if (playSample("open_burst", { gain: 0.7 + Math.max(0, Math.min(1, power)) * 0.5, rate: 1 - tgs * 0.06, send: 0.35 })) return;
   const c = live();
   if (!c) return;

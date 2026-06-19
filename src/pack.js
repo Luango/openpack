@@ -642,7 +642,27 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // value. The shadow is invisible mid-burst anyway. Restored in clearTear.
     wrap.classList.add("opening");
     makePieces();
-    spring.set({ sep: 1 }); // pieces pull fully apart
+    spring.set({ sep: 1.15 }); // pieces KICK fully apart — overshoot so the torn half flies hard off-frame AND the flare blooms bigger/brighter
+    // GOD LIGHT: the rip is complete, so release the jagged tear clip (it bounded the
+    // light exactly at the rip line — see makePieces) and replace it with a WIDE, SMOOTH
+    // cone fanning along the mouth direction. The apex is pulled BEHIND the card so the
+    // near-card region is already broad → the bloom stays round and there's no sharp V
+    // at the card. The light now pours out a clean fan, never cut by the ripping line.
+    {
+      const C = { x: VB.w / 2, y: VB.h / 2 };
+      const ax = moverDir; // unit vector — the way the torn mouth faces
+      const HALF = 1.05; // ~60° half-angle → a broad fan (≈120° total)
+      const BACK = 140; // push the cone apex this far behind the card
+      const R = 1400; // far off-screen, so the fan edges never read on-screen
+      const apex = { x: C.x - ax.x * BACK, y: C.y - ax.y * BACK };
+      const rot = (v, t) => ({ x: v.x * Math.cos(t) - v.y * Math.sin(t), y: v.x * Math.sin(t) + v.y * Math.cos(t) });
+      const lD = rot(ax, -HALF), rD = rot(ax, HALF);
+      setPoints(lightClipPoly, [
+        apex,
+        { x: apex.x + lD.x * R, y: apex.y + lD.y * R },
+        { x: apex.x + rD.x * R, y: apex.y + rD.y * R },
+      ]);
+    }
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
@@ -657,7 +677,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     // lingers noticeably longer than a common. It must still be FULLY gone before the
     // foil slides away on exit (or the detached shafts hang over nothing and give the
     // trick away), so the fade lands ~150 ms ahead of the handoff.
-    const holdMs = 760 + tellTier * 70; // common ~760 → chase ~1390 (was a flat 600 to handoff)
+    const holdMs = 1000 + tellTier * 45; // god-light holds ~1 s (common) → ~1.4 s (chase) before it fades for the handoff
     const fadeTail = 150; // gap between the light hitting 0 and the cards arriving
     const handoffMs = holdMs + fadeTail;
     const TAKEOVER = 130; // let the spring tick brighten the shoot-out first, then own it
