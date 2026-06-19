@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Pokémon Cover Flow — 封面浏览选择器</title>
+<style>
+  /* ===================================================================
+   *  宝可梦卡牌 Cover Flow（iPod/iTunes 封面浏览）
+   *  纯原生 HTML + CSS 3D + JavaScript，无任何依赖。
+   *
+   *  ▼▼▼ 所有 3D 视觉参数都集中在 JS 顶部的 CONFIG 里，方便微调 ▼▼▼
+   *  （旋转角度 / 卡间距 / 后退距离 / 缩放 / 变暗程度 等，见下方注释）
+   * =================================================================== */
+
+  :root {
+    /* 卡牌尺寸 —— 标准宝可梦卡约为 3:4 的纵向比例 */
+    --card-w: 240px;
+    --card-h: 336px;   /* 240 * 4/3 ≈ 320~336，这里取 1.4 略高一点更挺拔 */
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 80% at 50% 0%, #1b2030 0%, #0a0c12 60%, #06070b 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #e7ebf3;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none; /* 自己接管拖拽手势，禁止页面横向滚动 */
+  }
+
+  /* —— 舞台：负责提供 3D 透视（perspective） ——
+   * perspective 越小，透视越夸张（卡牌侧倾更立体）；越大越平。 */
+  .cf-viewport {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1400px;             /* ← 透视强度，可调 1000(夸张) ~ 2200(平缓) */
+    perspective-origin: 50% 42%;     /* 视点略微偏上，更像 Cover Flow 的俯视感 */
+    cursor: grab;
+  }
+  .cf-viewport:active { cursor: grabbing; }
+
+  /* —— 轨道：所有卡牌的共同父级，开启 3D 空间 —— */
+  .cf-track {
+    position: relative;
+    transform-style: preserve-3d;    /* 关键：让子元素的 translateZ 真正生效 */
+    width: var(--card-w);
+    height: var(--card-h);
+  }
+
+  /* —— 单张卡牌的定位层 ——
+   * transform 完全由 JS 每帧写入；这里只声明过渡（用于点击/滚轮的吸附动画，
+   * 拖拽时 JS 会临时关掉过渡以做到 1:1 跟手）。 */
+  .cf-item {
+    position: absolute;
+    top: 0; left: 0;
+    width: var(--card-w);
+    height: var(--card-h);
+    transform-style: preserve-3d;
+    will-change: transform, filter;
+    transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 0.5s ease;
+  }
+  .cf-item.dragging { transition: none; } /* 拖拽中关闭过渡，跟手 */
+
+  /* —— 卡面本体：图片 + 高光 + 倒影 ——
+   * -webkit-box-reflect 直接生成向下渐隐的镜像倒影（Chrome/Safari/Edge/移动端均支持）。
+   * Firefox 不支持该属性 —— 倒影会缺失，但不影响主体；如需兼容可改用一张复制 + mask。*/
+  .cf-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(160deg, #2a2f44, #161a28); /* 图片未加载时的占位底色 */
+    box-shadow: 0 30px 60px -18px rgba(0, 0, 0, 0.85);
+    -webkit-box-reflect: below 6px
+      linear-gradient(transparent, transparent 62%, rgba(255, 255, 255, 0.28));
+  }
+  .cf-card img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    -webkit-user-drag: none; user-drag: none;
+    pointer-events: none; /* 图片不抢拖拽事件 */
+  }
+
+  /* —— 中间焦点高光（Active Shine）——
+   * 一条倾斜的半透明亮带，仅在卡牌滚到正中时（.is-active）扫过卡面，
+   * 营造闪卡 / 全息质感。 */
+  .cf-shine {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.0) 42%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.0) 58%,
+      transparent 70%);
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  .cf-item.is-active .cf-shine {
+    animation: shine-sweep 2.8s ease-in-out 0.15s infinite;
+  }
+  @keyframes shine-sweep {
+    0%   { transform: translateX(-120%); opacity: 0; }
+    18%  { opacity: 1; }
+    45%  { transform: translateX(120%);  opacity: 0; }
+    100% { transform: translateX(120%);  opacity: 0; }
+  }
+
+  /* —— 全息闪卡叠层（可选）——
+   * 给 .cf-card 加 class="holo"（或 data-holo）即可叠加一层彩虹流光，
+   * 用来表现像 ACE SPEC 王牌卡那种粉彩闪卡。仅 active 时增强。 */
+  .cf-card.holo::after {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: linear-gradient(115deg,
+      rgba(255,120,200,0.0) 20%,
+      rgba(255,120,200,0.35) 38%,
+      rgba(130,200,255,0.35) 50%,
+      rgba(180,255,180,0.30) 62%,
+      rgba(255,120,200,0.0) 80%);
+    mix-blend-mode: color-dodge;
+    opacity: 0.25;
+    transition: opacity 0.5s ease;
+  }
+  .cf-item.is-active .cf-card.holo::after { opacity: 0.6; }
+
+  /* —— 标题/计数器 —— */
+  .cf-caption {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+    text-align: center;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .cf-caption .name {
+    font-size: 20px; font-weight: 800; letter-spacing: 0.02em;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+  }
+  .cf-caption .hint {
+    margin-top: 6px; font-size: 12px; color: #8b93a6; letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+  <div class="cf-viewport" id="viewport">
+    <div class="cf-track" id="track">
+      <!-- ====== 卡牌列表 ======
+           替换 <img src> 为你的真实宝可梦卡牌图即可（保持 3:4 比例最佳）。
+           想让某张卡变成闪卡，给它的 .cf-card 加上 class="cf-card holo"。
+           data-name 会显示在底部标题。 -->
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Charizard"  src="https://images.pokemontcg.io/base1/4.png"  /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Blastoise"  src="https://images.pokemontcg.io/base1/2.png"  /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Venusaur (Holo)" src="https://images.pokemontcg.io/base1/15.png" /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Pikachu"    src="https://images.pokemontcg.io/base1/58.png" /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Mewtwo (ACE)" src="https://images.pokemontcg.io/base1/10.png" /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Gyarados"   src="https://images.pokemontcg.io/base1/6.png"  /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Alakazam"   src="https://images.pokemontcg.io/base1/1.png"  /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Chansey (Holo)" src="https://images.pokemontcg.io/base1/3.png" /><div class="cf-shine"></div></div></div>
+      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Hitmonchan" src="https://images.pokemontcg.io/base1/7.png"  /><div class="cf-shine"></div></div></div>
+    </div>
+  </div>
+
+  <div class="cf-caption">
+    <div class="name" id="cap-name">—</div>
+    <div class="hint">拖拽 / 滑动 / 滚轮 切换 · 点击两侧卡牌居中</div>
+  </div>
+
+<script>
+/* ===================================================================
+ *  CONFIG —— 全部 3D 视觉参数集中在这里，调这几个数就能改变观感
+ * =================================================================== */
+const CONFIG = {
+  ANGLE:        58,    // 两侧卡牌的 Y 轴旋转角度(度)。越大越“侧”，经典 Cover Flow 约 55~65
+  CENTER_GAP:   150,   // 中央卡两侧推开的间距(px)。越大，中间焦点越突出、留白越多
+  SIDE_SPACING: 62,    // 侧边相邻卡牌之间的水平叠放步距(px)。越小，两侧叠得越密
+  CENTER_POP:   60,    // 中央卡向用户方向凸出的距离(translateZ, px)。越大越“跳”出来
+  SIDE_BACK:    230,   // 侧边卡向后退的深度(translateZ 负向, px)。越大空间纵深越强
+  EXTRA_BACK:   34,    // 每远离一格再额外后退的深度(px)，让远处的卡逐层退入纵深
+  SIDE_SCALE:   0.82,  // 侧边卡相对中央卡的缩放。越小，中间越大、对比越强
+  DIM:          0.42,  // 侧边卡变暗程度(0~1)。0.42 表示相邻卡亮度降到约 0.58
+  MIN_BRIGHT:   0.35,  // 最暗亮度下限，避免远处卡全黑
+  VISIBLE:      4,     // 中央两侧各渲染几张(超出的隐藏)——配合“无限循环”隐藏接缝
+  DRAG_STEP_PX: 150,   // 拖拽多少像素 = 切换一张卡。越小越灵敏
+  WHEEL_STEP:   1,     // 每次滚轮切换的张数
+  EASE:         0.16,  // 释放后吸附到整数位的缓动系数(0~1)，越大越快、越小越“肉”
+  LOOP:         true,  // 是否无限循环(首尾相接)。false = 到头有软边界
+};
+
+const viewport = document.getElementById('viewport');
+const track    = document.getElementById('track');
+const items     = Array.from(track.querySelectorAll('.cf-item'));
+const capName   = document.getElementById('cap-name');
+const N = items.length;
+
+let current = 0;   // 当前“滚动位置”(浮点)。0 = 第 0 张居中，可为小数（拖拽/缓动中）
+let target  = 0;   // 释放后要吸附到的整数目标
+let dragging = false;
+let raf = null;
+
+/* —— 计算某张卡相对中心的“偏移格数” o ——
+ * 开启 LOOP 时取“最短环绕距离”，于是卡牌可从一侧绕到另一侧 → 无限循环。 */
+function offsetOf(i) {
+  let o = i - current;
+  if (CONFIG.LOOP) {
+    o = ((o % N) + N) % N;      // 归一到 0..N
+    if (o > N / 2) o -= N;      // 折到 -N/2..N/2，取最短方向
+  }
+  return o;
+}
+
+/* —— 核心：把“偏移格数”映射成一套连续的 3D transform ——
+ * 用 a = min(1, |o|) 让“正面↔侧倾”的切换在经过中心时平滑过渡，而不是硬跳。*/
+function render() {
+  for (let i = 0; i < N; i++) {
+    const el = items[i];
+    const o  = offsetOf(i);
+    const ao = Math.abs(o);
+
+    // 超出可视范围的卡直接隐藏（也顺手把循环的“接缝”藏在屏幕外）
+    if (ao > CONFIG.VISIBLE + 0.5) { el.style.display = 'none'; continue; }
+    el.style.display = '';
+
+    const a   = Math.min(1, ao);          // 0(中心) → 1(已离开中心一格及以上)
+    const sgn = o === 0 ? 0 : (o > 0 ? 1 : -1);
+
+    // 水平位移：中心两侧先被推开 CENTER_GAP，再按 SIDE_SPACING 逐格叠放
+    const tx = sgn * CONFIG.CENTER_GAP * a + o * CONFIG.SIDE_SPACING;
+    // 纵深：中心凸出，离开后退入；越远再多退 EXTRA_BACK
+    const tz = CONFIG.CENTER_POP * (1 - a)
+             - CONFIG.SIDE_BACK * a
+             - Math.max(0, ao - 1) * CONFIG.EXTRA_BACK;
+    // 旋转：经过中心时从 +ANGLE 平滑转到 0 再到 -ANGLE
+    const ry = -sgn * CONFIG.ANGLE * a;
+    // 缩放：中心最大，两侧收小
+    const sc = 1 - (1 - CONFIG.SIDE_SCALE) * a;
+
+    el.style.transform =
+      `translateX(${tx.toFixed(1)}px) translateZ(${tz.toFixed(1)}px) rotateY(${ry.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+    el.style.zIndex = String(Math.round(1000 - ao * 10));
+
+    // 侧面变暗：相邻卡降到 1-DIM，越远越暗，但不低于 MIN_BRIGHT
+    const bright = Math.max(CONFIG.MIN_BRIGHT, 1 - a * CONFIG.DIM - Math.max(0, ao - 1) * 0.12);
+    el.style.filter = `brightness(${bright.toFixed(3)})`;
+
+    el.classList.toggle('is-active', ao < 0.5); // 触发中央高光 + 全息增强
+  }
+  // 更新底部标题（取最接近中心的那张）
+  const activeIdx = ((Math.round(current) % N) + N) % N;
+  const img = items[activeIdx]?.querySelector('img');
+  if (img) capName.textContent = img.dataset.name || '';
+}
+
+/* —— 缓动循环：把 current 平滑拉向 target（释放/滚轮/点击后用） —— */
+function animate() {
+  current += (target - current) * CONFIG.EASE;
+  if (Math.abs(target - current) < 0.001) { current = target; render(); raf = null; return; }
+  render();
+  raf = requestAnimationFrame(animate);
+}
+function startAnim() { if (!raf) raf = requestAnimationFrame(animate); }
+
+/* —— 切到某一张（点击、滚轮、键盘都走这里） —— */
+function goTo(idx) {
+  if (!CONFIG.LOOP) idx = Math.max(0, Math.min(N - 1, idx)); // 非循环则夹住边界
+  target = idx;
+  items.forEach((el) => el.classList.remove('dragging'));    // 恢复 CSS 过渡（吸附动画）
+  startAnim();
+}
+
+/* ===== 交互 1：指针拖拽 / 触屏滑动（Pointer 事件，桌面+移动通用） ===== */
+let down = null;
+viewport.addEventListener('pointerdown', (e) => {
+  down = { x: e.clientX, start: current, moved: 0 };
+  dragging = true;
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  items.forEach((el) => el.classList.add('dragging')); // 拖拽中关过渡 → 1:1 跟手
+  viewport.setPointerCapture?.(e.pointerId);
+});
+viewport.addEventListener('pointermove', (e) => {
+  if (!down) return;
+  const dx = e.clientX - down.x;
+  down.moved = Math.max(down.moved, Math.abs(dx));
+  // 向左拖 → current 增大（下一张往中间来）
+  current = down.start - dx / CONFIG.DRAG_STEP_PX;
+  if (!CONFIG.LOOP) current = Math.max(-0.4, Math.min(N - 1 + 0.4, current)); // 软边界回弹
+  render();
+});
+const endDrag = (e) => {
+  if (!down) return;
+  const wasTap = down.moved < 6; // 几乎没动 = 点击
+  viewport.releasePointerCapture?.(e.pointerId);
+  dragging = false;
+  if (wasTap) {
+    // 点击两侧卡牌 → 居中
+    const card = e.target.closest('.cf-item');
+    if (card) { goTo(items.indexOf(card)); down = null; return; }
+  }
+  goTo(Math.round(current)); // 吸附到最近的整数位
+  down = null;
+};
+viewport.addEventListener('pointerup', endDrag);
+viewport.addEventListener('pointercancel', endDrag);
+
+/* ===== 交互 2：鼠标滚轮 ===== */
+let wheelLock = false;
+viewport.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (wheelLock) return;
+  wheelLock = true;
+  setTimeout(() => (wheelLock = false), 120); // 节流，避免一格滚太多张
+  const dir = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
+  goTo(Math.round(current) + dir * CONFIG.WHEEL_STEP);
+}, { passive: false });
+
+/* ===== 交互 3：键盘左右键 ===== */
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') goTo(Math.round(current) + 1);
+  if (e.key === 'ArrowLeft')  goTo(Math.round(current) - 1);
+});
+
+/* —— 图片加载失败时的占位（保留底色 + 名称），避免空白 —— */
+items.forEach((el) => {
+  const img = el.querySelector('img');
+  img.addEventListener('error', () => {
+    img.style.display = 'none';
+    el.querySelector('.cf-card').style.background =
+      'linear-gradient(160deg,#3a2f5a,#1a2238)';
+  });
+});
+
+/* —— 初始化：从中间那张开始展示更有“陈列”感 —— */
+current = target = Math.floor(N / 2);
+render();
+</script>
+</body>
+</html>

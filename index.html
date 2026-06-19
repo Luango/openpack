@@ -483,6 +483,10 @@
          a pack is actually chosen (the handoff removes .picking just before the
          cross-dissolve, so the tear-pack is there to fade into). */
       body.picking #pack-stage { visibility: hidden; }
+      body.picking .hint { opacity: 0; } /* pre-arming sets the tear hint — keep it hidden behind the picker */
+      /* in the carousel, the rising card-backs live INSIDE the 3D wheel (select3d.js,
+         at mid-wheel depth) — hide the flat CSS backdrop ones so they don't double up */
+      body.picking .scene-fx { visibility: hidden; }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
        * The REAL card stack sits behind the pack (z-index 1) the whole time,
@@ -496,6 +500,11 @@
         z-index: 1; /* behind the pack — stays behind; the pack drops away to uncover it */
         display: grid;
         place-items: center;
+        /* the holo lean tilts the WHOLE stack as one slab (rotation applied to
+           .reveal__stack in reveal.js) — its origin is this grid's centre, which is
+           the stack's centre, so the deck leans symmetrically and every card keeps
+           the same size (no per-card perspective trapezoid). */
+        perspective: 1100px;
         --stackw: var(--card-detail-w); /* same size as the gallery's card — one card, one size (the bigger pack still covers it) */
         pointer-events: none; /* only the top card (once open) opts back in */
       }
@@ -572,9 +581,12 @@
          downward step just hints at the cards behind. The hand only fans out while
          you tap-and-hold, a motion driven slot-by-slot from reveal.js. */
       body.revealing .reveal__slot:not(.flung) {
+        /* a small downward step PLUS a per-depth shrink so the deck recedes — each
+           card behind is a touch smaller than the one in front (front = full size).
+           The 0.01 step must match DEPTH_SHRINK in reveal.js. */
         transform:
           translateY(calc(var(--d, 0) * 5px))
-          scale(calc(1 - var(--d, 0) * 0.02));
+          scale(calc(1 - var(--d, 0) * 0.01));
       }
       .reveal__slot.flung {
         /* flicked away to the next — direction + spin come from reveal.js so each
@@ -860,14 +872,17 @@
       .reveal.haul .reveal__slot {
         transition: transform 0.6s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.45s ease;
         opacity: 1;
-        pointer-events: none;
+        pointer-events: auto; /* the fan is a draggable selector now */
       }
+      /* once the fan-in settles, the JS rAF loop drives the drag/snap 1:1 — drop the
+         CSS transition so dragging the fan tracks the finger without lag */
+      .reveal.haul.haul-live .reveal__slot { transition: none; }
       .reveal.haul .reveal__slot.haul-hero .card--detail {
         box-shadow:
           0 0 64px 6px color-mix(in srgb, var(--tier-color) 78%, transparent),
           0 30px 70px rgba(0, 0, 0, 0.6);
       }
-      /* the haul caption — a quiet kicker + the rarest pull's tier, up top */
+      /* the haul caption — a quiet kicker + the centred card's tier, up top */
       .reveal__haul-cap {
         position: fixed;
         left: 0; right: 0;
@@ -1040,13 +1055,26 @@
         mountEl: document.getElementById("select-stage"),
         packs: DEFAULT_PACKS,
         onChange: reflectPack,
+        // hand the picker the SVG tear-pack's on-screen rect so the chosen pack can
+        // grow to its EXACT size + position — the breakaway lands right on top of it,
+        // and the canvas → SVG cross-dissolve has no seam. (.pack keeps its layout box
+        // even while hidden behind the picker, so this measures true.)
+        getHandoffRect: () => stageEl.querySelector(".pack")?.getBoundingClientRect() || null,
         onSelect: (p) => {
           chosenPack = p;
-          document.body.classList.remove("picking"); // reveal the tear-pack for the dissolve
           // hue-match the SVG tear-pack to the chosen variant (0 = the real art).
           // Set ONCE here (not per-frame) so the mobile tear stays re-raster-free.
+          // NB: the pack stays HIDDEN (body.picking) through the whole breakaway — it's
+          // pre-armed on show, so it's ready and opaque, just waiting behind the canvas.
           stageEl.style.filter = p.hue ? `hue-rotate(${p.hue}deg) saturate(1.08)` : "";
-          loadNextPack(); // arm a booster behind the dissolving picker
+        },
+        // Fired the instant the flown pack LANDS exactly over the SVG pack: reveal the
+        // real (already-armed) pack, then drop the canvas — a seamless swap at the
+        // matched size/position. Nothing of the real pack shows before this moment.
+        onLand: async (hideCanvas) => {
+          await ready;                                // pre-armed → resolves instantly
+          document.body.classList.remove("picking");  // real pack appears at the matched rect
+          hideCanvas();                               // drop the carousel canvas
         },
       });
 
@@ -1055,11 +1083,13 @@
         hintEl.textContent = ""; // the picker has its own hint; tear hint returns on select
         document.body.classList.add("picking"); // hide the resealed tear-pack behind the canvas
         selector.show();
+        loadNextPack(); // PRE-ARM the next pack now (hidden) so the landing swap is instant
       }
 
       hintEl.textContent = ""; // no "Preparing pack…" behind the picker
       document.body.classList.add("picking"); // tear-pack stays hidden until a pack is chosen
       selector.show(); // open straight into the picker
+      loadNextPack(); // pre-arm the first pack behind the picker
     </script>
   </body>
 </html>

@@ -144,9 +144,13 @@ foil is chosen by tier — all from one mapping in
   distance fog. The focused pack **pops toward the lens** (bigger, with a gap) so it
   clearly dominates the row. Each pack is a **procedural foil pouch** (not a box):
   `makePackGeometry` builds a pillow whose front and back sheets bulge through the
-  body and press flat into crimped seal strips top and bottom, tapering to a thin
-  lip at the edges — the curved surface is what makes the glint slide across it like
-  real foil. No text chrome — swipe to spin with real **inertia** (a flick carries
+  body and press flat into a crimped top seal + a longer tapered bottom seal (a slim
+  profile, per the product design sheet), tapering to a thin lip at the edges — the
+  curved surface is what makes the glint slide across it like real foil. The pouch
+  carries a **distinct front and back** (two geometry groups → two materials): the
+  printed art on the front, and a generated G-MAX AURA back (`makeBackTexture` —
+  swirl vortex, centre seal, Contents/legal/lot-code, Pokémon wordmark) you glimpse
+  on the far side of the wheel. No text chrome — swipe to spin with real **inertia** (a flick carries
   through several packs, decelerates, then snaps to the nearest); tap a side pack to
   spin it to the front, tap the front pack to choose; `flip()` turns the focused
   pack to inspect its back. A canvas-gradient env map + a lens-side glint light give
@@ -170,7 +174,13 @@ foil is chosen by tier — all from one mapping in
   [`docs/tear-and-exit.md`](docs/tear-and-exit.md) — keep it in sync with `pack.js`.
 - **Tear → reveal, same Card.** When the pack opens, [`reveal.js`](src/reveal.js)
   raises the booster's cards as a stack you tap through — rarest last, the hit
-  landing with a glow, foil burst, and chime. The cards are the very same
+  landing with a glow, foil burst, and chime. When every card is seen they fan into
+  the **haul** — a draggable fan SELECTOR of your pull. Every card fans out as a
+  hand; the centred one is popped forward, enlarged, glowing and carries a live holo
+  sheen. Drag · swipe · wheel · arrow-keys rotate the fan to switch which card sits
+  centre (eased + snapped, geometry computed per-frame from a continuous
+  `haulCenter`), tap a side card to bring it in; the glow + tier caption track the
+  centred card. The rarest starts centred as the payoff. The cards are the very same
   [`card.js`](src/card.js) `detail` component the lightbox uses (holo foil driven
   by a `motion.js` tilt). [`booster.js`](src/booster.js) assembles the pack from a
   **local snapshot** ([`src/pool.js`](src/pool.js)) — no realtime API fetch, so the

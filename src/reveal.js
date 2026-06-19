@@ -5,6 +5,11 @@
 // tilt it and watch the holo foil play. The big pull lands with a sparkle burst,
 // a chime, and a glow.
 //
+// Once every card is seen they fan back into the HAUL — a draggable fan SELECTOR of
+// the pull: drag / swipe / wheel / arrow-keys rotate the fan to switch which card
+// sits centre (popped, enlarged, glowing, with a live holo sheen). See showHaul /
+// layoutHaul / the haul pointer handlers on stackEl.
+//
 // Reuses the shared Card (card.js), the spring (motion.js), the particle system
 // (particles.js), and Web Audio (sfx.js) — the same parts the gallery + tear use.
 
@@ -23,6 +28,7 @@ const TAP_SLOP = 8; // px of travel under which a press counts as a tap (→ adv
 const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this it's a tap)
 const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
 const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — the parallel cascade step
+const DEPTH_SHRINK = 0.01; // each card behind shrinks this much per stack step → a natural receding deck (keep in sync with the resting scale in index.html)
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
 const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
 
@@ -119,16 +125,20 @@ export function createReveal({ mountEl, onAgain }) {
   // Slide every live card out PARALLEL by `d` steps along the drag direction. `open`
   // (0→1, from how far you've dragged) scales the spread; open 0 equals the CSS
   // resting stack, so closing can hand the slots back to CSS with no visible jump.
+  // Each card behind shrinks one DEPTH_SHRINK step (the front card is full size) so
+  // the fan recedes into a natural deck — a card is never bigger than the one in
+  // front of it. The shrink is constant through the slide (it matches the CSS resting
+  // scale at open 0), so closing hands back to CSS with no jump.
   function renderSlide(open) {
     const k = Math.max(0, Math.min(1, open));
     for (let i = 0; i < slots.length; i++) {
       if (i < pos) continue; // already flung — leave it to the .flung CSS
       const d = i - pos;
-      const ty0 = 5 * d, sc0 = 1 - 0.02 * d; // stacked (open 0) — mirrors the CSS resting stack
-      const slide = EXPAND_EDGE * d; // cracked open (open 1) — slid out d steps, back to full size
+      const ty0 = 5 * d; // stacked (open 0) — mirrors the CSS resting step
+      const slide = EXPAND_EDGE * d; // cracked open (open 1) — slid out d steps
       const tx = dirX * slide * k;
       const ty = ty0 + (dirY * slide - ty0) * k;
-      const sc = sc0 + (1 - sc0) * k;
+      const sc = 1 - DEPTH_SHRINK * d; // smaller the deeper it sits
       slots[i].slot.style.transform =
         `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${sc.toFixed(3)})`;
     }
@@ -143,19 +153,27 @@ export function createReveal({ mountEl, onAgain }) {
     slots.forEach((s) => { s.slot.style.transform = ""; });
   }
 
-  // The holo tilt — ONE spring shared across the whole visible stack, so every card
-  // leans the same way at once (each keeps its own foil). It runs SOFT while tracking
-  // the pointer (smooth, no jitter) and is retuned STIFF only when snapping flat on
-  // release — so the lean follows you fluidly but slams home like a magnet.
+  // The holo tilt — ONE spring shared across the whole visible stack. The lean is a
+  // rotation on the STACK CONTAINER (not per card), so the whole deck tilts as a
+  // single slab and every card stays the SAME size — applying the rotation to each
+  // card individually made each its own perspective trapezoid, which the cascade
+  // offset then exposed as a tail that looks like it grows. The foil sheen vars stay
+  // per-card (each card glints on its own). It runs SOFT while tracking the pointer
+  // (smooth, no jitter) and is retuned STIFF only when snapping flat on release — so
+  // the lean follows you fluidly but slams home like a magnet.
   const tiltSpring = createSpring({
     rest: { rx: 0, ry: 0, mx: 50, my: 50, px: 50, py: 50, hyp: 0 },
     stiffness: TILT_TRACK[0],
     damping: TILT_TRACK[1],
     onTick: (c) => {
-      const t = `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
+      // tilt the deck as one unit (cleared to none at rest so it leaves no 3D context
+      // for the haul fan, which tilts its centre card individually)
+      stackEl.style.transform =
+        (Math.abs(c.rx) < 0.05 && Math.abs(c.ry) < 0.05)
+          ? ""
+          : `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg)`;
       for (let i = pos; i < slots.length; i++) {
         const ce = slots[i].cardEl;
-        ce.style.transform = t;
         ce.style.setProperty("--mx", c.mx.toFixed(1) + "%");
         ce.style.setProperty("--my", c.my.toFixed(1) + "%");
         ce.style.setProperty("--posx", c.px.toFixed(1) + "%");
@@ -198,7 +216,9 @@ export function createReveal({ mountEl, onAgain }) {
     clearTimeout(anticTimer);
     clearArrival();
     clearEnter();
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "haul-live");
+    haulDragging = false;
+    stopHaulLoop();
     tiltSpring.stop();
     stackEl.innerHTML = "";
     slots = cards.map(makeSlot);
@@ -277,7 +297,7 @@ export function createReveal({ mountEl, onAgain }) {
     for (let i = pos + 1; i < slots.length; i++) {
       const d = i - pos;
       if (d > 4) continue; // only the visible front few read
-      const sc = (1 - 0.02 * d).toFixed(3);
+      const sc = (1 - DEPTH_SHRINK * d).toFixed(3); // matches the CSS resting scale
       const slot = slots[i].slot;
       const a = slot.animate(
         [
@@ -575,53 +595,143 @@ export function createReveal({ mountEl, onAgain }) {
     sfx.concludeChime(); // a gentle resolving cadence — the haul closes on a chord, not silence
   }
 
-  // THE HAUL — the payoff that rewards the loop. Instead of a lone last card on a
-  // dark stage, every card in the pack fans back out as a hand so the pull reads as
-  // a SET, with the rarest popped forward + glowing and named up top. Each slot's
-  // fan transform is computed here (deterministic, no fragile CSS math); the eased
-  // transition + hero glow live in CSS (.reveal.haul …).
+  // THE HAUL — a draggable fan SELECTOR of your pull. Every card fans out as a hand;
+  // the centred one is popped forward, enlarged, glowing and carries a live holo
+  // sheen. Drag / swipe / wheel / arrow-keys rotate the fan to switch which card
+  // sits centre (eased + snapped), tap a side card to bring it in. The rarest card
+  // starts centred as the payoff. Geometry is computed per-frame from a continuous
+  // `haulCenter` so the switch is smooth and dynamic.
+  let haulOrder = [], haulN = 0, haulW = 240, haulStep = 80;
+  let haulCenter = 0, haulTarget = 0, haulDragging = false, haulRAF = null, haulT = 0, haulLastIdx = -1;
+
   function showHaul() {
     if (!slots.length) return;
-    tiltSpring.stop(); // no more holo tilt writing to the cards
-    host.classList.add("haul");
-    const n = slots.length;
-    // hero = the rarest card (rarest-LAST, so >= keeps the last among ties)
+    tiltSpring.stop(); // no more stack holo tilt
+    host.classList.add("haul", "show-status");
+    haulN = slots.length;
+    // hero = rarest (rarest-LAST → >= keeps the last among ties)
     let hero = 0;
-    for (let i = 0; i < n; i++) {
-      if (rarityToTier(slots[i].card) >= rarityToTier(slots[hero].card)) hero = i;
-    }
-    // Visual order: the hero takes the CENTRE of the fan (the prize), the rest fan
-    // out around it in their natural order — so the eye lands on the best pull, not
-    // on whichever index it happened to be.
-    const rest = [];
-    for (let i = 0; i < n; i++) if (i !== hero) rest.push(i);
-    const order = rest.slice();
-    order.splice(Math.floor(rest.length / 2), 0, hero);
-    const mid = (n - 1) / 2;
-    const w = stackEl.getBoundingClientRect().width || 240;
-    const step = w * 0.33; // px between fanned card centres — a readable overlap on mobile
-    order.forEach((cardIdx, v) => {
-      const s = slots[cardIdx];
-      const isHero = cardIdx === hero;
+    for (let i = 0; i < haulN; i++) if (rarityToTier(slots[i].card) >= rarityToTier(slots[hero].card)) hero = i;
+    // visual order: hero in the MIDDLE so the fan opens centred on the prize
+    const rest = []; for (let i = 0; i < haulN; i++) if (i !== hero) rest.push(i);
+    haulOrder = rest.slice();
+    haulOrder.splice(Math.floor(rest.length / 2), 0, hero);
+    haulW = stackEl.getBoundingClientRect().width || 240;
+    haulStep = haulW * 0.33; // px between fanned card centres
+    slots.forEach((s) => {
       s.slot.classList.remove("flung", "front", "entering", "gleaming", "rare");
-      s.slot.classList.toggle("haul-hero", isHero);
-      s.slot.style.pointerEvents = "none";
-      s.cardEl.style.transform = ""; // drop any leftover holo tilt on the card
-      const off = v - mid;
-      const tx = off * step;
-      const ty = Math.abs(off) * (w * 0.085) - (isHero ? w * 0.12 : 0); // arc dip + hero lift
-      const rot = off * 8;
-      const sc = isHero ? 0.6 : 0.48;
-      s.slot.style.zIndex = String(isHero ? 200 : 100 - Math.abs(Math.round(off)));
-      s.slot.style.transform =
-        `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${rot.toFixed(1)}deg) scale(${sc})`;
+      s.slot.style.pointerEvents = "auto"; // tappable → centre that card
     });
-    const heroCard = slots[hero].card;
-    host.style.setProperty("--tier-color", TIER_HEX[rarityToTier(heroCard)]);
-    haulCapEl.querySelector(".hc-best").textContent = tierOf(heroCard).label;
-    hintEl.textContent = ""; // the caption + glowing hero carry it now
-    srEl.textContent = `That's your pack. Best pull: ${tierOf(heroCard).label}. Open another?`;
+    haulCenter = haulTarget = haulOrder.indexOf(hero); // open centred on the hero
+    haulLastIdx = -1;
+    layoutHaul();
+    startHaulLoop();
+    // let the fan-in animate on the CSS transition, THEN switch to 1:1 rAF control
+    setTimeout(() => { if (host.classList.contains("haul")) host.classList.add("haul-live"); }, 620);
+    hintEl.textContent = "Drag / swipe to switch the centre card";
+    srEl.textContent = `That's your pack. Best pull: ${tierOf(slots[hero].card).label}. Drag to browse, or open another.`;
   }
+
+  // place every card on the fan for the (fractional) centre position
+  function layoutHaul() {
+    const w = haulW, c = haulCenter, n = haulN;
+    for (let v = 0; v < n; v++) {
+      const s = slots[haulOrder[v]];
+      const off = v - c, ao = Math.abs(off);
+      const foc = Math.max(0, 1 - ao);                 // 1 centred → 0 a step away
+      const tx = off * haulStep;
+      const ty = ao * (w * 0.085) - foc * (w * 0.12);  // arc dip − centre lift
+      const sc = 0.48 + 0.12 * foc - Math.max(0, ao - 1) * 0.02;
+      s.slot.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px) rotate(${(off * 8).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+      s.slot.style.zIndex = String(Math.round(200 - ao * 10));
+      const isCentre = ao < 0.5;
+      s.slot.classList.toggle("haul-hero", isCentre);
+      if (!isCentre) resetCardFoil(s.cardEl); // side cards flat; centre gets the idle holo
+    }
+    const idx = Math.max(0, Math.min(n - 1, Math.round(c)));
+    if (idx !== haulLastIdx) {            // the centred card changed → update glow + label
+      haulLastIdx = idx;
+      const card = slots[haulOrder[idx]].card;
+      host.style.setProperty("--tier-color", TIER_HEX[rarityToTier(card)]);
+      haulCapEl.querySelector(".hc-best").textContent = tierOf(card).label;
+      srEl.textContent = `${card.name} · ${tierOf(card).label}`;
+    }
+  }
+
+  // continuous loop while the haul is up: ease centre→target + idle holo on centre
+  function startHaulLoop() { if (!haulRAF) haulRAF = requestAnimationFrame(haulFrame); }
+  function stopHaulLoop() { if (haulRAF) cancelAnimationFrame(haulRAF); haulRAF = null; }
+  function haulFrame() {
+    if (!host.classList.contains("haul")) { haulRAF = null; return; }
+    haulRAF = requestAnimationFrame(haulFrame);
+    haulT += 0.016;
+    if (!haulDragging) {
+      haulCenter += (haulTarget - haulCenter) * 0.18; // eased snap
+      if (Math.abs(haulTarget - haulCenter) < 0.001) haulCenter = haulTarget;
+    }
+    layoutHaul();
+    // a gentle holo sheen on the centred card so it feels alive
+    const ce = slots[haulOrder[Math.max(0, Math.min(haulN - 1, Math.round(haulCenter)))]]?.cardEl;
+    if (ce && !haulDragging && !REDUCED) {
+      const cx = Math.sin(haulT * 0.9) * 0.5, cy = Math.sin(haulT * 0.62 + 1.1) * 0.4;
+      ce.style.transform = `rotateX(${(cy * 8).toFixed(2)}deg) rotateY(${(-cx * 8).toFixed(2)}deg)`;
+      ce.style.setProperty("--mx", (50 + cx * 50).toFixed(1) + "%");
+      ce.style.setProperty("--my", (50 + cy * 50).toFixed(1) + "%");
+      ce.style.setProperty("--posx", (50 + cx * FOIL_X).toFixed(1) + "%");
+      ce.style.setProperty("--posy", (50 + cy * FOIL_Y).toFixed(1) + "%");
+      ce.style.setProperty("--hyp", Math.min(1, Math.hypot(cx, cy)).toFixed(3));
+    }
+  }
+  function resetCardFoil(ce) {
+    ce.style.transform = "";
+    ce.style.setProperty("--mx", "50%"); ce.style.setProperty("--my", "50%");
+    ce.style.setProperty("--posx", "50%"); ce.style.setProperty("--posy", "50%");
+    ce.style.setProperty("--hyp", "0");
+  }
+
+  // ---- drag / swipe / wheel / keys to rotate the fan → switch the centre card --
+  let haulDown = null;
+  stackEl.addEventListener("pointerdown", (e) => {
+    if (!host.classList.contains("haul")) return;
+    haulDown = { x: e.clientX, start: haulCenter, moved: 0, slotEl: e.target.closest(".reveal__slot") };
+    haulDragging = true;
+    startHaulLoop();
+    try { stackEl.setPointerCapture?.(e.pointerId); } catch {}
+  });
+  stackEl.addEventListener("pointermove", (e) => {
+    if (!haulDown || !host.classList.contains("haul")) return;
+    const dx = e.clientX - haulDown.x;
+    haulDown.moved = Math.max(haulDown.moved, Math.abs(dx));
+    let c = haulDown.start - dx / (haulW * 0.45); // ~half a card width of drag = one step
+    if (c < 0) c *= 0.35;                          // rubber-band past the ends
+    else if (c > haulN - 1) c = (haulN - 1) + (c - (haulN - 1)) * 0.35;
+    haulCenter = c;
+  });
+  const haulRelease = (e) => {
+    if (!haulDown || !host.classList.contains("haul")) return;
+    haulDragging = false;
+    try { stackEl.releasePointerCapture?.(e.pointerId); } catch {}
+    if (haulDown.moved < TAP_SLOP && haulDown.slotEl) {
+      const vp = haulOrder.indexOf(slots.findIndex((s) => s.slot === haulDown.slotEl));
+      if (vp >= 0) { sfx.flick?.(); haulTarget = vp; } // tap a card → centre it
+    } else {
+      haulTarget = Math.max(0, Math.min(haulN - 1, Math.round(haulCenter))); // snap to nearest
+    }
+    haulDown = null;
+  };
+  stackEl.addEventListener("pointerup", haulRelease);
+  stackEl.addEventListener("pointercancel", () => { haulDragging = false; haulDown = null; });
+  stackEl.addEventListener("wheel", (e) => {
+    if (!host.classList.contains("haul")) return;
+    e.preventDefault();
+    haulTarget = Math.max(0, Math.min(haulN - 1, Math.round(haulCenter) + ((e.deltaY || e.deltaX) > 0 ? 1 : -1)));
+    startHaulLoop();
+  }, { passive: false });
+  window.addEventListener("keydown", (e) => {
+    if (!host.classList.contains("haul")) return;
+    if (e.key === "ArrowRight") { haulTarget = Math.min(haulN - 1, Math.round(haulCenter) + 1); startHaulLoop(); }
+    else if (e.key === "ArrowLeft") { haulTarget = Math.max(0, Math.round(haulCenter) - 1); startHaulLoop(); }
+  });
 
   // THE HIT — when the current front card is a chase pull, fire the full payoff
   // scaled by tier: sunburst rays, a screen flash, a rarity stamp, a glowing
