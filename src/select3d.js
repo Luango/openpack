@@ -162,6 +162,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       emissiveMap: faceTex,
       emissiveIntensity: 0.2,  // self-light so the art reads vivid even in shadow
       side: THREE.DoubleSide,  // closed pouch — keeps both sheets lit at any angle
+      alphaTest: 0.5,          // the art has a TRANSPARENT bg → cut those pixels away,
+                               // else they render as solid black (the dark edge fill)
     });
   }
   // identical-aspect packs share ONE pillow geometry (built once, on first texture)
@@ -750,7 +752,7 @@ function makeEnvTexture() {
 // circular clip so the plane's corners are cut away), tinted down so they recede.
 function makeRisingCards() {
   const tex = pokeballTexture();
-  const COUNT = 6;
+  const COUNT = 9;
   const group = new THREE.Group();
   const geo = new THREE.PlaneGeometry(1, 1); // square — the Poké Ball icon is round
   const cards = [];
@@ -759,15 +761,15 @@ function makeRisingCards() {
     // Poké Ball icons (alphaTest cuts the plane's corners to the round ball), tinted
     // DOWN via a cool colour multiply so they recede behind the packs as ambiance and
     // never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x9aa0bc, alphaTest: 0.5 });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x3a3e52, alphaTest: 0.5 });
     const m = new THREE.Mesh(geo, mat);
     const u = {
-      x: (rand(i, 1) - 0.5) * 7.5,        // spread across the wheel's width
-      z: -1.8 + rand(i, 2) * 1.6,         // sit a bit BEHIND the ring centre → recede
-      speed: 0.5 + rand(i, 3) * 0.7,      // rise speed (units/sec)
-      scale: 0.65 + rand(i, 4) * 0.5,
-      rot: (rand(i, 5) - 0.5) * 0.45,
-      y: -7 + i * (14 / COUNT),           // staggered start heights
+      x: (rand(i, 1) - 0.5) * 9,          // spread across the wheel's width
+      z: -4.5 + rand(i, 2) * 6,           // far (−4.5, small + foggy) → near (+1.5, big) ↔ depth variety
+      speed: 0.18 + rand(i, 3) * 0.32,    // rise speed (units/sec) — slow, gentle drift
+      scale: 0.45 + rand(i, 4) * 1.2,     // small → large ↔ size variety
+      rot: (rand(i, 5) - 0.5) * 0.5,
+      y: -8 + i * (16 / COUNT),           // staggered start heights
     };
     m.userData = u;
     m.position.set(u.x, u.y, u.z);
@@ -782,7 +784,7 @@ function makeRisingCards() {
       for (const m of cards) {
         const u = m.userData;
         u.y += u.speed * dt;
-        if (u.y > 7) u.y -= 14;   // wrap back to the bottom; they slide on/off at the screen edges
+        if (u.y > 8) u.y -= 16;   // wrap back to the bottom; they slide on/off at the screen edges
         m.position.y = u.y;
       }
     },
@@ -797,11 +799,12 @@ function pokeballTexture() {
   const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
   const x = c.getContext("2d");
   const cx = S / 2, cy = S / 2, R = S * 0.46;
-  const BLACK = "#1b1c22", WHITE = "#f4f4f6", RED = "#ee3d36";
-  // body — clipped to the ball circle: red top half, white bottom half, black centre band
+  const BLACK = "#1b1c22", WHITE = "#f4f4f6", GREY = "#b9bcc8";
+  // body — clipped to the ball circle: BLACK-AND-WHITE — grey top half, white bottom
+  // half, black centre band (no colour, so it reads as a monochrome icon)
   x.save();
   x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
-  x.fillStyle = RED;   x.fillRect(0, 0, S, cy);
+  x.fillStyle = GREY;  x.fillRect(0, 0, S, cy);
   x.fillStyle = WHITE; x.fillRect(0, cy, S, S - cy);
   x.fillStyle = BLACK; x.fillRect(0, cy - S * 0.085, S, S * 0.17);
   x.restore();
