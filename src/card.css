@@ -256,6 +256,69 @@
   opacity: calc(var(--hyp, 0) * 0.5);
 }
 
+/* ---- the player's material (detail) -------------------------------------
+ * The frame is METAL — the glare / sparkle / foil above light it warm, broad
+ * and tinted. The player photo is a different stock: a GLOSS print, so it must
+ * not catch the metal's light. .card__player lays the card art again over all
+ * of those layers, through the player's silhouette (cardart.js bakes it as
+ * card.playerMask) — which blanks the metal's reflections on the player — then
+ * lights it its own way, from the same pointer vars:
+ *   ::after   the reflection: a crisp, neutral white streak (a window on
+ *             lacquer) with a faint prismatic fringe, where the metal shows a
+ *             broad tinted hot spot
+ *   ::before  a satin lift riding with the streak, so the print brightens
+ *             around it instead of under the metal's glare
+ * Both stay inside the silhouette (the mask covers the whole group), so the
+ * cut-out's soft edge and chest fade hand over to the metal gradually. */
+.card__player {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--player-art) center / 100% 100% no-repeat;
+  -webkit-mask: var(--player-mask) center / 100% 100% no-repeat;
+  mask: var(--player-mask) center / 100% 100% no-repeat;
+}
+.card__player::before,
+.card__player::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* One geometry for both: a 105° band, centred in a box twice the card's width
+     and its full height, slid so the band passes THROUGH the pointer — the
+     streak lies across whatever you're over. A 105° line leans 0.268px in x per
+     px in y, and the card is 88/63 tall, so (--my − 50%) × 0.374 corrects the x
+     slide for the pointer's height. */
+  --streak-x: calc(100% - var(--mx, 50%) - (var(--my, 50%) - 50%) * 0.374);
+}
+.card__player::before {
+  background: linear-gradient(
+    105deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 68%
+  ) var(--streak-x) 0 / 200% 100% no-repeat;
+  mix-blend-mode: soft-light;
+  opacity: calc(var(--hyp, 0) * 0.8);
+}
+.card__player::after {
+  background: linear-gradient(
+    105deg,
+    transparent 47.6%,
+    rgba(110, 210, 255, 0.3) 48.4%,
+    rgba(255, 255, 255, 0.85) 49.2%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 255, 255, 0.85) 50.8%,
+    rgba(255, 140, 220, 0.3) 51.6%,
+    transparent 52.4%,
+    rgba(255, 255, 255, 0.7) 53.6%,
+    rgba(255, 255, 255, 0.7) 54%,
+    transparent 54.5%
+  ) var(--streak-x) 0 / 200% 100% no-repeat;
+  mix-blend-mode: screen;
+  opacity: calc(0.1 + var(--hyp, 0) * 0.95);
+}
+
 /* ======================================================================== *
  *  HOLO / FOIL VFX — one definition per tier, keyed on data-vfx.
  *  Gated behind body.holo-on so the Holo toggle can switch it off.

@@ -60,6 +60,12 @@ export function renderCard(card, { variant = "grid", index } = {}) {
     const silhouette = frame
       ? `<div class="card__shade" aria-hidden="true"></div><div class="card__glow" aria-hidden="true"></div>`
       : "";
+    // the player photo's own material: the art again, through the player's
+    // silhouette (cardart.js), over the metal's glare/foil — lit by card.css
+    const player = card.playerMask
+      ? `<div class="card__player" style="--player-art: url('${escapeAttr(card.image || src)}'); ` +
+        `--player-mask: url('${escapeAttr(card.playerMask)}')" aria-hidden="true"></div>`
+      : "";
     return `
       <article ${attrs}>
         ${silhouette}
@@ -69,6 +75,7 @@ export function renderCard(card, { variant = "grid", index } = {}) {
           ${vfx}
           <div class="card__sparkle" aria-hidden="true"></div>
           <div class="card__glare" aria-hidden="true"></div>
+          ${player}
         </div>
         <div class="card__back" style="transform: rotateY(180deg) translateZ(${HALF}px)" aria-hidden="true"></div>
       </article>`;

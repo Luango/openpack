@@ -71,8 +71,8 @@ export async function buildBooster(size = PACK_SIZE) {
   await Promise.all(pack.map(loadCardAssets));
   const out = [];
   for (const c of pack) {
-    const url = await cardArt(c);
-    out.push({ ...c, image: url, imageSmall: url });
+    const { art, player } = await cardArt(c);
+    out.push({ ...c, image: art, imageSmall: art, playerMask: player });
     await nextFrame();
   }
   return out;

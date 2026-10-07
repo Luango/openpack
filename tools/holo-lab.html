@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Holo Lab</title>
+<!-- The bench for the card's light: real detail cards (renderCard + cardArt, the
+     reveal's flattened card in a perspective slot) with the reveal's tilt + holo
+     vars driven straight from the pointer — hover a card to light it. Tunes the
+     metal (glare / sparkle / foil) against the player's gloss (.card__player).
+       ?f=sample|all|<edition>   which cards (as card-lab) · ?ids=p01,p02  those players
+       ?w=300                    card width (px)
+       ?player=0                 start with the player material off (the old look)
+     window.tilt(cx, cy) lights every card as if the pointer sat at (cx, cy) ∈ [-1, 1]
+     (for headless runs — tools/cdp.mjs); window.labReady once the cards are painted. -->
+<link id="font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Cinzel:wght@500;700;800&display=swap" onload="this.dataset.ready=1" />
+<link rel="stylesheet" href="../src/base.css" />
+<link rel="stylesheet" href="../src/card.css" />
+<style>
+  html, body { min-height: 100%; }
+  body { margin: 0; background: #0d0b08; color: #e9dcbf; font: 13px/1.4 system-ui, sans-serif; }
+  header { padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; padding: 16px 16px 40px; }
+  figure { margin: 0; width: var(--w, 300px); }
+  .slot { position: relative; perspective: 1100px; width: 100%; aspect-ratio: 63 / 88; touch-action: none; }
+  /* as the reveal (index.html): the detail card flattened, filling its slot */
+  .slot .card--detail { width: 100%; height: 100%; transform-style: flat; }
+  .slot .card__back, .slot .card__edge { display: none; }
+  figcaption { margin-top: 8px; color: #8a7a5a; font-size: 12px; }
+  body.no-player .card__player { display: none; }
+  button, select { font: inherit; }
+</style>
+</head>
+<body class="holo-on">
+<header>
+  <strong>Holo Lab</strong>
+  <select id="filter">
+    <option value="sample">one per edition</option>
+    <option value="all">all cards</option>
+    <option value="bronze">bronze</option><option value="silver">silver</option><option value="gold">gold</option>
+    <option value="raregold">rare gold</option><option value="totw">TOTW</option><option value="potm">POTM</option>
+    <option value="future">future stars</option><option value="tots">TOTS</option><option value="toty">TOTY</option>
+    <option value="legend">legend</option>
+  </select>
+  <label><input id="player" type="checkbox" checked /> player material</label>
+  <label>size <input id="size" type="range" min="180" max="520" value="300" /></label>
+  <span id="info"></span>
+</header>
+<div class="grid" id="grid"></div>
+<script type="module">
+  import { POOL } from "../src/pool.js";
+  import { cardArt } from "../src/cardart.js";
+  import { renderCard } from "../src/card.js";
+
+  const TILT = 12, FOIL_X = 13, FOIL_Y = 17; // reveal.js
+  const grid = document.getElementById("grid");
+  const sel = document.getElementById("filter");
+  const size = document.getElementById("size");
+  const playerBox = document.getElementById("player");
+  const params = new URLSearchParams(location.search);
+  if (params.get("f")) sel.value = params.get("f");
+  if (params.get("w")) size.value = params.get("w");
+  if (params.get("player") === "0") playerBox.checked = false;
+  const apply = () => {
+    document.documentElement.style.setProperty("--w", size.value + "px");
+    document.body.classList.toggle("no-player", !playerBox.checked);
+  };
+  size.oninput = playerBox.onchange = apply;
+  apply();
+
+  // the reveal's tilt, minus the spring: (cx, cy) ∈ [-1, 1] from the card's centre
+  function light(cardEl, cx, cy) {
+    cardEl.style.transform = cx || cy ? `rotateX(${(cy * TILT).toFixed(2)}deg) rotateY(${(-cx * TILT).toFixed(2)}deg)` : "";
+    cardEl.style.setProperty("--mx", (50 + cx * 50).toFixed(1) + "%");
+    cardEl.style.setProperty("--my", (50 + cy * 50).toFixed(1) + "%");
+    cardEl.style.setProperty("--posx", (50 + cx * FOIL_X).toFixed(1) + "%");
+    cardEl.style.setProperty("--posy", (50 + cy * FOIL_Y).toFixed(1) + "%");
+    cardEl.style.setProperty("--hyp", Math.min(1, Math.hypot(cx, cy)).toFixed(3));
+  }
+  window.tilt = (cx, cy) => document.querySelectorAll(".slot .card").forEach((el) => light(el, cx, cy));
+
+  async function render() {
+    window.labReady = false;
+    grid.innerHTML = "";
+    let list;
+    if (sel.value === "sample") {
+      const seen = new Set();
+      list = POOL.filter((c) => !seen.has(c.edition) && seen.add(c.edition));
+    } else if (sel.value === "all") list = POOL;
+    else list = POOL.filter((c) => c.edition === sel.value);
+    if (params.get("ids")) list = POOL.filter((c) => params.get("ids").split(",").includes(c.playerId));
+    for (const c of list) {
+      const { art, player } = await cardArt(c);
+      const card = { ...c, image: art, imageSmall: art, playerMask: player };
+      const fig = document.createElement("figure");
+      fig.innerHTML = `<div class="slot">${renderCard(card, { variant: "detail" })}</div>` +
+        `<figcaption>${c.id} · ${c.rarity}</figcaption>`;
+      grid.append(fig);
+      const slot = fig.firstChild, el = slot.querySelector(".card");
+      light(el, 0, 0);
+      slot.addEventListener("pointermove", (e) => {
+        const r = slot.getBoundingClientRect();
+        const cx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
+        const cy = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+        light(el, cx, cy);
+      });
+      slot.addEventListener("pointerleave", () => light(el, 0, 0));
+    }
+    await Promise.all([...grid.querySelectorAll("img")].map((im) => im.decode().catch(() => {})));
+    window.labReady = true;
+    document.getElementById("info").textContent = `${list.length} cards`;
+  }
+  sel.onchange = render;
+  render();
+</script>
+</body>
+</html>
