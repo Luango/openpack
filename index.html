@@ -47,7 +47,8 @@
          same-origin over the connection already open for the page — no third-party DNS/TLS
          to a CDN on first open — and pulled NOW rather than after the ESM waterfall finds it -->
     <link rel="modulepreload" href="vendor/three.module.min.js" />
-    <!-- the SVG tear-pack LCP + the two hi-res WebPs the 3D carousel maps onto its packs.
+    <!-- the two hi-res WebPs the 3D carousel maps onto its packs — and the 3D tear-pack
+         composites the same pair into its texture atlas (front + back print).
          The hi-res pair GATES the visible intro (it waits on their decode), so start them
          at parse time rather than when select3d.js gets around to loadImg().
          crossorigin REQUIRED — select3d.js loads them via an Image with crossOrigin
@@ -55,7 +56,6 @@
          The pair is device-split: phones (pointer:coarse) fetch the smaller -720 variants
          the carousel actually maps there, desktops the full-res ones — so neither pulls
          a texture it won't use. (Mirrors MOBILE_TEX in select3d.js.) -->
-    <link rel="preload" as="image" href="assets/pack.webp" fetchpriority="high" />
     <link rel="preload" as="image" href="assets/pack-hi.webp"          media="(pointer: fine)"   fetchpriority="high" crossorigin />
     <link rel="preload" as="image" href="assets/pack-hi-720.webp"      media="(pointer: coarse)" fetchpriority="high" crossorigin />
     <link rel="preload" as="image" href="assets/pack-back-hi.webp"     media="(pointer: fine)"   crossorigin />
@@ -65,7 +65,11 @@
     <link rel="modulepreload" href="src/select3d.js" />
     <link rel="modulepreload" href="src/sfx.js" />
     <link rel="modulepreload" href="src/reveal.js" />
-    <link rel="modulepreload" href="src/pack.js" />
+    <link rel="modulepreload" href="src/pack3d/index.js" />
+    <link rel="modulepreload" href="src/pack3d/view.js" />
+    <link rel="modulepreload" href="src/pack3d/geometry.js" />
+    <link rel="modulepreload" href="src/pack3d/textures.js" />
+    <link rel="modulepreload" href="src/pack3d/deformer.js" />
     <!-- three.js for the 3D pack-selection carousel (no build step → vendored ESM) -->
     <script type="importmap">
       { "imports": { "three": "./vendor/three.module.min.js" } }
@@ -147,6 +151,118 @@
         opacity: 0;
         will-change: transform, opacity; /* promote the layer just for the slide */
       }
+
+      /* ---- the procedural 3D foil pack (src/pack3d) --------------------------
+       * A transparent WebGL canvas fills the stage; the pack is drawn at the viewport
+       * centre, sized so the card INSIDE it projects to exactly --card-detail-w (the
+       * DOM reveal card behind the canvas), so the hand-off to the reveal is seamless.
+       * The SVG rules further down still serve the ?pack=svg / no-WebGL fallback. */
+      .pack3d-wrap {
+        position: absolute;
+        inset: 0;
+        opacity: 0; /* hidden until the card stack is prepared (setArmed → .ready) */
+        transition: opacity 0.45s ease;
+        isolation: isolate;
+      }
+      .pack3d-wrap.ready { opacity: 1; }
+      /* the idle float, only once the pack has settled into your hand (not during the
+         carousel hand-off, whose landed hero must match a still pack) */
+      .pack3d-wrap.settled { animation: float 5s ease-in-out infinite; }
+      .pack3d-wrap.tearing, .pack3d-wrap.opening { animation: none; }
+      .pack3d-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+        cursor: grab;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      .pack3d-wrap.tearing .pack3d-canvas { cursor: grabbing; }
+      /* the tell halo sits behind the canvas at the pack's rect (sized from JS) */
+      .pack3d-wrap .pack-glow { left: 50%; top: 50%; width: 40vmin; height: 60vmin; }
+      .pack3d-wrap.ready .pack-glow { animation: heartbeat 4.6s ease-in-out infinite; }
+      #pack-stage.chase .pack3d-wrap.ready .pack-glow { animation-duration: 3.1s; }
+      .pack3d-wrap.opening .pack-glow { animation: none; opacity: 0; }
+      /* the grip marker: a pulsing dot at the notch (front) / the seam top (back),
+         positioned from the projected 3D point. Stronger on a first-ever pack. */
+      .pack3d-notch {
+        position: absolute;
+        left: 0; top: 0;
+        width: 14px; height: 14px;
+        margin: -7px 0 0 -7px;
+        border-radius: 50%;
+        pointer-events: none;
+        background: radial-gradient(circle, #fff 0%, rgba(255, 222, 150, 0.95) 42%, transparent 72%);
+        box-shadow: 0 0 14px 4px rgba(255, 210, 150, 0.65);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        animation: notchPulse 1.6s ease-in-out infinite;
+      }
+      .pack3d-wrap.ready .pack3d-notch { opacity: 0.55; }
+      .pack3d-wrap.ready.guide .pack3d-notch { opacity: 1; }
+      .pack3d-wrap.tearing .pack3d-notch, .pack3d-wrap.opening .pack3d-notch { opacity: 0; }
+      @keyframes notchPulse {
+        0%, 100% { transform: scale(0.8); }
+        50% { transform: scale(1.35); }
+      }
+      /* keyboard-accessible controls: flip the pack over / open it without dragging */
+      .pack3d-ui {
+        position: absolute;
+        left: 0; right: 0;
+        bottom: calc(58px + var(--safe-bottom));
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        opacity: 0;
+        transition: opacity 0.35s ease;
+        pointer-events: none;
+      }
+      .pack3d-wrap.ready .pack3d-ui { opacity: 1; pointer-events: auto; }
+      .pack3d-wrap.tearing .pack3d-ui, .pack3d-wrap.opening .pack3d-ui { opacity: 0; pointer-events: none; }
+      .pack3d-btn {
+        appearance: none;
+        font-family: var(--display);
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #eef2f8;
+        background: rgba(20, 24, 33, 0.72);
+        border: 1px solid var(--line, #2a313f);
+        border-radius: 999px;
+        padding: 10px 16px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+        -webkit-tap-highlight-color: transparent;
+      }
+      .pack3d-btn:focus-visible { outline: 2px solid var(--accent, #f2c54b); outline-offset: 2px; }
+      .pack3d-cue {
+        position: absolute;
+        left: 0; right: 0;
+        bottom: calc(26px + var(--safe-bottom));
+        margin: 0;
+        text-align: center;
+        font-size: 13px;
+        color: #9aa3b2;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.35s ease;
+      }
+      .pack3d-wrap.ready .pack3d-cue { opacity: 1; }
+      .pack3d-wrap.tearing .pack3d-cue, .pack3d-wrap.opening .pack3d-cue { opacity: 0; }
+      /* ?packdebug — the developer panel: route, progress scrubber, yaw/pitch, stats */
+      .pack3d-debug {
+        position: fixed; left: 8px; top: calc(8px + var(--safe-top)); z-index: 30;
+        display: grid; gap: 6px; padding: 10px 12px; width: 280px;
+        background: rgba(10, 14, 22, 0.88); border: 1px solid #2a313f; border-radius: 10px;
+        font: 11px/1.4 ui-monospace, monospace; color: #cfd6e2;
+      }
+      .pack3d-debug label { display: grid; grid-template-columns: 56px 1fr 40px; align-items: center; gap: 6px; }
+      .pack3d-debug input[type=range] { width: 100%; }
+      .pack3d-debug button { font: inherit; padding: 4px 8px; }
+      .pack3d-stats { margin: 0; white-space: pre-wrap; color: #8fd; }
 
       /* wraps the pack svg + the spark layer so both bob together on the idle float */
       .pack-wrap {
@@ -1530,7 +1646,7 @@
     </div>
 
     <script type="module">
-      import { createPack } from "./src/pack.js";
+      import { createPackAuto } from "./src/pack3d/index.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
       import { rarityToTier } from "./src/rarity.js";
@@ -1653,7 +1769,7 @@
       function loadNextPack() {
         pack?.setArmed(false);
         hintEl.textContent = "Preparing pack…";
-        ready = buildBooster().then((cards) => new Promise((resolve) => {
+        ready = Promise.all([buildBooster(), packReady]).then(([cards]) => new Promise((resolve) => {
           // loadNextPack runs from onIntroEnd, i.e. the frame the carousel settles — but
           // the wheel keeps bobbing/drifting after that, so building the stack + warming
           // 5 hi-res scans synchronously here stalls a still-animating frame (the "卡一下"
@@ -1662,6 +1778,7 @@
           const build = async () => {
             cards.forEach((c) => { const im = new Image(); im.src = c.image; }); // warm hi-res
             await reveal.prepare(cards); // pre-render the stack (chunked per-frame) while sealed
+            pack.setCards?.(cards); // the 3D pack shows the real top card inside the torn mouth
             // foreshadow the pull: tint the idle pack toward the rarest card inside
             pack.setTell(Math.max(...cards.map(rarityToTier)));
             pack.setArmed(true); // stack is fully built — now it's safe to tear
@@ -1676,25 +1793,29 @@
       reveal = createReveal({
         mountEl: document.body,
         onAgain: () => {
-          pack.reset(); // reseal the pack
+          pack?.reset(); // reseal the pack
           backToSelect(); // return to the 3D picker to choose the next pack
         },
       });
 
-      pack = createPack({
+      // The pack is the procedural 3D foil pouch (src/pack3d): it builds its geometry
+      // and paints its atlas asynchronously (the art is preloaded, so ~a frame), and
+      // falls back to the flat SVG tear-pack (src/pack.js) without WebGL or with
+      // ?pack=svg. Nothing below blocks on it — the gate and the carousel wire up
+      // regardless; the places that need it await `packReady`.
+      const packReady = createPackAuto({
         mountEl: document.getElementById("pack-stage"),
         // The REAL card stack lives BEHIND the pack the whole time (z 1, under the foil
-        // at z 2). Wake it the moment the pack is grabbed so it's already THERE — as the
-        // tear opens you see the actual cards through the hole, with the foil + the
-        // opening light sitting IN FRONT of them. It only ANIMATES + becomes interactive
-        // at the open (reveal.show() drops the foil and presents the haul).
+        // at z 2). Wake it the moment the pack is grabbed so it's already THERE: the 3D
+        // pack shows its own card stack through the torn mouth, then drops away to
+        // uncover this one in place (reveal.show() presents the haul).
         onGrab: () => reveal.wake(),
         onOpen: async () => {
           hintEl.textContent = ""; // the reveal has its own hint
           await ready; // (already prepared — instant)
           reveal.show();
         },
-      });
+      }).then((p) => { pack = p; return p; });
 
       // ---- 3D pack selection ------------------------------------------------
       // The picker fronts everything (z 5). Choosing a pack hue-tints the SVG
@@ -1715,7 +1836,7 @@
         // grow to its EXACT size + position — the breakaway lands right on top of it,
         // and the canvas → SVG cross-dissolve has no seam. (.pack keeps its layout box
         // even while hidden behind the picker, so this measures true.)
-        getHandoffRect: () => stageEl.querySelector(".pack")?.getBoundingClientRect() || null,
+        getHandoffRect: () => pack?.getHandoffRect?.() || stageEl.querySelector(".pack")?.getBoundingClientRect() || null,
         onSelect: (p) => {
           chosenPack = p;
           // hue-match the SVG tear-pack to the chosen variant (0 = the real art).
@@ -1732,6 +1853,9 @@
           await ready;                                // pre-armed → resolves instantly
           document.body.classList.remove("picking");  // real pack appears at the matched rect
           startDissolve();                            // cross-dissolve the canvas into it, then park
+          // once the flat hero has dissolved into the (face-on) 3D pack, let the pack
+          // settle into your hand: it turns to its three-quarter view and starts to float
+          setTimeout(() => pack?.present?.(), 440);
           sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up and play its INTRO, then HOLD at the intro's end until the pack fully opens
         },
         // The entrance animation has finished — only NOW pre-arm the first pack.

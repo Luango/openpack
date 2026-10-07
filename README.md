@@ -1,8 +1,9 @@
 # OpenPack FC
 
 Rip open a pack of football player cards in the browser. Pick a **Premium Gold
-Pack** off a spotlit 3D wheel, tear it open along the seal with your finger,
-and flip through five players, rarest last. The best pulls get a **walkout**:
+Pack** off a spotlit 3D wheel, tear it open with your finger — pinch the corner
+and rip the top strip off, or flip it over and peel the back seam — and flip
+through five players, rarest last. The best pulls get a **walkout**:
 the nation, position and club are teased in the dark before the card drops.
 
 The look is an **awards night**: warm black and dark charcoal, one gold that
@@ -47,6 +48,11 @@ Handy URLs while working:
 - `/?noframe` keeps a desktop on the bare page instead of the iPhone frame
   (`/phone.html` is the frame; it passes its query through to the app).
 - `/?audiodebug` shows a live audio-status HUD.
+- `/?packdebug` adds the 3D pack's developer panel (route, progress scrubber,
+  yaw/pitch, auto open) over the live flow; `/?quality=low|standard|high` forces
+  a quality tier; `/?pack=svg` uses the old flat SVG tear-pack instead.
+- `/tools/pack-lab.html` is the bench for the 3D pack: the pack alone, armed,
+  with the developer panel. Inspect either rip at any progress from any angle.
 - `/coverflow.html` is a cover-flow showcase with one card of every edition.
 - `/tools/card-lab.html` shows every card in the pool, filterable (`?f=toty`,
   `?ids=p01,p02`). It's the bench for tuning the card art.
@@ -224,9 +230,10 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
 ├── phone.html        the desktop presentation: the app inside an iPhone frame
 ├── coverflow.html    cover-flow showcase of the editions
 ├── serve.py          no-cache dev server
-├── docs/             design specs from the original build (tear & exit, sound map)
+├── docs/             design specs: the 3D pack (pack3d.md), the SVG tear & exit, sound map
 ├── tools/
 │   ├── card-lab.html every card in the pool, for tuning the card art
+│   ├── pack-lab.html the 3D pack alone, with its developer panel
 │   ├── art/          the printed art (packart.js) + its live preview
 │   ├── frames/       the two card-frame designs → assets/frames (build.py)
 │   ├── players/      real-player photos → assets/players + src/photos.js
@@ -246,7 +253,19 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
     ├── card.js       the Card component (the <img> + foil layers)
     ├── card.css      card chrome + per-edition foil
     ├── select3d.js   three.js pack wheel on an awards-night stage shader
-    ├── pack.js       the SVG pack you tear open along a finger-drawn path
+    ├── pack3d/       the procedural 3D foil pack you tear open (see docs/pack3d.md)
+    │   ├── config.js     dimensions, art, quality tiers
+    │   ├── geometry.js   lofted envelope, prepared tear seams, fin, wrinkles, card stack
+    │   ├── atlas.js      the UV atlas layout
+    │   ├── textures.js   art composition + procedural normal / roughness-metalness maps
+    │   ├── materials.js  exterior foil, inner foil, torn edges, cards
+    │   ├── lighting.js   code-built reflection room, key light, camera fit
+    │   ├── chain.js      the station chain that shapes the released strip
+    │   ├── deformer.js   per-frame deformation for both rips, normals, edge ribbons
+    │   ├── controller.js the tear state machine (monotonic progress, pause/resume, auto)
+    │   ├── view.js       renderer, interaction, feedback, the open beats, the host API
+    │   └── index.js      front door: 3D pack, or the SVG pack as the fallback
+    ├── pack.js       the flat SVG tear-pack (fallback without WebGL, or ?pack=svg)
     ├── reveal.js     card stack, hit escalation, walkout, haul, Send to Club
     ├── motion.js     shared spring engine
     ├── particles.js  canvas particle system (foil flecks, sparks)
@@ -267,12 +286,20 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
   the lens. The ring sits on a one-pass stage shader with two warm spotlights
   and their beams, camera flashes twinkling in the gallery, an amber pool behind
   the front pack and a polished black floor the packs reflect in. Choosing a
-  pack breaks it away toward the lens, then cross-dissolves into the identical
-  SVG tear-pack.
-- **The tear** ([`pack.js`](src/pack.js)) starts on the top or bottom seal and
-  follows your finger. The rip splits the pouch into two pieces once it crosses,
-  and the small piece flies off. The rules live in
-  [`docs/tear-and-exit.md`](docs/tear-and-exit.md).
+  pack breaks it away toward the lens, then cross-dissolves into the 3D
+  tear-pack, which settles into your hand.
+- **The tear** ([`src/pack3d`](src/pack3d)) is a procedural 3D foil pouch:
+  a lofted envelope with real thickness, crimped seals, a rear fin seam and baked
+  wrinkles, lit by a code-built reflection room, with the printed art mapped on.
+  Two rips, one state machine. **Front:** pinch the notch at the upper-left corner
+  and drag across the top — the sealed header tears off around the whole pack and
+  lifts away in your fingers, then flies clear. **Back:** tap the pack to flip it,
+  pinch the top of the fin seam and drag down — the back splits along the seam and
+  peels open, and the cards come out toward you. Both use prepared seams (no
+  runtime mesh cutting); the design and the departures from it are in
+  [`docs/pack3d.md`](docs/pack3d.md). Without WebGL (or with `?pack=svg`) the
+  flat SVG tear-pack ([`pack.js`](src/pack.js),
+  [`docs/tear-and-exit.md`](docs/tear-and-exit.md)) takes over.
 - **The reveal** ([`reveal.js`](src/reveal.js)) uncovers the stack in place.
   Each promo is announced by an anticipation beat, then a hit scaled by tier
   (rays, flash, stamp, shockwave, haptics), so a TOTW shimmers and a Legend

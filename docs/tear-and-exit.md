@@ -1,4 +1,10 @@
-# Pack tear & exit
+# Pack tear & exit (the flat SVG pack)
+
+> **Superseded for the main flow.** The app now opens the procedural **3D foil pack**
+> ([`src/pack3d`](../src/pack3d), spec: [`pack3d.md`](pack3d.md)), with two rips: the
+> top strip from the front and the fin-seam peel from the back. The SVG pack described
+> here remains the fallback without WebGL and behind `?pack=svg`; the exit slide
+> (`body.revealing #pack-stage`, `--exit-x/--exit-y`) is shared by both.
 
 How a booster is torn open and how the spent pack leaves the screen.
 

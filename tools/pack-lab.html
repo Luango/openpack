@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pack lab — the procedural 3D foil pack</title>
+    <!-- The bench for the 3D pack (src/pack3d): the pack alone on the stage, armed, with
+         the developer panel (route, progress scrubber, yaw/pitch, auto open). Inspect the
+         tear at 0/10/25/50/75/95/100 %, both routes, from any angle.
+           ?quality=low|standard|high   pick the tier
+           ?pack=svg                    the old SVG pack, for comparison -->
+    <link rel="stylesheet" href="../src/base.css" />
+    <link rel="stylesheet" href="../src/card.css" />
+    <script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
+    <style>
+      html, body { height: 100%; overflow: hidden; background: #0a1018; }
+      #pack-stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; touch-action: none; --tell: #ffd49e; --idle-heat: 0; }
+      .pack3d-wrap { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; }
+      .pack3d-wrap.ready { opacity: 1; }
+      .pack3d-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+      .pack-glow { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: -1;
+        opacity: calc(var(--idle-heat, 0) * 0.6); background: radial-gradient(closest-side, color-mix(in srgb, var(--tell, #ffd49e) 80%, #fff) 0%, var(--tell, #ffb877) 34%, transparent 72%); filter: blur(16px); mix-blend-mode: screen; }
+      .pack3d-ui { position: absolute; left: 0; right: 0; bottom: 64px; display: flex; justify-content: center; gap: 10px; }
+      .pack3d-btn { font: 600 13px/1 var(--display, sans-serif); letter-spacing: .12em; text-transform: uppercase; color: #eef2f8; background: rgba(20,24,33,.72); border: 1px solid #2a313f; border-radius: 999px; padding: 10px 16px; cursor: pointer; }
+      .pack3d-cue { position: absolute; left: 0; right: 0; bottom: 34px; margin: 0; text-align: center; font-size: 13px; color: #9aa3b2; pointer-events: none; }
+      .pack-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      .pack3d-notch { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; opacity: .7;
+        background: radial-gradient(circle, #fff 0%, rgba(255,222,150,.95) 42%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255,210,150,.65); }
+      .pack3d-wrap.tearing .pack3d-notch, .pack3d-wrap.opening .pack3d-notch { opacity: 0; }
+      .pack3d-debug { position: fixed; left: 10px; top: 10px; z-index: 20; display: grid; gap: 6px; padding: 10px 12px; background: rgba(10,14,22,.86); border: 1px solid #2a313f; border-radius: 10px; font: 12px/1.4 ui-monospace, monospace; color: #cfd6e2; width: 300px; }
+      .pack3d-debug label { display: grid; grid-template-columns: 64px 1fr 44px; align-items: center; gap: 6px; }
+      .pack3d-debug input[type=range] { width: 100%; }
+      .pack3d-debug button { font: inherit; padding: 4px 8px; }
+      .pack3d-stats { margin: 0; white-space: pre-wrap; color: #8fd; }
+      .lab-title { position: fixed; right: 12px; top: 10px; font: 600 12px/1.4 ui-monospace, monospace; color: #6b7a90; }
+    </style>
+  </head>
+  <body>
+    <div id="pack-stage"></div>
+    <div class="lab-title">pack lab · src/pack3d</div>
+    <script type="module">
+      import { createPackAuto } from "../src/pack3d/index.js";
+      const q = new URLSearchParams(location.search);
+      if (!q.has("packdebug")) { q.set("packdebug", "1"); history.replaceState(null, "", "?" + q); }
+      const pack = await createPackAuto({
+        mountEl: document.getElementById("pack-stage"),
+        config: { artFront: "../assets/pack-hi.webp", artBack: "../assets/pack-back-hi.webp", cardBack: "../assets/card-back.jpg" },
+        onGrab: () => console.log("[lab] grab"),
+        onOpen: () => { console.log("[lab] open → reveal"); document.body.classList.add("revealing"); },
+      });
+      pack.setTell(Number(q.get("tell") || 5));
+      pack.setArmed(true);
+      pack.present?.();
+      window.lab = pack;
+    </script>
+  </body>
+</html>
