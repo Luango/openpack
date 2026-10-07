@@ -124,6 +124,12 @@ export function roundRect(x, y, w, h, r) {
 export const FONT = `"Barlow Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", sans-serif`;
 export const font = (weight, px, italic = false) => `${italic ? "italic " : ""}${weight} ${px}px ${FONT}`;
 
+// The display face for the PRINTED headings (the pack's wordmark, the card back):
+// an engraved Roman capital, the awards-night register — loaded by the page next to
+// Barlow (same non-blocking sheet); a classical serif stands in if it never arrives.
+export const SERIF = `"Cinzel", "Trajan Pro", "Cormorant Garamond", Georgia, "Times New Roman", serif`;
+export const serif = (weight, px) => `${weight} ${px}px ${SERIF}`;
+
 // fillText with manual tracking (canvas letterSpacing isn't everywhere yet).
 // align: "left" | "center" | "right". Returns the drawn width.
 export function spacedText(ctx, text, x, y, spacing = 0, align = "left", stroke = false) {
