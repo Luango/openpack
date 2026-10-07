@@ -14,7 +14,10 @@
 // WITH ALPHA (the frames are shaped — no rectangle around them), cached per
 // card id, and the reveal shows it through the same <img class="card__art"> as
 // before, so the holo layers + Android fixes carry over. card.css clips those
-// layers to the frame's silhouette (data-frame on the card).
+// layers to the frame's silhouette (data-frame on the card). Alongside it comes
+// the PLAYER's silhouette (the same footprint the photo was painted with), so
+// card.css can give the photo its own material — the frame lights as metal, the
+// player as a gloss print.
 
 import { lin, rad, rgba, shade, font, spacedText, fitSize } from "./paint.js";
 import { drawFlag, drawCrest } from "./emblems.js";
@@ -228,7 +231,8 @@ function mysteryBadge(ctx, L, x, y, w, h, r) {
 // ---- the whole card --------------------------------------------------------------
 
 // Paint `card` with its loaded `assets` (loadCardAssets). Leaves everything
-// outside the frame transparent.
+// outside the frame transparent. Returns the player layer (a shared canvas —
+// read it before the next card is painted) for playerMask().
 export function drawCard(ctx, card, assets) {
   const L = lookOf(card);
   const F = LAYOUT[L.family];
@@ -258,11 +262,12 @@ export function drawCard(ctx, card, assets) {
   ctx.restore();
 
   // 3 — the player
+  const player = photoLayer(card, L, F, assets);
   ctx.save();
   ctx.shadowColor = L.dark ? "rgba(0,0,0,0.6)" : "rgba(40,20,0,0.35)";
   ctx.shadowBlur = 26;
   ctx.shadowOffsetY = 8;
-  ctx.drawImage(photoLayer(card, L, F, assets), 0, 0);
+  ctx.drawImage(player, 0, 0);
   ctx.restore();
 
   // 4 — rating, position, flag, crest
@@ -326,6 +331,21 @@ export function drawCard(ctx, card, assets) {
     ctx.restore();
   }
   ctx.restore();
+  return player;
+}
+
+// The player's silhouette as a mask: white, with the photo layer's alpha (soft
+// cut-out edge and chest fade included; its drop shadow is NOT in it — that's
+// shadow on the metal). Half resolution is plenty for a mask.
+function playerMask(player) {
+  const c = document.createElement("canvas");
+  c.width = W / 2; c.height = H / 2;
+  const g = c.getContext("2d");
+  g.drawImage(player, 0, 0, c.width, c.height);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
 }
 
 // Load + paint in one go (the art tools use this for the mystery card).
@@ -336,7 +356,7 @@ export async function paintCard(ctx, card) {
 
 // ---- export to an <img>-able URL, cached per card --------------------------------
 
-const _art = new Map(); // card id → Promise<url>
+const _art = new Map(); // card id → Promise<{ art, player }> (urls)
 const MAX_CACHED = 40;
 
 // WebP keeps the alpha at a fraction of PNG's size; a browser that can't encode
@@ -351,20 +371,23 @@ function canvasURL(c) {
   });
 }
 
+// → { art, player }: the painted card, and the player's silhouette (playerMask).
 export function cardArt(card) {
   if (_art.has(card.id)) return _art.get(card.id);
   const pr = Promise.all([loadCardAssets(card), ensureFonts()]).then(([assets]) => {
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
-    drawCard(c.getContext("2d"), card, assets);
-    return canvasURL(c);
+    const mask = playerMask(drawCard(c.getContext("2d"), card, assets));
+    return Promise.all([canvasURL(c), canvasURL(mask)]).then(([art, player]) => ({ art, player }));
   });
   _art.set(card.id, pr);
   // keep the cache bounded — drop (and revoke) the oldest renders
   if (_art.size > MAX_CACHED) {
     const [oldId, oldPr] = _art.entries().next().value;
     _art.delete(oldId);
-    oldPr.then((u) => { if (u.startsWith("blob:")) URL.revokeObjectURL(u); });
+    oldPr.then((urls) => {
+      for (const u of Object.values(urls)) if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+    });
   }
   return pr;
 }
