@@ -1,12 +1,13 @@
 // emblems.js — nation flags + club badges, drawn on canvas.
 //
 // Flags are the real national flags (public symbols), simplified only where a
-// full coat of arms would be mush at card size. Club badges are deliberately NOT
-// the clubs' crests (those are trademarks): each is composed from a shape, a
-// field pattern and the club's colours, carrying its initials as a monogram (or,
-// for the in-house Legends side, an emblem glyph) — so none borrows a real badge.
+// full coat of arms would be mush at card size. Club badges are each club's real
+// crest (assets/clubs/<id>.webp, taken from its Wikipedia article by
+// tools/clubs/fetch.py); the in-house Legends side has no real crest, so its
+// badge is drawn — a shape, a field pattern and an emblem in its colours — and
+// the same drawn badge stands in for a crest image that fails to load.
 
-import { P, poly, starPath, roundRect, lin, rgba, shade, font, spacedText } from "./paint.js";
+import { P, poly, starPath, roundRect, lin, rgba, shade } from "./paint.js";
 
 // ============================================================================
 //  FLAGS — every flag is drawn into the same 3:2 box, the way a card shows it
@@ -405,8 +406,59 @@ export function drawFlag(ctx, code, x, y, w, h, { radius = h * 0.08, border = tr
 }
 
 // ============================================================================
-//  CRESTS — composed from shape × field × emblem in the club's colours
+//  CRESTS — the club's real crest image, or one composed from shape × field ×
+//  emblem in the club's colours
 // ============================================================================
+
+// The real crest's URL — every club but one with a drawn `crest` spec (Legends).
+export function crestURL(club) {
+  if (!club || club.crest || !club.id) return null;
+  return new URL(`../assets/clubs/${club.id}.webp`, import.meta.url).href;
+}
+
+// A crest image ringed in `color`: the image stamped round a small circle under
+// itself, so a black or navy crest (Juventus, Spurs) still reads on a dark card.
+// Built once per image + colour at the image's own resolution.
+const _keyed = new WeakMap(); // img → Map<color, canvas>
+function keylined(img, color, r) {
+  let byColor = _keyed.get(img);
+  if (!byColor) _keyed.set(img, (byColor = new Map()));
+  if (byColor.has(color)) return byColor.get(color);
+  const c = document.createElement("canvas");
+  c.width = img.width + r * 2;
+  c.height = img.height + r * 2;
+  const g = c.getContext("2d");
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    g.drawImage(img, r + Math.cos(a) * r, r + Math.sin(a) * r);
+  }
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = "source-over";
+  g.drawImage(img, r, r);
+  byColor.set(color, c);
+  return c;
+}
+
+// Draw a real crest image centred at (cx, cy), fitted to an `h`-tall box a
+// little narrower than it is tall (crests run from Spurs' slim cockerel to
+// Leipzig's wide bulls).
+function drawLogo(ctx, img, cx, cy, h, shadow, keyline) {
+  const k = Math.min(h / img.height, (h * 0.86) / img.width);
+  const src = keyline ? keylined(img, keyline, Math.max(2, Math.round(Math.max(img.width, img.height) * 0.022))) : img;
+  const w = src.width * k, hh = src.height * k;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (shadow) {
+    ctx.shadowColor = "rgba(0,0,0,0.42)";
+    ctx.shadowBlur = h * 0.08;
+    ctx.shadowOffsetY = h * 0.03;
+  }
+  ctx.drawImage(src, cx - w / 2, cy - hh / 2, w, hh);
+  ctx.restore();
+}
 
 // Crest outlines in a normalised box (x −50…50, y −60…60)
 const SHAPES = {
@@ -531,23 +583,6 @@ function emblem(ctx, kind, col, dark) {
   }
 }
 
-// a club's initials, centred in the −30…30 emblem box (wider marks shrink to fit)
-function monogram(ctx, text, col, maxW) {
-  ctx.save();
-  ctx.font = font(800, 40);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const w = ctx.measureText(text).width + (text.length - 1) * 1.5;
-  const s = Math.min(1, maxW / w);
-  ctx.scale(s, s);
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = "rgba(0,0,0,0.28)"; // a soft keyline so it reads on any field
-  ctx.fillStyle = col;
-  spacedText(ctx, text, 0, 3, 1.5, "center", true);
-  ctx.restore();
-}
-
 function field(ctx, kind, a, b) {
   ctx.fillStyle = a;
   ctx.fillRect(-60, -70, 120, 140);
@@ -583,11 +618,14 @@ function field(ctx, kind, a, b) {
   }
 }
 
-// Draw a club's crest centred at (cx, cy), `h` tall. `club.crest` = { shape,
-// field, emblem, band }; colours come from club.colors = [primary, secondary, trim].
-export function drawCrest(ctx, club, cx, cy, h, { shadow = true } = {}) {
+// Draw a club's crest centred at (cx, cy), `h` tall: its real crest when `img`
+// (crestURL, loaded) is given — ringed in `keyline` if set — else the drawn
+// badge. `club.crest` = { shape, field, emblem }; colours come from
+// club.colors = [primary, secondary, trim].
+export function drawCrest(ctx, club, cx, cy, h, { shadow = true, img = null, keyline = null } = {}) {
+  if (img) return drawLogo(ctx, img, cx, cy, h, shadow, keyline);
   const [c1, c2, trim] = club.colors;
-  const { shape = "heater", field: fieldKind = "plain", emblem: glyph = "star", band = false } = club.crest || {};
+  const { shape = "heater", field: fieldKind = "plain", emblem: glyph = "ball" } = club.crest || {};
   const s = h / 124;
   const outline = P(SHAPES[shape] || SHAPES.heater);
   ctx.save();
@@ -611,22 +649,12 @@ export function drawCrest(ctx, club, cx, cy, h, { shadow = true } = {}) {
   ctx.scale(0.86, 0.86);
   ctx.clip(outline);
   field(ctx, fieldKind, c1, c2);
-  // an optional "chief" band across the top carrying the club's initials
-  if (band) {
-    ctx.fillStyle = shade(c1, -0.45);
-    ctx.fillRect(-60, -70, 120, 34);
-    ctx.fillStyle = trim;
-    ctx.font = font(800, 22);
-    ctx.textBaseline = "middle";
-    spacedText(ctx, club.short, 0, -45, 2.5, "center");
-  }
   ctx.restore();
 
   // emblem on a soft disc so it reads on any field pattern
   const busy = fieldKind !== "plain";
-  const ey = band ? 10 : 2;
   ctx.save();
-  ctx.translate(0, ey);
+  ctx.translate(0, 2);
   if (busy) {
     ctx.fillStyle = rgba(shade(c1, -0.35), 0.92);
     ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
@@ -635,8 +663,7 @@ export function drawCrest(ctx, club, cx, cy, h, { shadow = true } = {}) {
   }
   ctx.scale(busy ? 0.8 : 1, busy ? 0.8 : 1);
   const ink = busy ? trim : (c2 === c1 ? trim : c2);
-  if (glyph === "monogram") monogram(ctx, club.short, ink, busy ? 64 : 84);
-  else emblem(ctx, glyph, ink, shade(c1, -0.5));
+  emblem(ctx, glyph, ink, shade(c1, -0.5));
   ctx.restore();
 
   // inner keyline + a glossy top-left highlight

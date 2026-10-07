@@ -1543,10 +1543,16 @@
           0 0 44px color-mix(in srgb, var(--tier-color, #fff) 70%, transparent),
           0 22px 50px rgba(0, 0, 0, 0.6);
       }
+      /* the club's real crest (any aspect, contained in the box), ringed in white
+         by the four 1.5px shadows so a black or navy crest reads on the dark stage */
       .wo-crest {
         width: min(38vw, 180px);
-        height: auto;
-        filter: drop-shadow(0 0 26px color-mix(in srgb, var(--tier-color, #fff) 75%, transparent));
+        height: min(42vw, 200px);
+        object-fit: contain;
+        filter:
+          drop-shadow(1.5px 0 0 #fff) drop-shadow(-1.5px 0 0 #fff)
+          drop-shadow(0 1.5px 0 #fff) drop-shadow(0 -1.5px 0 #fff)
+          drop-shadow(0 0 26px color-mix(in srgb, var(--tier-color, #fff) 75%, transparent));
       }
       .wo-pos {
         margin: 0;

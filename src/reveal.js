@@ -19,7 +19,7 @@ import { renderCard } from "./card.js";
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import { rarityToTier, tierOf, TIER_HEX, lighten } from "./rarity.js";
-import { NATIONS, drawFlag, drawCrest, emblemCanvas } from "./emblems.js";
+import { NATIONS, drawFlag, drawCrest, crestURL, emblemCanvas } from "./emblems.js";
 import * as sfx from "./sfx.js";
 import { PHOTOS } from "./photos.js";
 
@@ -684,11 +684,21 @@ export function createReveal({ mountEl, onAgain }) {
     return clue(el, null);
   }
 
+  // the club's real crest (already cached — the card's art loaded it), or the
+  // drawn badge for a club without one (Legends)
   function crestClue(card) {
     if (!card.club) return null;
-    const cv = emblemCanvas((ctx) => drawCrest(ctx, card.club, 90, 100, 180), 180, 200);
-    cv.className = "wo-crest";
-    return clue(cv, card.club.name);
+    const url = crestURL(card.club);
+    let el;
+    if (url) {
+      el = new Image();
+      el.alt = "";
+      el.src = url;
+    } else {
+      el = emblemCanvas((ctx) => drawCrest(ctx, card.club, 90, 100, 180), 180, 200);
+    }
+    el.className = "wo-crest";
+    return clue(el, card.club.name);
   }
 
   // Throw the CURRENT front card off with a little direction + spin (alternating
