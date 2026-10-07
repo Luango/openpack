@@ -2,11 +2,12 @@
 
     python tools/players/fetch.py <cache-dir>
 
-For every id in roster.py: the English Wikipedia article's lead image (only
-free images qualify as a page image) at 1400px, its Commons author + licence,
-and the infobox's `current_club` (printed, to cross-check src/players.js —
-Wikidata's club spells lag behind, the infobox is kept current). Writes
-<cache-dir>/raw/<id>.jpg and <cache-dir>/meta.json; cutout.py takes it from there.
+For every id in roster.py: the file roster.FILE pins (picked with scout.py),
+else the English Wikipedia article's lead image (only free images qualify as a
+page image), at up to 2400px; its Commons author + licence; and the infobox's
+`current_club` (printed, to cross-check src/players.js — Wikidata's club spells
+lag behind, the infobox is kept current). Writes <cache-dir>/raw/<id>.jpg and
+<cache-dir>/meta.json; cutout.py takes it from there.
 """
 
 import json
@@ -88,7 +89,7 @@ def image_info(files):
     for batch in chunks(files, 40):
         d = get(COMMONS, {
             "action": "query", "format": "json", "prop": "imageinfo",
-            "iiprop": "url|size|extmetadata", "iiurlwidth": 1400,
+            "iiprop": "url|size|extmetadata", "iiurlwidth": 2400,
             "titles": "|".join("File:" + f for f in batch),
         })
         norm = {m["to"]: m["from"] for m in d["query"].get("normalized", [])}
