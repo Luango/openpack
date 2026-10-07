@@ -1,9 +1,10 @@
-// emblems.js — nation flags + (fictional) club crests, drawn on canvas.
+// emblems.js — nation flags + club badges, drawn on canvas.
 //
 // Flags are the real national flags (public symbols), simplified only where a
-// full coat of arms would be mush at card size. Clubs are invented — each crest
-// is composed from a shape, a field pattern, an emblem glyph and the club's
-// colours, so no two read alike and none borrows a real badge.
+// full coat of arms would be mush at card size. Club badges are deliberately NOT
+// the clubs' crests (those are trademarks): each is composed from a shape, a
+// field pattern and the club's colours, carrying its initials as a monogram (or,
+// for the in-house Legends side, an emblem glyph) — so none borrows a real badge.
 
 import { P, poly, starPath, roundRect, lin, rgba, shade, font, spacedText } from "./paint.js";
 
@@ -530,6 +531,23 @@ function emblem(ctx, kind, col, dark) {
   }
 }
 
+// a club's initials, centred in the −30…30 emblem box (wider marks shrink to fit)
+function monogram(ctx, text, col, maxW) {
+  ctx.save();
+  ctx.font = font(800, 40);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width + (text.length - 1) * 1.5;
+  const s = Math.min(1, maxW / w);
+  ctx.scale(s, s);
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(0,0,0,0.28)"; // a soft keyline so it reads on any field
+  ctx.fillStyle = col;
+  spacedText(ctx, text, 0, 3, 1.5, "center", true);
+  ctx.restore();
+}
+
 function field(ctx, kind, a, b) {
   ctx.fillStyle = a;
   ctx.fillRect(-60, -70, 120, 140);
@@ -616,7 +634,9 @@ export function drawCrest(ctx, club, cx, cy, h, { shadow = true } = {}) {
     ctx.stroke();
   }
   ctx.scale(busy ? 0.8 : 1, busy ? 0.8 : 1);
-  emblem(ctx, glyph, busy ? trim : (c2 === c1 ? trim : c2), shade(c1, -0.5));
+  const ink = busy ? trim : (c2 === c1 ? trim : c2);
+  if (glyph === "monogram") monogram(ctx, club.short, ink, busy ? 64 : 84);
+  else emblem(ctx, glyph, ink, shade(c1, -0.5));
   ctx.restore();
 
   // inner keyline + a glossy top-left highlight

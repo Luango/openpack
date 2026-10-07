@@ -8,7 +8,7 @@
 // Preview them live at /tools/art/ while tuning.
 
 import { P, lin, rad, rgba, shade, rng, font, spacedText, grainTile, starPath, poly, roundRect } from "../../src/paint.js";
-import { drawCard, ensureFonts, LOOKS, SHIELD_D, ART_W, ART_H } from "../../src/cardart.js";
+import { paintCard, ensureFonts, SHIELD_D, ART_W, ART_H } from "../../src/cardart.js";
 import { drawBall } from "../../src/ball.js";
 import { HIT_ODDS, RARE_GOLD_ODDS } from "../../src/booster.js";
 import { TIERS } from "../../src/rarity.js";
@@ -140,18 +140,24 @@ function brand(ctx, cx, y, scale = 1) {
 
 // ---- a mystery player card (the hero on the pack front) ---------------------------
 
-function mysteryCard() {
+async function mysteryCard() {
   const c = document.createElement("canvas");
   c.width = ART_W; c.height = ART_H;
-  drawCard(c.getContext("2d"), {
-    id: "mystery", edition: "raregold", mystery: true,
+  await paintCard(c.getContext("2d"), {
+    id: "mystery", playerId: "mystery", edition: "raregold", mystery: true,
     ovr: "??", pos: "??", display: "??????", stats: ["??", "??", "??", "??", "??", "??"],
-    look: { seed: 11, skin: "#c98f68", hair: "#2f2018", hairStyle: "quiff", beard: "none", eyes: "#3a2416", jaw: 0.7, face: 0.5, nose: 0.5, lips: 0.5, smile: 0.2, browThick: 0.6, browArch: 0.4, cranium: 0.5, neck: 0.7 },
-    kit: { primary: "#333", secondary: "#555", trim: "#777", pattern: "plain", collar: "crew" },
     seed: 21,
   });
   return c;
 }
+
+// an edition's frame image, for the printed swatches (assets/frames — tools/frames)
+const frameImage = (key) => new Promise((res) => {
+  const im = new Image();
+  im.onload = () => res(im);
+  im.onerror = () => res(null);
+  im.src = new URL(`../../assets/frames/${key}.webp`, import.meta.url).href;
+});
 
 // ---- PACK FRONT ----------------------------------------------------------------------
 
@@ -237,8 +243,13 @@ export async function drawPackFront(ctx) {
   ctx.fillRect(-W, -H, W * 2, H * 2);
   ctx.restore();
 
-  // the hero: a mystery player card, tilted, haloed in gold
-  const card = mysteryCard();
+  // the hero: a mystery player card, tilted, haloed in gold. The card art is
+  // SHAPED (transparent round the frame), so the halo + shadow take its outline.
+  const card = await mysteryCard();
+  const cg = card.getContext("2d");
+  cg.globalCompositeOperation = "source-atop"; // a glint sweeping the card, on the card only
+  cg.fillStyle = lin(cg, 0, 0, ART_W, ART_H, [[0.3, "rgba(255,255,255,0)"], [0.4, "rgba(255,255,255,0.4)"], [0.47, "rgba(255,255,255,0)"]]);
+  cg.fillRect(0, 0, ART_W, ART_H);
   ctx.save();
   ctx.translate(cx, CY);
   ctx.rotate(-0.075);
@@ -246,19 +257,11 @@ export async function drawPackFront(ctx) {
   ctx.scale(s, s);
   ctx.shadowColor = "rgba(255,200,90,0.85)";
   ctx.shadowBlur = 90;
-  ctx.fillStyle = "#f2c54b";
-  ctx.fill(roundRect(-ART_W / 2, -ART_H / 2, ART_W, ART_H, 40));
+  ctx.drawImage(card, -ART_W / 2, -ART_H / 2);
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = 50;
   ctx.shadowOffsetY = 30;
-  ctx.save();
-  ctx.clip(roundRect(-ART_W / 2, -ART_H / 2, ART_W, ART_H, 40));
   ctx.drawImage(card, -ART_W / 2, -ART_H / 2);
-  // a glint sweeping the card
-  ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = lin(ctx, -ART_W / 2, -ART_H / 2, ART_W / 2, ART_H / 2, [[0.3, "rgba(255,255,255,0)"], [0.4, "rgba(255,255,255,0.45)"], [0.47, "rgba(255,255,255,0)"]]);
-  ctx.fillRect(-ART_W / 2, -ART_H / 2, ART_W, ART_H);
-  ctx.restore();
   ctx.restore();
 
   // sparkles around the card
@@ -368,17 +371,11 @@ export async function drawPackBack(ctx) {
   spacedText(ctx, "EDITIONS", LX, 478, 8, "left");
   const gold = Math.round(RARE_GOLD_ODDS * 100);
   const odds = (t) => (t >= 4 ? `${HIT_ODDS[t]}% OF THE PROMO SLOT` : t === 3 ? `${gold}% OF THE GOLD SLOT` : t === 2 ? `${100 - gold}% OF THE GOLD SLOT` : "FILLS THE FIRST THREE SLOTS");
+  const frames = await Promise.all(TIERS.map((t) => frameImage(t.key)));
   TIERS.forEach((t, i) => {
     const y = 506 + i * 86;
-    const L = LOOKS[t.vfx];
-    // a mini card in the edition's own material
-    ctx.save();
-    ctx.fillStyle = lin(ctx, LX, y, LX + 46, y + 64, [[0, L.base[0]], [0.5, L.base[1]], [1, L.base[2]]]);
-    ctx.fill(roundRect(LX, y, 46, 64, 7));
-    ctx.strokeStyle = L.trim;
-    ctx.lineWidth = 2.5;
-    ctx.stroke(roundRect(LX + 5, y + 5, 36, 54, 5));
-    ctx.restore();
+    // a mini card: the edition's own frame
+    if (frames[i]) ctx.drawImage(frames[i], LX - 2, y - 2, 50, 70);
     ctx.fillStyle = "#f4f7fb";
     ctx.font = font(700, 32);
     spacedText(ctx, t.label.toUpperCase(), LX + 64, y + 30, 1.2, "left");
@@ -434,13 +431,13 @@ export async function drawPackBack(ctx) {
 
   const small = [
     "A FAN-MADE PACK-OPENING",
-    "CONCEPT. EVERY PLAYER, CLUB",
-    "AND CREST IN THIS SET IS",
-    "FICTIONAL; NATION FLAGS ARE",
-    "SHOWN AS PUBLIC SYMBOLS.",
-    "NOT AFFILIATED WITH ANY",
-    "LEAGUE, FEDERATION OR",
-    "GAME PUBLISHER.",
+    "CONCEPT. PLAYER PHOTOS FROM",
+    "WIKIMEDIA COMMONS, CREDITED",
+    "ON EVERY CARD. CLUB BADGES",
+    "ARE PLAIN MONOGRAMS, NOT",
+    "OFFICIAL CRESTS. NOT",
+    "AFFILIATED WITH ANY PLAYER,",
+    "CLUB, LEAGUE OR PUBLISHER.",
   ];
   ctx.fillStyle = rgba("#dfe7f3", 0.7);
   ctx.font = font(600, 27);

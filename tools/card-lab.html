@@ -10,7 +10,7 @@
   header { padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--w, 220px), 1fr)); gap: 18px; padding: 16px; }
   figure { margin: 0; }
-  canvas { width: 100%; aspect-ratio: 63 / 88; border-radius: 12px; display: block; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  canvas { width: 100%; aspect-ratio: 63 / 88; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.5)); }
   figcaption { margin-top: 6px; color: #8b95a3; font-size: 12px; }
   button, select { font: inherit; }
 </style>
@@ -32,7 +32,7 @@
 <div class="grid" id="grid"></div>
 <script type="module">
   import { POOL } from "../src/pool.js";
-  import { drawCard, ensureFonts, ART_W, ART_H } from "../src/cardart.js";
+  import { paintCard, ensureFonts, ART_W, ART_H } from "../src/cardart.js";
   const grid = document.getElementById("grid");
   const sel = document.getElementById("filter");
   const size = document.getElementById("size");
@@ -51,22 +51,21 @@
       list = POOL.filter((c) => !seen.has(c.edition) && seen.add(c.edition));
     } else if (sel.value === "all") list = POOL;
     else list = POOL.filter((c) => c.edition === sel.value);
-    // ?hair=dreads / ?beard=full / ?ids=p01,p02 narrow the view while tuning
-    if (params.get("hair")) list = POOL.filter((c) => c.look.hairStyle === params.get("hair"));
-    if (params.get("beard")) list = list.filter((c) => c.look.beard === params.get("beard"));
+    // ?ids=p01,p02 narrows the view to those players (every edition) while tuning
     if (params.get("ids")) list = POOL.filter((c) => params.get("ids").split(",").includes(c.playerId));
     const t0 = performance.now();
-    for (const card of list) {
+    await Promise.all(list.map(async (card) => {
       const fig = document.createElement("figure");
       const cv = document.createElement("canvas");
       cv.width = ART_W; cv.height = ART_H;
-      drawCard(cv.getContext("2d"), card);
       fig.append(cv);
       const cap = document.createElement("figcaption");
-      cap.textContent = `${card.id} · ${card.rarity} · ${card.look.hairStyle}/${card.look.beard}`;
+      cap.textContent = `${card.id} · ${card.rarity} · ${card.club?.name || ""}`;
       fig.append(cap);
       grid.append(fig);
-    }
+      await paintCard(cv.getContext("2d"), card);
+    }));
+    window.labReady = true;
     document.getElementById("info").textContent = `${list.length} cards · ${(performance.now() - t0).toFixed(0)}ms · pool ${POOL.length}`;
   }
   sel.onchange = render;

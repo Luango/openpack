@@ -115,7 +115,7 @@ body {
 /* floating variant for the full-screen pack page */
 .app-nav--floating {
   position: fixed;
-  top: calc(14px + env(safe-area-inset-top, 0px));
+  top: calc(14px + var(--safe-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;

@@ -159,6 +159,49 @@
   border-radius: inherit;
 }
 
+/* ---- shaped player cards (data-frame) ------------------------------------
+ * A painted player card is its FRAME's silhouette with nothing around it
+ * (cardart.js bakes it with alpha). So the face is masked to that silhouette —
+ * the holo / glare / sparkle / gleam layers stop at the frame's edge instead of
+ * lighting a rectangle — and the rectangular box-shadow gives way to
+ * .card__shade: a pre-blurred silhouette (assets/frames/shade-*.png, padded 10%
+ * per side, hence inset:-10%) tinted dark and dropped a touch, so the shadow has
+ * the frame's shape. .card__glow is the same silhouette in the tier colour — the
+ * rarity glow the reveal fades in (index.html). Both are STATIC masked fills:
+ * no animated filter, nothing re-rastered as the card tilts. */
+.card[data-frame] {
+  border-radius: 0;
+  background: none;
+  outline: none;
+}
+.card[data-frame="gold"] { --frame-mask: url("../assets/frames/mask-gold.png"); --frame-shade: url("../assets/frames/shade-gold.png"); }
+.card[data-frame="icon"] { --frame-mask: url("../assets/frames/mask-icon.png"); --frame-shade: url("../assets/frames/shade-icon.png"); }
+.card--detail[data-frame] { box-shadow: none; }
+.card[data-frame] .card__art { background: none; }
+.card[data-frame] .card__face,
+.card--grid[data-frame] {
+  -webkit-mask: var(--frame-mask) center / 100% 100% no-repeat;
+  mask: var(--frame-mask) center / 100% 100% no-repeat;
+}
+.card__shade,
+.card__glow {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  -webkit-mask: var(--frame-shade) center / 100% 100% no-repeat;
+  mask: var(--frame-shade) center / 100% 100% no-repeat;
+}
+.card__shade {
+  background: rgba(0, 0, 0, 0.6);
+  transform: translateY(4%);
+}
+.card__glow {
+  background: var(--tier-color);
+  opacity: 0;
+  transform: scale(1.05);
+  transition: opacity 0.35s ease;
+}
+
 /* card back — the OpenPack FC back (assets/card-back.jpg, rendered from
    tools/art/card-back.html), shown when the card is turned to its back (the front
    face hides via backface-visibility). The card rounds + clips the corners, so

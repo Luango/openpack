@@ -4,8 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>OpenPack FC — tear it open</title>
-    <meta name="description" content="Rip open a pack of football player cards — fictional stars, real walkouts." />
+    <meta name="description" content="Rip open a pack of football player cards — real stars, real walkouts." />
     <meta name="theme-color" content="#0a1018" />
+    <!-- added to a home screen it runs full-screen, under a translucent status bar -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="OpenPack FC" />
+    <!-- MOBILE FIRST. The app is designed for a phone: on a wide, mouse-driven screen
+         it hands over to phone.html, which runs this page inside an iPhone frame (as
+         an iframe with a true 393×852 viewport). Inside the frame (?phone=1) there are
+         no real safe-area insets, so the frame's status bar + home indicator are
+         cleared via --safe-* instead. ?noframe keeps a desktop on the bare page.
+         First thing in <head>, so a redirect fires before anything else loads. -->
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        if (q.has("phone")) document.documentElement.classList.add("in-phone");
+        else if (!q.has("noframe") && matchMedia("(min-width: 700px) and (min-height: 600px) and (pointer: fine)").matches)
+          location.replace("phone.html" + location.search + location.hash);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23e8eaef'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%238a8f9c' stroke-width='1.6' fill='none'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='%231b1c22'/%3E%3Cpath d='M50.00 36.50 L62.84 45.83 L57.94 60.92 L42.06 60.92 L37.16 45.83 Z' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%231b1c22' stroke-width='2.4' stroke-opacity='0.55'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="src/base.css" />
     <link rel="stylesheet" href="src/card.css" />
@@ -55,6 +74,19 @@
         color-scheme: dark;
         /* the sporty display face for UI labels (stamps, captions, buttons) */
         --display: "Barlow Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+        /* the device's safe areas — every edge-pinned control pads by these */
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
+      }
+      /* inside phone.html's iPhone frame: clear its status bar / Dynamic Island and
+         home indicator, as iOS would report for a full-screen app */
+      html.in-phone {
+        --safe-top: 54px;
+        --safe-right: 0px;
+        --safe-bottom: 30px;
+        --safe-left: 0px;
       }
       html, body {
         margin: 0;
@@ -311,8 +343,8 @@
          loud chime mid-celebration. Volume + mute persist (see src/sfx.js keys). */
       .audio-ctrl {
         position: fixed;
-        top: calc(14px + env(safe-area-inset-top, 0px));
-        right: calc(14px + env(safe-area-inset-right, 0px));
+        top: calc(14px + var(--safe-top));
+        right: calc(14px + var(--safe-right));
         z-index: 11;
         display: flex;
         align-items: center;
@@ -546,7 +578,7 @@
         position: fixed;
         left: 0;
         right: 0;
-        bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(26px + var(--safe-bottom));
         text-align: center;
         font-size: 13px;
         color: #9aa3b2;
@@ -958,12 +990,17 @@
           0 0 48px 4px color-mix(in srgb, var(--tier-color) 70%, transparent),
           0 40px 80px rgba(0, 0, 0, 0.6);
       }
+      /* …a SHAPED player card glows in its frame's silhouette instead (card.css) */
+      .reveal__slot.front.rare .card--detail[data-frame],
+      .reveal.haul .reveal__slot.haul-hero .card--detail[data-frame] { box-shadow: none; }
+      .reveal__slot.front.rare .card__glow { opacity: 0.7; }
+      .reveal.haul .reveal__slot.haul-hero .card__glow { opacity: 0.85; }
 
       /* status block — a teach sub-line. Fades in after the card lands; rides above
          the stage with a legibility floor so it survives the flash + iridescent aura. */
       .reveal__status {
         position: fixed;
-        left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+        left: 0; right: 0; bottom: calc(26px + var(--safe-bottom));
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -982,6 +1019,19 @@
         color: #e7ebf2;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); /* legibility over a bright stage */
       }
+      /* the photo credit (author · licence → its Commons page) under each card */
+      .reveal__credit {
+        max-width: min(86vw, 360px);
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 10.5px;
+        color: rgba(231, 235, 242, 0.55);
+        text-decoration: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+      }
+      .reveal__credit[hidden] { display: none; }
+      .reveal.show-status .reveal__credit { pointer-events: auto; }
       /* visually-hidden live region — announces the card to screen readers */
       .reveal__sr {
         position: fixed;
@@ -993,7 +1043,7 @@
       .reveal__again {
         position: fixed;
         left: 50%;
-        bottom: calc(54px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(54px + var(--safe-bottom));
         transform: translateX(-50%);
         min-height: 44px; /* comfortable thumb target */
         padding: 13px 40px;
@@ -1029,7 +1079,7 @@
       .reveal__binder {
         position: fixed;
         left: 50%;
-        bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(40px + var(--safe-bottom));
         width: 92px;
         aspect-ratio: 72 / 88;
         transform: translate(-50%, 170px) scale(0.9);
@@ -1267,7 +1317,7 @@
       .reveal__haul-cap {
         position: fixed;
         left: 0; right: 0;
-        top: calc(64px + env(safe-area-inset-top, 0px));
+        top: calc(64px + var(--safe-top));
         text-align: center;
         pointer-events: none;
         opacity: 0;
