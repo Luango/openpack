@@ -1,15 +1,14 @@
 # roster.py — which real player each card id is, for the photo pipeline.
 #
-# id → English Wikipedia article title. The pipeline (fetch.py) takes the
-# article's lead image — Wikipedia only serves FREE images as a page image, so
-# every photo is Commons-licensed (CC BY / CC BY-SA / CC0 / PD) — and records
-# its author + licence for the credits (src/photos.js). Gameplay data (nation,
-# club, position, rating) lives in src/players.js; keep the ids in sync.
+# id → English Wikipedia article title (for the infobox club, and the lead
+# image as a fallback). Every photo is Commons-licensed (CC BY / CC BY-SA /
+# CC0 / PD); fetch.py records its author + licence for the credits
+# (src/photos.js). Gameplay data (nation, club, position, rating) lives in
+# src/players.js; keep the ids in sync.
 #
-# Some articles lead with a photo that won't crop to a card portrait (a group
-# shot, a side-on action frame, an old newsprint scan). FILE pins a specific
-# Commons file instead; CROP nudges the automatic head-and-shoulders crop
-# (see cutout.py).
+# A card wants a BUST SHOT — facing the lens, level, square shoulders, sharp,
+# alone — which an article's lead image often isn't. FILE pins the one picked
+# from scout.py's ranked candidates; CROP nudges the automatic crop (cutout.py).
 
 ROSTER = {
     # ---- golds ----------------------------------------------------------------
@@ -23,7 +22,7 @@ ROSTER = {
     "p08": "Jude Bellingham",
     "p09": "Rodri (footballer, born 1996)",
     "p10": "Pedri",
-    "p11": "Virgil van Dijk",
+    "p11": "Gabriel Magalhães",
     "p12": "Thibaut Courtois",
     "p13": "Achraf Hakimi",
     "p14": "Florian Wirtz",
@@ -47,9 +46,9 @@ ROSTER = {
     "p32": "Alisson Becker",
     "p33": "Luka Modrić",
     "p34": "Christian Pulisic",
-    "p35": "Kaoru Mitoma",
+    "p35": "Alexis Mac Allister",
     "p36": "Alexander Isak",
-    "p37": "Cole Palmer",
+    "p37": "Aurélien Tchouaméni",
     "p38": "Joško Gvardiol",
     "p39": "Michael Olise",
     "p40": "Robert Lewandowski",
@@ -58,12 +57,12 @@ ROSTER = {
     "p43": "Pau Cubarsí",
     "p44": "Nuno Mendes (footballer, born 2002)",
     "p45": "Nico Williams",
-    "p46": "Arda Güler",
+    "p46": "Kai Havertz",
     "p47": "Désiré Doué",
     "p48": "Manuel Neuer",
     "p49": "Antoine Griezmann",
     "p50": "Jules Koundé",
-    "p51": "Takefusa Kubo",
+    "p51": "João Neves",
     "p52": "Sadio Mané",
     "p53": "Mohammed Kudus",
     "p54": "Jonathan David",
@@ -71,23 +70,23 @@ ROSTER = {
     "p56": "N'Golo Kanté",
     # ---- silvers: the old guard + the steady pros ------------------------------
     "p57": "Thomas Müller",
-    "p58": "Olivier Giroud",
-    "p59": "Ángel Di María",
-    "p60": "James Rodríguez",
-    "p61": "Hugo Lloris",
-    "p62": "Kyle Walker",
+    "p58": "Yassine Bounou",
+    "p59": "Ismael Saibari",
+    "p60": "Brahim Díaz",
+    "p61": "Édouard Mendy",
+    "p62": "Kalidou Koulibaly",
     "p63": "Thomas Partey",
     "p64": "Leon Bailey",
     "p65": "Xherdan Shaqiri",
     "p66": "Raúl Jiménez",
     "p67": "Marco Reus",
-    "p68": "Alexis Sánchez",
-    "p69": "Memphis Depay",
+    "p68": "Bernardo Silva",
+    "p69": "Morgan Rogers",
     "p70": "Ivan Perišić",
     "p71": "Jordan Henderson",
     "p72": "Hirving Lozano",
     "p73": "Thiago Silva",
-    "p74": "Jamie Vardy",
+    "p74": "Amad Diallo",
     "p75": "Marcelo Brozović",
     "p76": "Teemu Pukki",
     "p77": "Weston McKennie",
@@ -101,49 +100,100 @@ ROSTER = {
     "p84": "Ayyoub Bouaddi",
     "p85": "Eli Junior Kroupi",
     "p86": "Luka Vušković",
-    "p87": "Jobe Bellingham",
+    "p87": "Nico Paz",
     "p88": "Lucas Bergvall",
-    "p89": "Ethan Nwaneri",
+    "p89": "Rayan Cherki",
     "p90": "Kobbie Mainoo",
     "p91": "Warren Zaïre-Emery",
     "p92": "Endrick (footballer, born 2006)",
     "p93": "Estêvão (footballer, born 2007)",
-    "p94": "Leny Yoro",
+    "p94": "Neil El Aynaoui",
     # ---- legends --------------------------------------------------------------
     "l01": "Pelé",
     "l02": "Diego Maradona",
     "l03": "Zinedine Zidane",
     "l04": "Ronaldo (Brazilian footballer)",
     "l05": "Johan Cruyff",
-    "l06": "Thierry Henry",
-    "l07": "Paolo Maldini",
+    "l06": "David Beckham",
+    "l07": "Zlatan Ibrahimović",
     "l08": "Ronaldinho",
     "l09": "Gianluigi Buffon",
     "l10": "Didier Drogba",
 }
 
-# id → a specific Commons file to use instead of the article's lead image
+# id → a specific Commons file to use instead of the article's lead image —
+# the bust shots picked from scout.py's candidates
 FILE = {
-    "p13": "Achraf Hakimi Morocco v Norway 7 June 2026-32.jpg",           # lead image has a team-mate fused on
-    "p21": "Norway Italy - June 2025 B 33 - Gianluigi Donnarumma (close-up).jpg",  # lead image is in a suit
-    "p35": "Kaoru Mitoma (2022).jpg",                       # lead image is a low-res TV grab
+    "p01": "Kylian Mbappe France v Spain 7.24.26-052.jpg",
+    "p03": "Ousmane Dembele France v Spain 7.24.26-129.jpg",
+    "p04": "Lamine Yamal Argentina v Spain 19 July 2026-214.jpg",
+    "p05": "Harry Kane 9 England v Ghana at 2026 Fifa World Cup by YantsImages 01.jpg",
+    "p06": "Mohamed Salah Argentina v Egypt 7 July 2026-163.jpg",
+    "p07": "Vinicius Junior Brazil V Morocco 13 June 2026-94.jpg",
+    "p08": "Jude Bellingham England v Panama 27 June 26-160.jpg",
+    "p09": "Rodri France v Spain 7.24.26-260.jpg",
+    "p10": "Pedri France v Spain 7.24.26-244.jpg",
+    "p11": "1 Gabriel Magalhães 2026.jpg",
+    "p13": "Achraf Hakimi Morocco v Norway 7 June 2026-32.jpg",
+    "p15": "Jamal Musiala Ecuador v Germany 25 June 2026-174.jpg",
+    "p17": "Federico Valverde.jpg",
+    "p20": "Vitinha USMNT v Portugal Mar 31 2026-139.jpg",
+    "p21": "Gianluigi Donnarumma (31895135436).jpg",
+    "p22": "Declan Rice England v Ghana 23 June 2026-172.jpg",
+    "p32": "Alisson Becker Brazil V Morocco 13 June 2026-65 (cropped).jpg",
+    "p34": "Christian Pulisic Belgium v USA 6 July 2026-120.jpg",
+    "p35": "Alexis Mac Allister Argentina v Egypt 7 July 2026-183.jpg",
+    "p36": "UEFA EURO qualifiers Sweden vs Spain 20191015 Alexander Isak 56 (cropped).jpg",
+    "p37": "Aurelien Tchouameni France v Morocco 9 July 2026-053.jpg",
     "p40": "Robert Lewandowski 2018, JAP-POL (cropped).jpg",
     "p41": "Alphonso Davies Canada v Qatar 18 June 2026-030.jpg",
-    "p49": "Antoine Griezmann in 2017 (cropped).jpg",
-    "p53": "Mohammed Kudus of West Ham United (cropped).jpeg",
+    "p42": "Kevin De Bruyne USMNT v Belgium Mar 28 2026-30.jpg",
+    "p43": "Pau Cubarsi Argentina v Spain 19 July 2026-287.jpg",
+    "p46": "Kai Havertz Ecuador v Germany 25 June 2026-173.jpg",
+    "p47": "Desire Doue France v Paraguay 4 July 2026-192.jpg",
+    "p48": "Manuel Neuer Ecuador v Germany 25 June 2026-025.jpg",
+    "p49": "Antoine Griezmann 2018.jpg",
+    "p50": "Jules Kounde France v Spain 7.24.26-180.jpg",
+    "p51": "Joao Neves Croatia v Portugal 2 July 2026-223.jpg",
+    "p53": "Mohammed Kudus of West Ham United.jpeg",
+    "p54": "Jonathan David Canada v Qatar 18 June 2026-242.jpg",
     "p56": "N'Golo Kante France v Senegal 16 June 2026-267.jpg",
+    "p57": "Thomas Müller 2022 (cropped).jpg",
+    "p58": "Yassine Bounou Brazil V Morocco 13 June 2026-169.jpg",
+    "p59": "Ismael Saibari France v Morocco 9 July 2026-039.jpg",
+    "p60": "Brahim Diaz vs Niger.jpg",
+    "p61": "Edouard Mendy France v Senegal 16 June 2026-375 (cropped).jpg",
+    "p62": "Kalidou Koulibaly France v Senegal 16 June 2026-370 (cropped).jpg",
+    "p67": "FIFA WC-qualification 2014 - Austria vs. Germany 2012-09-11 - Marco Reus 01.JPG",
+    "p68": "Bernardo Silva Croatia v Portugal 2 July 2026-238.jpg",
+    "p69": "Morgan Rogers England v Panama 27 June 26-144 (cropped).jpg",
+    "p71": "Jordan Henderson England v Ghana 23 June 2026-071.jpg",
+    "p74": "Amad Diallo Cote D'Ivoire v Ecuador 14 June 2026-256 (cropped).jpg",
     "p76": "Teemu Pukki S04.jpg",
-    # legends: playing-days photos over the later public-appearance leads
-    "l01": "Pelé México 70.jpg",
+    "p78": "Tyler Adams Australia v USA 19 June 2026-198.jpg",
+    "p79": "Franck Kessie Cote D'Ivoire v Ecuador 14 June 2026-122.jpg",
+    "p82": "1 max dowman arsenal 2025.jpg",
+    "p84": "Ayyoub Bouaddi France v Morocco 9 July 2026-034.jpg",
+    "p87": "Nico Paz Argentina v Spain 19 July 2026-026.jpg",
+    "p89": "Rayan Cherki France v Sweden 6.30.26-249.jpg",
+    "p91": "Warren Zaire-Emery France v Senegal 16 June 2026-271.jpg",
+    "p92": "Endrick-Palmeiras-Liverpool-abr24 (cropped).jpg",
+    "p93": "Estevao-Palmeiras-Criciuma-sep24-5.jpg",
+    "p94": "Neil El Aynaoui France v Morocco 9 July 2026-122.jpg",
+    "l01": "Stamp of Ajman - 1968 - Colnect 1006776 - Edson Arantes do Nascimento - Pelé - 1940 FC Santos.jpeg",
     "l02": "Maradona 1986 vs italy.jpg",
-    "l06": "Thierry Henry Arsenal U19s Vs Olympiacos (cropped).jpg",
-    "l09": "Gianluigi Buffon (31784615942) (cropped).jpg",
+    "l03": "Zinedine Zidane (41758545214).jpg",
+    "l05": "Johan Cruyff opent zijn schoenenwinkel in Kinkerstraat Amsterdam. J. Cruyff voor, Bestanddeelnr 923-0460.jpg",
+    "l06": "David Beckham MLS All Stars 2011.jpg",
+    "l07": "Zlatan Ibrahimović-13.jpg",
+    "l09": "Gianluigi Buffon (2014).jpg",
+    "l10": "Didier Drogba (2019).jpg",
 }
 
 # id → crop nudges for cutout.py: dx/dy shift the crop centre (in face widths,
 # + = right/down), zoom > 1 frames tighter
 CROP = {
-    "p61": {"dx": 0.2},
-    "l01": {"zoom": 1.45},  # frame above the sticker's name bar
-    "l06": {"zoom": 1.25},
+    "p49": {"zoom": 1.3},  # a small, low-res source — frame the head up
+    "l07": {"zoom": 1.2},  # a press microphone below the chin
+    "l03": {"zoom": 1.3},  # trophy handles below the collar — frame them out
 }
