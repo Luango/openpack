@@ -9,8 +9,9 @@
 // tools/players/roster.py, then a re-run of that pipeline. Clubs follow each
 // player's Wikipedia infobox as of October 2026.
 //
-// Club badges are NOT the clubs' crests (those are trademarks): every club
-// carries a plain monogram badge in its colours (emblems.js drawCrest).
+// Club badges are each club's real crest (assets/clubs/<id>.webp, fetched from
+// its Wikipedia article by tools/clubs/fetch.py — adding a club is one row here
+// + one there, then a re-run).
 //
 // buildPool() turns the squad into the collectible pool: each player's base card
 // (Bronze < 65 ≤ Silver < 75 ≤ Gold, the marquee golds Rare) plus the promo
@@ -23,56 +24,56 @@ export const SET_ID = "opfc26";
 export const SET_NAME = "OpenPack FC · Ultimate XI";
 
 // ---- clubs ---------------------------------------------------------------------
-// colors: [primary, secondary, trim] · crest: badge shape + field (monogram on top)
-const club = (name, short, colors, shape = "round", field = "plain") =>
-  ({ name, short, colors, crest: { shape, field, emblem: "monogram" } });
+// colors: [primary, secondary, trim] — the club's colours, for UI accents and the
+// drawn stand-in badge should its crest image fail to load
+const club = (name, colors) => ({ name, colors });
 
 export const CLUBS = {
-  RMA: club("Real Madrid", "RMA", ["#f4f4f4", "#00529f", "#febe10"]),
-  MCI: club("Manchester City", "MCI", ["#6cabdd", "#ffffff", "#1c2c5b"]),
-  PSG: club("Paris Saint-Germain", "PSG", ["#004170", "#da291c", "#ffffff"]),
-  BAR: club("FC Barcelona", "FCB", ["#a50044", "#004d98", "#edbb00"], "heater", "stripes"),
-  BAY: club("Bayern Munich", "FCB", ["#dc052d", "#ffffff", "#0066b2"]),
-  TRA: club("Trabzonspor", "TS", ["#8c1d40", "#5bb6e8", "#ffffff"], "heater", "stripes"),
-  LIV: club("Liverpool", "LFC", ["#c8102e", "#f6eb61", "#00b2a9"], "heater"),
-  ARS: club("Arsenal", "AFC", ["#ef0107", "#ffffff", "#9c824a"], "heater"),
-  INT: club("Inter Milan", "INT", ["#0068a8", "#111111", "#d4af37"], "round", "stripes"),
-  MUN: club("Manchester United", "MUFC", ["#da291c", "#111111", "#fbe122"], "heater"),
-  MIA: club("Inter Miami", "MIA", ["#f7b5cd", "#231f20", "#ffffff"]),
-  NAS: club("Al-Nassr", "NAS", ["#fcd116", "#1d3d8f", "#ffffff"]),
-  LAF: club("Los Angeles FC", "LAFC", ["#111111", "#c39e6d", "#ffffff"], "heater"),
-  GAL: club("Galatasaray", "GS", ["#a90432", "#fdb912", "#ffffff"], "round", "halves"),
-  MIL: club("AC Milan", "ACM", ["#fb090b", "#111111", "#ffffff"], "spanish", "stripes"),
-  BHA: club("Brighton & Hove Albion", "BHA", ["#0057b8", "#ffffff", "#ffcd00"]),
-  CHE: club("Chelsea", "CFC", ["#034694", "#ffffff", "#dba111"]),
-  CHF: club("Chicago Fire", "CF", ["#c8102e", "#0a174a", "#ffffff"], "modern"),
-  NAP: club("Napoli", "NAP", ["#12a0d7", "#ffffff", "#003c82"]),
-  ATH: club("Athletic Club", "ATH", ["#ee2523", "#ffffff", "#111111"], "heater", "stripes"),
-  JUV: club("Juventus", "JUV", ["#111111", "#ffffff", "#c9a227"], "modern", "stripes"),
-  ORL: club("Orlando City", "OCSC", ["#633492", "#fde192", "#ffffff"], "modern"),
-  TOT: club("Tottenham Hotspur", "THFC", ["#ffffff", "#132257", "#132257"], "modern"),
-  ATM: club("Atlético Madrid", "ATM", ["#cb3524", "#ffffff", "#262f61"], "heater", "stripes"),
-  FEN: club("Fenerbahçe", "FB", ["#ffed00", "#00205b", "#ffffff"], "round", "stripes"),
-  VAN: club("Vancouver Whitecaps", "VAN", ["#00245d", "#9dc2ea", "#ffffff"]),
-  SHB: club("Al-Shabab", "SHB", ["#ffffff", "#1d1d1d", "#1d1d1d"]),
-  OLY: club("Olympiacos", "OLY", ["#e2001a", "#ffffff", "#e2001a"], "round", "stripes"),
-  BAS: club("FC Basel", "FCB", ["#d6001c", "#1d3a8a", "#ffffff"], "heater", "halves"),
-  WOL: club("Wolverhampton Wanderers", "WOL", ["#fdb913", "#231f20", "#ffffff"], "modern"),
-  LAG: club("LA Galaxy", "LAG", ["#00245d", "#ffd200", "#ffffff"]),
-  PSV: club("PSV Eindhoven", "PSV", ["#ed1c24", "#ffffff", "#111111"], "heater", "stripes"),
-  SAD: club("Al-Sadd", "SAD", ["#ffffff", "#111111", "#b8962e"]),
-  HJK: club("HJK Helsinki", "HJK", ["#0033a0", "#ffffff", "#ffffff"]),
-  BOU: club("Bournemouth", "AFCB", ["#da291c", "#111111", "#ffffff"], "heater", "stripes"),
-  ATA: club("Atalanta", "ATA", ["#1e71b8", "#111111", "#ffffff"], "heater", "stripes"),
-  ITT: club("Al-Ittihad", "ITT", ["#ffcc00", "#111111", "#ffffff"], "round", "stripes"),
-  CRY: club("Crystal Palace", "CPFC", ["#1b458f", "#c4122e", "#ffffff"], "heater", "halves"),
-  FLU: club("Fluminense", "FLU", ["#870a28", "#006140", "#ffffff"], "heater", "stripes"),
-  HIL: club("Al Hilal", "HIL", ["#0055a5", "#ffffff", "#ffffff"]),
-  AHL: club("Al-Ahli", "AHL", ["#00843d", "#ffffff", "#ffffff"]),
-  COM: club("Como", "COMO", ["#0d3c8c", "#ffffff", "#ffffff"]),
-  RBL: club("RB Leipzig", "RBL", ["#ffffff", "#dd0741", "#001f47"], "heater"),
+  RMA: club("Real Madrid", ["#f4f4f4", "#00529f", "#febe10"]),
+  MCI: club("Manchester City", ["#6cabdd", "#ffffff", "#1c2c5b"]),
+  PSG: club("Paris Saint-Germain", ["#004170", "#da291c", "#ffffff"]),
+  BAR: club("FC Barcelona", ["#a50044", "#004d98", "#edbb00"]),
+  BAY: club("Bayern Munich", ["#dc052d", "#ffffff", "#0066b2"]),
+  TRA: club("Trabzonspor", ["#8c1d40", "#5bb6e8", "#ffffff"]),
+  LIV: club("Liverpool", ["#c8102e", "#f6eb61", "#00b2a9"]),
+  ARS: club("Arsenal", ["#ef0107", "#ffffff", "#9c824a"]),
+  INT: club("Inter Milan", ["#0068a8", "#111111", "#d4af37"]),
+  MUN: club("Manchester United", ["#da291c", "#111111", "#fbe122"]),
+  MIA: club("Inter Miami", ["#f7b5cd", "#231f20", "#ffffff"]),
+  NAS: club("Al-Nassr", ["#fcd116", "#1d3d8f", "#ffffff"]),
+  LAF: club("Los Angeles FC", ["#111111", "#c39e6d", "#ffffff"]),
+  GAL: club("Galatasaray", ["#a90432", "#fdb912", "#ffffff"]),
+  MIL: club("AC Milan", ["#fb090b", "#111111", "#ffffff"]),
+  BHA: club("Brighton & Hove Albion", ["#0057b8", "#ffffff", "#ffcd00"]),
+  CHE: club("Chelsea", ["#034694", "#ffffff", "#dba111"]),
+  CHF: club("Chicago Fire", ["#c8102e", "#0a174a", "#ffffff"]),
+  NAP: club("Napoli", ["#12a0d7", "#ffffff", "#003c82"]),
+  ATH: club("Athletic Club", ["#ee2523", "#ffffff", "#111111"]),
+  JUV: club("Juventus", ["#111111", "#ffffff", "#c9a227"]),
+  ORL: club("Orlando City", ["#633492", "#fde192", "#ffffff"]),
+  TOT: club("Tottenham Hotspur", ["#ffffff", "#132257", "#132257"]),
+  ATM: club("Atlético Madrid", ["#cb3524", "#ffffff", "#262f61"]),
+  FEN: club("Fenerbahçe", ["#ffed00", "#00205b", "#ffffff"]),
+  VAN: club("Vancouver Whitecaps", ["#00245d", "#9dc2ea", "#ffffff"]),
+  SHB: club("Al-Shabab", ["#ffffff", "#1d1d1d", "#1d1d1d"]),
+  OLY: club("Olympiacos", ["#e2001a", "#ffffff", "#e2001a"]),
+  BAS: club("FC Basel", ["#d6001c", "#1d3a8a", "#ffffff"]),
+  WOL: club("Wolverhampton Wanderers", ["#fdb913", "#231f20", "#ffffff"]),
+  LAG: club("LA Galaxy", ["#00245d", "#ffd200", "#ffffff"]),
+  PSV: club("PSV Eindhoven", ["#ed1c24", "#ffffff", "#111111"]),
+  SAD: club("Al-Sadd", ["#ffffff", "#111111", "#b8962e"]),
+  HJK: club("HJK Helsinki", ["#0033a0", "#ffffff", "#ffffff"]),
+  BOU: club("Bournemouth", ["#da291c", "#111111", "#ffffff"]),
+  ATA: club("Atalanta", ["#1e71b8", "#111111", "#ffffff"]),
+  ITT: club("Al-Ittihad", ["#ffcc00", "#111111", "#ffffff"]),
+  CRY: club("Crystal Palace", ["#1b458f", "#c4122e", "#ffffff"]),
+  FLU: club("Fluminense", ["#870a28", "#006140", "#ffffff"]),
+  HIL: club("Al Hilal", ["#0055a5", "#ffffff", "#ffffff"]),
+  AHL: club("Al-Ahli", ["#00843d", "#ffffff", "#ffffff"]),
+  COM: club("Como", ["#0d3c8c", "#ffffff", "#ffffff"]),
+  RBL: club("RB Leipzig", ["#ffffff", "#dd0741", "#001f47"]),
   // the hall of fame every Legend card carries
-  LGD: { name: "OpenPack Legends", short: "LGD", colors: ["#f3ead2", "#b8862b", "#c99a3a"], crest: { shape: "notched", field: "plain", emblem: "crown", band: true } },
+  LGD: { name: "OpenPack Legends", colors: ["#f3ead2", "#b8862b", "#c99a3a"], crest: { shape: "notched", field: "plain", emblem: "crown" } },
 };
 for (const [id, c] of Object.entries(CLUBS)) c.id = id;
 

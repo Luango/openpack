@@ -17,7 +17,7 @@
 // layers to the frame's silhouette (data-frame on the card).
 
 import { lin, rad, rgba, shade, font, spacedText, fitSize } from "./paint.js";
-import { drawFlag, drawCrest } from "./emblems.js";
+import { drawFlag, drawCrest, crestURL } from "./emblems.js";
 import { drawPortrait } from "./portrait.js";
 
 export const ART_W = 756; // 63 × 12
@@ -124,14 +124,16 @@ function loadImage(url) {
 const lookOf = (card) => LOOKS[card.edition] || LOOKS.gold;
 const hasPhoto = (card) => !card.mystery && /^[pl]\d+$/.test(card.playerId || "");
 
-// Everything one card needs, fetched in parallel: { frame, field, photo }.
+// Everything one card needs, fetched in parallel: { frame, field, photo, crest }.
 export function loadCardAssets(card) {
   const L = lookOf(card);
+  const crest = card.mystery ? null : crestURL(card.club);
   return Promise.all([
     loadImage(asset(`frames/${card.edition in LOOKS ? card.edition : "gold"}.webp`)),
     loadImage(asset(`frames/field-${L.family}.png`)),
     hasPhoto(card) ? loadImage(asset(`players/${card.playerId}.webp`)) : null,
-  ]).then(([frame, field, photo]) => ({ frame, field, photo }));
+    crest ? loadImage(crest) : null,
+  ]).then(([frame, field, photo, crest]) => ({ frame, field, photo, crest }));
 }
 
 // ---- the player ------------------------------------------------------------------
@@ -279,7 +281,9 @@ export function drawCard(ctx, card, assets) {
   else if (card.nation) drawFlag(ctx, card.nation, colX - 46, F.flagY + 4, 92, 61);
   divider(ctx, L, colX - 44, F.flagY + 80, colX + 44, F.flagY + 80);
   if (card.mystery) mysteryBadge(ctx, L, colX - 44, F.crestY - 46, 88, 96, 44);
-  else if (card.club) drawCrest(ctx, card.club, colX, F.crestY, 100);
+  // the club's real crest; on the dark editions ringed in white so a black or
+  // navy crest doesn't sink into the field
+  else if (card.club) drawCrest(ctx, card.club, colX, F.crestY, assets.crest ? 108 : 100, { img: assets.crest, keyline: L.dark ? "#ffffff" : null });
 
   // 5 — the name
   const name = (card.display || card.name || "").toUpperCase();
