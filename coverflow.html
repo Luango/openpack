@@ -85,6 +85,13 @@
     -webkit-box-reflect: below 6px
       linear-gradient(transparent, transparent 62%, rgba(255, 255, 255, 0.28));
   }
+  /* 卡面是异形（框体轮廓外透明）：加载后去掉矩形底色/圆角/投影，改用随轮廓的 drop-shadow，
+   * 高光层按框体轮廓遮罩（assets/frames/mask-*.png） */
+  .cf-card.loaded { background: none; box-shadow: none; border-radius: 0; overflow: visible; }
+  .cf-card.loaded img { filter: drop-shadow(0 22px 26px rgba(0, 0, 0, 0.6)); }
+  .cf-card[data-frame="gold"] .cf-shine { -webkit-mask: url("assets/frames/mask-gold.png") 0 0 / 100% 100%; mask: url("assets/frames/mask-gold.png") 0 0 / 100% 100%; }
+  .cf-card[data-frame="icon"] .cf-shine,
+  .cf-card[data-frame="icon"].holo::after { -webkit-mask: url("assets/frames/mask-icon.png") 0 0 / 100% 100%; mask: url("assets/frames/mask-icon.png") 0 0 / 100% 100%; }
   .cf-card img {
     width: 100%; height: 100%;
     object-fit: cover;
@@ -180,10 +187,10 @@ const trackEl = document.getElementById("track");
 for (const card of picks) {
   const item = document.createElement("div");
   item.className = "cf-item";
-  item.innerHTML = `<div class="cf-card${card.tier >= 4 ? " holo" : ""}"><img alt="" /><div class="cf-shine"></div></div>`;
+  item.innerHTML = `<div class="cf-card${card.tier >= 4 ? " holo" : ""}" data-frame="${card.tier >= 4 ? "icon" : "gold"}"><img alt="" /><div class="cf-shine"></div></div>`;
   const img = item.querySelector("img");
   img.dataset.name = `${card.display} · ${card.rarity}`;
-  cardArt(card).then((url) => { img.src = url; });
+  cardArt(card).then((url) => { img.src = url; item.firstElementChild.classList.add("loaded"); });
   trackEl.append(item);
 }
 

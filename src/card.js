@@ -1,4 +1,4 @@
-import { rarityToTier, vfxFor } from "./rarity.js";
+import { rarityToTier, vfxFor, PROMO_TIER } from "./rarity.js";
 import { escapeHtml, escapeAttr } from "./util.js";
 
 // THE card component — one template, two variants:
@@ -21,8 +21,13 @@ export function renderCard(card, { variant = "grid", index } = {}) {
            <span class="card__rarity">${escapeHtml(card.rarity)}</span>
          </div>`
       : "";
+  // painted player cards are SHAPED (the frame's silhouette, transparent around
+  // it): data-frame names the family so card.css can clip the holo layers to it
+  // and swap the rectangular shadow for one in the frame's shape
+  const frame = card.edition ? (tier >= PROMO_TIER ? "icon" : "gold") : null;
   const attrs =
     `class="card card--${variant} tier-${tier}" data-tier="${tier}" ` +
+    (frame ? `data-frame="${frame}" ` : "") +
     `data-rarity="${escapeAttr(card.rarity)}"${dataI} ` +
     `title="${escapeAttr(card.name)} · ${escapeAttr(card.rarity)}"`;
   const art = `<img class="card__art" loading="lazy" src="${src}" alt="${escapeAttr(card.name)}" />`;
@@ -52,8 +57,12 @@ export function renderCard(card, { variant = "grid", index } = {}) {
       const z = ((HALF - WALL_INSET) - (i / LAYERS) * (DEPTH - 2 * WALL_INSET)).toFixed(3);
       edges += `<div class="card__edge" style="transform: translateZ(${z}px)"></div>`;
     }
+    const silhouette = frame
+      ? `<div class="card__shade" aria-hidden="true"></div><div class="card__glow" aria-hidden="true"></div>`
+      : "";
     return `
       <article ${attrs}>
+        ${silhouette}
         ${edges}
         <div class="card__face" style="transform: translateZ(${HALF}px)">
           ${art}

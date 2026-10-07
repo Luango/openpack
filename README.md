@@ -5,11 +5,17 @@ Pack** off a floodlit 3D wheel, tear it open along the seal with your finger,
 and flip through five players, rarest last. The best pulls get a **walkout**:
 the nation, position and club are teased in the dark before the card drops.
 
-Every player, club and crest is **fictional**, and every card is **painted in the
-browser** from its player data, so there are no image downloads and no licensed
-likenesses. Nation flags are real, shown as public symbols. There's no build
-step, no framework and no dependencies: vanilla ES modules and a tiny static
-server.
+The players are **real**, each with a real photo: a freely licensed Wikimedia
+Commons image, cut out and cropped by [`tools/players`](tools/players), and
+credited (author · licence → source) under every card. Every card is **painted
+in the browser** from the player's data, their photo and their edition's frame.
+Club badges are plain monograms in the club's colours, not the clubs' crests.
+There's no build step, no framework and no dependencies: vanilla ES modules and
+a tiny static server.
+
+It's **built for a phone**. On a desktop the app opens inside an iPhone frame
+([`phone.html`](phone.html) runs it in an iframe with a true 393×852 viewport);
+on a phone it runs full-screen.
 
 > This is the `soccer-pack` reskin of OpenPack, which on `main` is a Pokémon TCG
 > pack opener. The engine is the same (carousel, tear, reveal, haul, sound). Every
@@ -31,10 +37,12 @@ Handy URLs while working:
 
 - `/?hit=9` forces the pack's promo slot to a tier (4–9). Use it to preview a
   walkout or a specific edition without waiting on luck.
+- `/?noframe` keeps a desktop on the bare page instead of the iPhone frame
+  (`/phone.html` is the frame; it passes its query through to the app).
 - `/?audiodebug` shows a live audio-status HUD.
 - `/coverflow.html` is a cover-flow showcase with one card of every edition.
 - `/tools/card-lab.html` shows every card in the pool, filterable (`?f=toty`,
-  `?hair=afro`, `?ids=p01,p02`). It's the bench for tuning the card art.
+  `?ids=p01,p02`). It's the bench for tuning the card art.
 - `/tools/art/` is a live preview of the printed art (pack front/back, card back).
 
 ## Deploy
@@ -57,19 +65,40 @@ so a redeploy is picked up immediately (there's no content hashing here).
 
 The squad lives in [`src/players.js`](src/players.js):
 
-- **16 invented clubs** (plus the Legends hall of fame). Each is a name, three
-  colours, a crest recipe (shape × field pattern × emblem glyph) and a kit
-  recipe (pattern × collar).
-- **85 players + 8 legends**, one row each: name, nation, club, position,
-  overall, age. Everything else is **rolled deterministically from the player's
-  id**. Face stats come from a positional archetype. The portrait look (skin
-  tone, hairstyle, hair colour, facial hair, features) comes from weighted
-  tables. The same player always renders the same card, and adding a player is
-  one line.
+- **Real clubs**, as of each player's Wikipedia infobox in October 2026 (plus the
+  Legends hall of fame). Each is a name, a short code and three colours; the
+  badge is a monogram on a shape × field pattern, never the real crest.
+- **94 players + 10 legends**, one row each: name, card name, nation, club,
+  position, overall, and whether a gold is Rare. Ratings are our own. Face stats
+  are **rolled deterministically from the player's id** off a positional
+  archetype, so the same player always renders the same card.
 - **Promo editions** are listed in `PROMOS`: a player, an edition and an overall
   boost. A Team of the Year is a full XI.
 
-That's **144 cards** in the pool.
+That's **155 cards** in the pool.
+
+### Player photos
+
+[`tools/players`](tools/players) turns each player into
+`assets/players/<id>.webp` (600px, background removed) and writes the credits
+module [`src/photos.js`](src/photos.js):
+
+```sh
+pip install "rembg[cpu]" "opencv-python-headless<5"
+python tools/players/fetch.py  <cache-dir>   # lead photo + licence + club, per player
+python tools/players/cutout.py <cache-dir>   # matte, find the face, crop, credits
+```
+
+[`roster.py`](tools/players/roster.py) maps each id to its Wikipedia article;
+the article's lead image is always a free one. `FILE` pins a better Commons
+file where the lead image won't crop well, and `CROP` nudges a crop. The run
+writes contact sheets into the cache dir so every crop can be eyeballed. Adding
+a player is a row in `players.js` plus one in `roster.py`, then a re-run.
+
+The licences (CC BY, CC BY-SA, CC0, public domain) cover the photographers'
+copyright, which is why each card credits its photo. They don't cover the
+players' image rights or the clubs' trademarks: anything beyond a fan concept
+needs those cleared separately.
 
 ### Editions = rarity tiers
 
@@ -77,21 +106,21 @@ The engine still runs on the 0–9 tier ladder. Pack odds, the hit escalation,
 glows, foil and the pack's "tell" all key off it. Each rung is now a card
 edition, defined once in [`src/rarity.js`](src/rarity.js):
 
-| Tier | Edition | Card | Foil (card.css) |
-|-----:|---------|------|-----------------|
-| 0 | Bronze | brushed bronze | matte |
-| 1 | Silver | brushed silver | matte |
-| 2 | Gold | brushed gold | soft shimmer |
-| 3 | Rare Gold | gold + sunburst | gold foil bands |
-| 4 | Team of the Week | black carbon + gold | gold foil bands |
-| 5 | Player of the Match | crimson speed streaks | crimson foil bands |
-| 6 | Future Stars | violet + neon ribbons | violet ↔ mint sweep |
-| 7 | Team of the Season | aqua crystal shards | aqua prism · **walkout** |
-| 8 | Team of the Year | midnight blue + gold stars | blue-gold prism · **walkout** |
-| 9 | Legend | ivory marble + gold filigree | gold prism · **walkout** |
+| Tier | Edition | Frame | Foil (card.css) |
+|-----:|---------|-------|-----------------|
+| 0 | Bronze | swirl shield, bronze | matte |
+| 1 | Silver | swirl shield, silver | matte |
+| 2 | Gold | swirl shield, gold | soft shimmer |
+| 3 | Rare Gold | swirl shield, deep gold | gold foil bands |
+| 4 | Team of the Week | gold-rimmed shield, black | gold foil bands |
+| 5 | Player of the Match | gold-rimmed shield, crimson | crimson foil bands |
+| 6 | Future Stars | gold-rimmed shield, violet | violet ↔ mint sweep |
+| 7 | Team of the Season | gold-rimmed shield, aqua | aqua prism · **walkout** |
+| 8 | Team of the Year | gold-rimmed shield, royal blue | blue-gold prism · **walkout** |
+| 9 | Legend | gold-rimmed shield, ivory | gold prism · **walkout** |
 
 Base cards come from the overall: Bronze below 65, Silver below 75, Gold
-above (about a third of golds are Rare).
+above (the marquee golds are Rare).
 
 ### A pack
 
@@ -104,22 +133,26 @@ are printed on the pack's back, so re-render the art if you retune them.
 ## How a card is drawn
 
 [`src/cardart.js`](src/cardart.js) paints a card onto a 756×1056 canvas (63:88)
-and hands back a JPEG blob URL, cached per card. The reveal shows it through the
-same `<img class="card__art">` the old scans used, so the foil layers, the tilt
-and the Android compositing fixes all carry over untouched. Layers, back to
-front:
+and hands back a WebP (PNG on Safari) blob URL **with alpha**, cached per card:
+a card is its frame's shape, with nothing around it. The reveal shows it through
+the same `<img class="card__art">` as before, so the foil layers, the tilt and
+the Android compositing fixes all carry over; [`card.css`](src/card.css) masks
+the foil to the frame's silhouette (`data-frame`) and swaps the rectangular
+shadow for one in the frame's shape. Layers, back to front:
 
-1. The edition's **material** (diagonal metal gradient plus sheen bands) and
-   **pattern** (honeycomb, sunburst, carbon, streaks, neon, shards, stars,
-   marble), inside the crowned **shield** frame.
-2. The **portrait** ([`src/portrait.js`](src/portrait.js)): a head-and-shoulders
-   bust in a painted-vector style, with soft shaded skin, 16 hairstyles, facial
-   hair and the club's kit with the crest over the heart. Shading uses blurred
-   shapes via the shadow trick, because canvas `filter` isn't in every Safari.
-   The bust is rim-lit and faded into the card at the chest.
-3. **Rating, position, flag, crest**, then the **name** and **six face stats**
-   (keepers get DIV/HAN/KIC/REF/SPD/POS), plus the edition mark for promos.
-   Flags and crests come from [`src/emblems.js`](src/emblems.js).
+1. The edition's **frame** (`assets/frames/<edition>.webp`). Two designs make
+   two families: the swirl shield carries Bronze to Rare Gold, re-toned per
+   metal, and the gold-rimmed shield carries the promos, its field dyed per
+   edition (Legend keeps the original ivory). They're baked from the sources in
+   `tools/frames/src` by `python tools/frames/build.py`, which also writes the
+   silhouette masks the CSS and the painter use.
+2. The **player photo**, rim-lit on the dark editions, faded into the card at the
+   chest and clipped to the frame's inner panel. A card without a photo (the
+   pack's mystery card) gets a painted silhouette
+   ([`src/portrait.js`](src/portrait.js)).
+3. **Rating, position, flag, club badge**, then the **name** and **six face
+   stats** (keepers get DIV/HAN/KIC/REF/SPD/POS), plus the edition mark for
+   promos. Flags and badges come from [`src/emblems.js`](src/emblems.js).
 
 The face font is **Barlow Condensed**, loaded non-blocking from Google Fonts.
 The text is baked into the image, so `ensureFonts()` waits for the face (up to
@@ -150,12 +183,15 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
 ```
 .
 ├── index.html        the app: kick-off gate → 3D pack wheel → tear → reveal → haul
+├── phone.html        the desktop presentation: the app inside an iPhone frame
 ├── coverflow.html    cover-flow showcase of the editions
 ├── serve.py          no-cache dev server
 ├── docs/             design specs from the original build (tear & exit, sound map)
 ├── tools/
 │   ├── card-lab.html every card in the pool, for tuning the card art
 │   ├── art/          the printed art (packart.js) + its live preview
+│   ├── frames/       the two card-frame designs → assets/frames (build.py)
+│   ├── players/      real-player photos → assets/players + src/photos.js
 │   ├── render_art.mjs  renders the printed art into assets/
 │   └── cdp.mjs       headless-Chrome driver
 └── src/
@@ -163,9 +199,10 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
     ├── pool.js       the pool's front door (re-exports players.js)
     ├── rarity.js     editions ↔ tiers, tier colours — the single source of truth
     ├── booster.js    builds one pack (odds, rarest last) and paints its cards
-    ├── cardart.js    paints a card (materials, patterns, layout, text) → blob URL
-    ├── portrait.js   the player bust: head, features, hair, beard, kit
-    ├── emblems.js    nation flags + fictional club crests
+    ├── cardart.js    paints a card (frame, photo, layout, text) → blob URL
+    ├── photos.js     per-photo credits (generated by tools/players)
+    ├── portrait.js   the painted bust, used as the mystery card's silhouette
+    ├── emblems.js    nation flags + club monogram badges
     ├── ball.js       the match-ball geometry (gate, backdrop, carousel)
     ├── paint.js      colour maths, seeded RNG, path/gradient/text helpers
     ├── card.js       the Card component (the <img> + foil layers)

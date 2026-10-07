@@ -1,17 +1,17 @@
 // booster.js — assemble ONE pack of five players from the local pool.
 //
 // The pool is the bundled OpenPack FC squad (pool.js → players.js — no realtime
-// fetch, so the pack arms instantly), tiered by edition (rarity.js). A pack is
-// three Bronze/Silver fillers, one Gold or Rare Gold, and one guaranteed PROMO
-// (Team of the Week and up, weighted so a Team of the Year or a Legend stays a
-// genuine event) — ordered rarest-LAST so the reveal builds suspense. Each card's
-// art is painted on the spot (cardart.js) before the pack resolves, so the reveal
-// never waits on it. If the pool is somehow empty, falls back to offline
-// "mystery" placeholders so the open still works.
+// API), tiered by edition (rarity.js). A pack is three Bronze/Silver fillers,
+// one Gold or Rare Gold, and one guaranteed PROMO (Team of the Week and up,
+// weighted so a Team of the Year or a Legend stays a genuine event) — ordered
+// rarest-LAST so the reveal builds suspense. Each card's art (frame + player
+// photo) is fetched and painted on the spot (cardart.js) before the pack
+// resolves, so the reveal never waits on it. If the pool is somehow empty,
+// falls back to offline "mystery" placeholders so the open still works.
 
 import { POOL } from "./pool.js";
 import { rarityToTier, TIER_HEX } from "./rarity.js";
-import { cardArt } from "./cardart.js";
+import { cardArt, loadCardAssets } from "./cardart.js";
 
 const PACK_SIZE = 5;
 
@@ -67,6 +67,8 @@ export async function buildBooster(size = PACK_SIZE) {
   cards.sort((a, b) => tier(a) - tier(b)); // rarest LAST → revealed last
   const pack = cards.slice(0, size);
 
+  // fetch every card's frame + photo at once, then paint them one per frame
+  await Promise.all(pack.map(loadCardAssets));
   const out = [];
   for (const c of pack) {
     const url = await cardArt(c);

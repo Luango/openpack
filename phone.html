@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OpenPack FC — tear it open</title>
+    <meta name="description" content="Rip open a pack of football player cards — real stars, real walkouts." />
+    <meta name="theme-color" content="#05080d" />
+    <!--
+      phone.html — the DESKTOP presentation of the app. OpenPack FC is built for a
+      phone, so on a wide, mouse-driven screen index.html sends you here, and the
+      app runs INSIDE an iPhone (15 Pro-class: a 393×852pt screen, Dynamic Island,
+      titanium rim) — embedded as an iframe, so it gets a true phone-sized viewport
+      and every layout, media query and innerWidth/innerHeight read behaves exactly
+      as it does on a handset. `?phone=1` tells the app it's inside the frame (it
+      then clears the status bar + home indicator the way iOS safe areas would).
+      Any other query (?hit=9 …) is passed through. A phone/tablet that lands here
+      is sent straight back to the full-screen app; ?noframe on index.html opts out.
+    -->
+    <script>
+      (function () {
+        var desktop = matchMedia("(min-width: 700px) and (min-height: 600px) and (pointer: fine)");
+        if (!desktop.matches) location.replace("index.html" + location.search + location.hash);
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --screen-w: 393px;
+        --screen-h: 852px;
+        --bezel: 11px;
+        --rim: 4px;
+        --device-w: calc(var(--screen-w) + 2 * (var(--bezel) + var(--rim)));
+        --device-h: calc(var(--screen-h) + 2 * (var(--bezel) + var(--rim)));
+        --status-ink: #ffffff;
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background:
+          radial-gradient(900px 640px at 50% 42%, rgba(70, 104, 160, 0.22), transparent 70%),
+          radial-gradient(1200px 800px at 50% 120%, rgba(38, 150, 92, 0.12), transparent 60%),
+          #05080d;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+        color: #c9d2df;
+      }
+      .stage {
+        position: fixed;
+        inset: 0 0 34px; /* room for the caption */
+      }
+      @media (max-height: 760px) { .stage { bottom: 0; } }
+
+      /* ---- the device ------------------------------------------------------ */
+      /* centred absolutely (not by grid/flex, which start-align a box taller than
+         the window before the fit-scale shrinks it) */
+      .device {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: var(--device-w);
+        height: var(--device-h);
+        transform: translate(-50%, -50%) scale(var(--fit, 1));
+        transform-origin: 50% 50%;
+      }
+      /* titanium rim — a brushed edge that catches light top-left and bottom-right */
+      .device__rim {
+        position: absolute;
+        inset: 0;
+        border-radius: 70px;
+        background:
+          linear-gradient(145deg, #6b6b72 0%, #2a2a2e 18%, #1a1a1d 45%, #2c2c31 72%, #6e6e75 100%);
+        box-shadow:
+          0 50px 120px -20px rgba(0, 0, 0, 0.75),
+          0 18px 40px rgba(0, 0, 0, 0.45),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+          inset 0 0 0 2px rgba(0, 0, 0, 0.6);
+      }
+      /* the black glass border around the display */
+      .device__bezel {
+        position: absolute;
+        inset: var(--rim);
+        border-radius: 66px;
+        background: #020203;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      }
+      .device__screen {
+        position: absolute;
+        left: calc(var(--rim) + var(--bezel));
+        top: calc(var(--rim) + var(--bezel));
+        width: var(--screen-w);
+        height: var(--screen-h);
+        border-radius: 55px;
+        overflow: hidden;
+        background: #0a1018;
+        isolation: isolate;
+        /* clip the iframe's own compositing layers to the rounded corners */
+        -webkit-mask-image: -webkit-radial-gradient(white, black);
+      }
+      .device__screen iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+        background: #0a1018;
+      }
+      /* side keys: action + volume on the left, the side button on the right */
+      .key {
+        position: absolute;
+        width: 4px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #47474d, #222226 60%, #3b3b40);
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+      }
+      .key--action { left: -3px; top: 134px; height: 34px; }
+      .key--up     { left: -3px; top: 198px; height: 62px; }
+      .key--down   { left: -3px; top: 274px; height: 62px; }
+      .key--side   { right: -3px; top: 222px; height: 100px; }
+
+      /* ---- system chrome drawn over the app --------------------------------- */
+      .chrome { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+      .island {
+        position: absolute;
+        top: 11px;
+        left: 50%;
+        width: 126px;
+        height: 37px;
+        transform: translateX(-50%);
+        border-radius: 20px;
+        background: #000;
+      }
+      .island::after { /* the front camera, a glint of glass */
+        content: "";
+        position: absolute;
+        right: 13px;
+        top: 50%;
+        width: 11px;
+        height: 11px;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #2b3a63 0%, #0b1020 55%, #050608 100%);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+      .status {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 54px;
+        color: var(--status-ink);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+      }
+      .status__time {
+        position: absolute;
+        left: 0;
+        width: 132px;
+        top: 17px;
+        text-align: center;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        font-variant-numeric: tabular-nums;
+      }
+      .status__icons {
+        position: absolute;
+        right: 0;
+        width: 132px;
+        top: 21px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+      }
+      .status__icons svg { display: block; fill: currentColor; }
+      .home {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        width: 136px;
+        height: 5px;
+        transform: translateX(-50%);
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.82);
+      }
+
+      /* a quiet line under the phone */
+      .caption {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 20px;
+        text-align: center;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        color: rgba(201, 210, 223, 0.5);
+      }
+      .caption b { color: rgba(231, 236, 244, 0.8); font-weight: 600; }
+      @media (max-height: 760px) { .caption { display: none; } }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <div class="device" id="device" aria-label="OpenPack FC, on a phone">
+        <span class="key key--action"></span>
+        <span class="key key--up"></span>
+        <span class="key key--down"></span>
+        <span class="key key--side"></span>
+        <div class="device__rim"></div>
+        <div class="device__bezel"></div>
+        <div class="device__screen">
+          <iframe id="app" title="OpenPack FC" allow="autoplay; fullscreen"></iframe>
+          <div class="chrome" aria-hidden="true">
+            <div class="status">
+              <div class="status__time" id="clock">9:41</div>
+              <div class="status__icons">
+                <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3.2" height="4" rx="0.9"/><rect x="4.9" y="5.6" width="3.2" height="6.4" rx="0.9"/><rect x="9.8" y="3" width="3.2" height="9" rx="0.9"/><rect x="14.7" y="0" width="3.2" height="12" rx="0.9"/></svg>
+                <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2.3c2.3 0 4.4.9 6 2.4l1.2-1.2A10.2 10.2 0 0 0 8 .6C5.2.6 2.7 1.7.8 3.5L2 4.7a8.4 8.4 0 0 1 6-2.4Zm0 3.4c1.4 0 2.6.5 3.6 1.4l1.2-1.2A6.9 6.9 0 0 0 8 4c-1.9 0-3.6.7-4.8 1.9l1.2 1.2c1-.9 2.2-1.4 3.6-1.4Zm0 3.4c-.5 0-1 .2-1.3.5L8 11l1.3-1.4c-.3-.3-.8-.5-1.3-.5Z"/></svg>
+                <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.6" fill="none" stroke="currentColor" stroke-opacity="0.4"/><rect x="2.2" y="2.2" width="18.6" height="8.6" rx="2.2"/><path d="M24 4.3v4.4c.9-.3 1.6-1.2 1.6-2.2s-.7-1.9-1.6-2.2Z" fill-opacity="0.45"/></svg>
+              </div>
+            </div>
+            <div class="island"></div>
+            <div class="home"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <p class="caption">Built for your phone — open <b id="host"></b> on mobile for the full rip.</p>
+    <script>
+      (function () {
+        // the app, told it's inside the frame; any query (?hit=9 …) rides along
+        var q = new URLSearchParams(location.search);
+        q.set("phone", "1");
+        var app = document.getElementById("app");
+        app.src = "index.html?" + q.toString() + location.hash;
+        app.addEventListener("load", function () { try { app.contentWindow.focus(); } catch (e) {} });
+
+        // fit the whole device in the window, never upscaled past 1:1
+        var device = document.getElementById("device");
+        function fit() {
+          var w = device.offsetWidth + 40, h = device.offsetHeight + (innerHeight > 760 ? 120 : 36);
+          var s = Math.min(1, innerWidth / w, innerHeight / h);
+          device.style.setProperty("--fit", s.toFixed(4));
+        }
+        addEventListener("resize", fit);
+        fit();
+
+        // a live status-bar clock
+        var clock = document.getElementById("clock");
+        function tick() {
+          var d = new Date();
+          clock.textContent = (d.getHours() % 12 || 12) + ":" + String(d.getMinutes()).padStart(2, "0");
+        }
+        tick();
+        setInterval(tick, 15000);
+
+        document.getElementById("host").textContent = location.host || "this page";
+      })();
+    </script>
+  </body>
+</html>
