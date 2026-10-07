@@ -3,38 +3,43 @@
  * Tier accent colors (--tier-0 … --tier-9) are the single source of truth for
  * rarity color: the filter chips, gallery glows, and card VFX all read them.
  * The tier ladder (the card editions) is defined in rarity.js; the colors below
- * line up with its TIER_HEX. The palette is a night match under floodlights:
- * deep navy surfaces, a gold accent, a touch of pitch green. */
+ * line up with its TIER_HEX. The palette is an awards night: warm black and
+ * dark-charcoal surfaces, ONE gold that runs from bronze shadow through rich
+ * gold to a champagne highlight (so it reads as a metal, not a flat colour),
+ * a soft amber glow behind the main object, and warm ivory for text. */
 
 :root {
-  /* surfaces */
-  --bg: #070d16;
-  --bg-elev: #0f1826;
-  --bg-elev-2: #162236;
-  --line: #22314a;
-  --line-soft: #18233a;
+  /* surfaces — warm black → dark brown charcoal */
+  --bg: #0d0b08;
+  --bg-elev: #211b13;
+  --bg-elev-2: #2c251a;
+  --line: #3b3022;
+  --line-soft: #2a2219;
 
-  /* text */
-  --text: #eef2f8;
-  --text-dim: #97a4b8;
-  --text-faint: #5a6780;
+  /* text — warm ivory */
+  --text: #fff6e3;
+  --text-dim: #c8b78f;
+  --text-faint: #8a7a5a;
 
-  /* brand */
-  --accent: #f2c54b;
-  --accent-strong: #ffdf7a;
-  --pitch: #2fbf71;
+  /* brand — the gold material: bronze shadow / rich gold / champagne highlight */
+  --bronze: #80521c;
+  --accent: #d4a63a;
+  --accent-strong: #f7e4aa;
+  --amber: #ffb547; /* the glow that pools behind the main object */
+  /* polished gold as a surface: highlight on top, a reflective horizon, bronze underneath */
+  --gold-material: linear-gradient(180deg, #fbefc9 0%, #f0cf6c 32%, #c89a2e 52%, #e2b84c 70%, #9a701c 100%);
 
   /* tier accents — the card editions, low → high */
   --tier-0: #d08a56; /* bronze              */
   --tier-1: #c3ccd8; /* silver              */
-  --tier-2: #e9c45f; /* gold                */
-  --tier-3: #ffcf3d; /* rare gold           */
-  --tier-4: #f3c652; /* team of the week    */
+  --tier-2: #d9ad45; /* gold                */
+  --tier-3: #f2c54b; /* rare gold           */
+  --tier-4: #e4b64a; /* team of the week    */
   --tier-5: #ff4f6a; /* player of the match */
   --tier-6: #b46bff; /* future stars        */
   --tier-7: #2fd9c4; /* team of the season  */
   --tier-8: #4f7dff; /* team of the year    */
-  --tier-9: #ffe08a; /* legend              */
+  --tier-9: #f7e4aa; /* legend (champagne)  */
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -54,8 +59,8 @@ body {
 
 body {
   background:
-    radial-gradient(1100px 700px at 75% -10%, rgba(196, 220, 255, 0.10), transparent 60%),
-    radial-gradient(900px 600px at 10% 110%, rgba(47, 191, 113, 0.08), transparent 55%),
+    radial-gradient(900px 620px at 50% 36%, rgba(255, 181, 71, 0.10), transparent 62%),
+    radial-gradient(120% 90% at 50% 102%, rgba(0, 0, 0, 0.45), transparent 60%),
     var(--bg);
   color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -92,8 +97,8 @@ body {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #ffe9a8, #f2c54b 45%, #b8862b);
-  box-shadow: 0 0 18px rgba(242, 197, 75, 0.45);
+  background: linear-gradient(135deg, #f7e4aa, #d4a63a 45%, #80521c);
+  box-shadow: 0 0 18px rgba(212, 166, 58, 0.45);
 }
 
 .brand-name {
@@ -180,7 +185,7 @@ body.revealing .app-nav--floating {
 .select:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(242, 197, 75, 0.25);
+  box-shadow: 0 0 0 3px rgba(212, 166, 58, 0.3);
 }
 
 .card-count {
@@ -199,7 +204,7 @@ body.revealing .app-nav--floating {
   display: flex;
   flex-direction: column;
   padding: 12px clamp(16px, 4vw, 40px);
-  background: rgba(7, 13, 22, 0.72);
+  background: rgba(13, 11, 8, 0.74);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line-soft);
 }
@@ -316,7 +321,7 @@ body.revealing .app-nav--floating {
 
 .switch-opt.active {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #0b0d12;
+  color: #1a1206;
 }
 
 /* display-option toggles */
@@ -372,7 +377,7 @@ body.revealing .app-nav--floating {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: #fff6e3;
   transition: transform 0.18s;
 }
 
@@ -479,7 +484,7 @@ body.revealing .app-nav--floating {
   align-items: center;
   justify-content: center;
   gap: 22px;
-  background: rgba(6, 7, 11, 0.86);
+  background: rgba(8, 6, 3, 0.86);
   backdrop-filter: blur(8px);
   /* let touch drags drive the card tilt instead of scrolling/panning the page */
   touch-action: none;

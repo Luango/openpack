@@ -21,12 +21,31 @@ export const BALL_SEAMS =
   "M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41";
 
 // Draw the ball into a 2D context, filling the 100×100 box (transform it first).
-export function drawBall(ctx, { body = "#e8eaef", panel = "#1b1c22", seam = "#8a8f9c", shade = false } = {}) {
+// `gold: true` draws THE golden ball — the app's trophy motif: a polished gold body
+// lit from the upper left (champagne highlight → rich gold → bronze shadow), dark
+// bronze panels and an always-on shading pass, so it reads as a cast metal object.
+export function drawBall(ctx, { body = "#e8eaef", panel = "#1b1c22", seam = "#8a8f9c", shade = false, gold = false } = {}) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(50, 50, 46, 0, Math.PI * 2);
   ctx.clip();
-  ctx.fillStyle = body;
+  if (gold) {
+    const g = ctx.createRadialGradient(34, 28, 0, 50, 50, 58);
+    g.addColorStop(0, "#fff8dc");
+    g.addColorStop(0.26, "#f4d57f");
+    g.addColorStop(0.6, "#cc9830");
+    g.addColorStop(0.86, "#7b4f14");
+    g.addColorStop(1, "#3a2206");
+    ctx.fillStyle = g;
+    seam = "#7e5a1e";
+    const p = ctx.createLinearGradient(0, 0, 100, 100);
+    p.addColorStop(0, "#6a4512");
+    p.addColorStop(1, "#1f1305");
+    panel = p;
+    shade = true;
+  } else {
+    ctx.fillStyle = body;
+  }
   ctx.fillRect(0, 0, 100, 100);
   ctx.strokeStyle = seam;
   ctx.lineWidth = 1.6;
@@ -34,6 +53,14 @@ export function drawBall(ctx, { body = "#e8eaef", panel = "#1b1c22", seam = "#8a
   ctx.fillStyle = panel;
   ctx.fill(new Path2D(BALL_PANELS));
   ctx.fill(new Path2D(BALL_CENTER));
+  if (gold) {
+    // a soft specular bloom on the lit shoulder — the glint a polished ball throws
+    const s = ctx.createRadialGradient(36, 30, 0, 36, 30, 30);
+    s.addColorStop(0, "rgba(255,255,255,0.42)");
+    s.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = s;
+    ctx.fillRect(0, 0, 100, 100);
+  }
   if (shade) {
     const g = ctx.createRadialGradient(36, 30, 0, 50, 50, 50);
     g.addColorStop(0, "rgba(255,255,255,0)");
@@ -43,7 +70,7 @@ export function drawBall(ctx, { body = "#e8eaef", panel = "#1b1c22", seam = "#8a
     ctx.fillRect(0, 0, 100, 100);
   }
   ctx.restore();
-  ctx.strokeStyle = panel;
+  ctx.strokeStyle = gold ? "#3a2206" : panel;
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 2.4;
   ctx.beginPath();

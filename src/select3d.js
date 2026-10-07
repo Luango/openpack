@@ -59,7 +59,7 @@ export const DEFAULT_PACKS = Array.from({ length: 10 }, (_, i) => ({
   sub: "OpenPack FC · Ultimate XI",
   img: "assets/pack-hi.webp", // hi-res WebP (1083×1794, transparent bg) — crisp on the 3D mesh
   hue: 0,
-  accent: "#f2c54b",
+  accent: "#d4a63a",
 }));
 
 // ---- ring layout tuning ---------------------------------------------------
@@ -133,10 +133,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;z-index:1;";
 
   const scene = new THREE.Scene();
-  // Fog tinted to the stadium's mid-horizon navy (not near-black) so the back of the
-  // ring recedes into a LIT floodlight haze that blends with the shader backdrop,
-  // instead of fading every far pack into a dark halo against the brighter background.
-  scene.fog = new THREE.Fog(0x1a2740, FOG_NEAR, FOG_FAR);
+  // Fog tinted to the stage's mid-horizon charcoal (warm, not near-black) so the back
+  // of the ring recedes into the lit haze of the shader backdrop, instead of fading
+  // every far pack into a dark halo against the brighter background.
+  scene.fog = new THREE.Fog(0x1c150d, FOG_NEAR, FOG_FAR);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
@@ -149,15 +149,16 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xffffff, 2.05)); // strong fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
-  scene.add(new THREE.HemisphereLight(0xe6efff, 0x2e4a3c, 3.4)); // floodlit sky / pitch-green bounce → mood + shape, no dead-black undersides
+  scene.add(new THREE.AmbientLight(0xfff1d6, 1.95)); // strong warm fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
+  scene.add(new THREE.HemisphereLight(0xffe4b0, 0x3b2510, 3.2)); // warm stage light from above / bronze floor bounce → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
-  const key = new THREE.DirectionalLight(0xfff1da, 1.55);
+  const key = new THREE.DirectionalLight(0xffe6b8, 1.55);
   key.position.set(-4, 5, 8);
   scene.add(key);
-  // (3) RIM — cool, from behind/above, peels the back of the wheel off the black bg.
-  const rim = new THREE.DirectionalLight(0xbcd2ff, 1.15);
+  // (3) RIM — gold, from behind/above, peels the back of the wheel off the black bg
+  //     with a warm edge highlight instead of a cool one.
+  const rim = new THREE.DirectionalLight(0xf0c060, 1.2);
   rim.position.set(0, 5, -10);
   scene.add(rim);
   // (4) FRONT SPOT — the focused pack's dedicated light. A warm cone pooled on the
@@ -167,7 +168,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // intensity tripled (was 30) + decay eased (was 1.4) so the centred pack actually
   // POPS — the cone+decay still keep it pooled on the front dock, so side/back packs
   // stay on the cool base and don't get washed out.
-  const frontSpot = new THREE.SpotLight(0xfff0d6, 230, 14, 0.66, 0.65, 1.15);
+  const frontSpot = new THREE.SpotLight(0xffe6b0, 230, 14, 0.66, 0.65, 1.15);
   frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
   frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
   scene.add(frontSpot);
@@ -177,22 +178,22 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // moving holographic sheen (metalness reflects it) as packs rotate — cheap, no HDR.
   scene.environment = makeEnvTexture();
 
-  // --- shader backdrop: a floodlit stadium at night ---------------------------
+  // --- shader backdrop: an awards-night stage ----------------------------------
   // The canvas is transparent, so the carousel used to sit on the page's near-black
-  // bg → "太黑太暗". This fills the frame FIRST with a night stadium: floodlights
-  // blazing at the top corners with soft beams, the stands twinkling with camera
-  // flashes, a cool-white pool on the front pack and a mown pitch for the floor
-  // the packs reflect in. It's ONE fullscreen quad drawn in clip space (camera-
-  // independent, no fog/projection) with a loop-free fragment shader — the whole lit
-  // stage at almost no GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
+  // bg → "太黑太暗". This fills the frame FIRST with the stage: two warm spotlights
+  // at the top corners with soft beams, the gallery twinkling with camera flashes,
+  // an amber pool behind the front pack and a polished black floor the packs reflect
+  // in. It's ONE fullscreen quad drawn in clip space (camera-independent, no fog/
+  // projection) with a loop-free fragment shader — the whole lit stage at almost no
+  // GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
   const backdrop = makeBackground();
   scene.add(backdrop.mesh);
 
   // --- ambiance: drifting glow particles -----------------------------------
   const particles = makeParticles();
   scene.add(particles.points);
-  // slowly-rising footballs BEHIND the wheel — they drift up through the stadium
-  // haze, so the scene has motes of depth rather than a flat backdrop.
+  // slowly-rising golden balls BEHIND the wheel — they drift up through the haze,
+  // so the scene has motes of depth rather than a flat backdrop.
   const rising = makeRisingCards();
   scene.add(rising.group);
 
@@ -349,7 +350,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // before the motion, which is the bulk of the mobile "卡顿" during the entrance.
   const assetsReady = [];
   packs.forEach((p) => {
-    const placeholder = new THREE.MeshStandardMaterial({ color: 0x1b2433, roughness: 0.6, side: THREE.DoubleSide });
+    const placeholder = new THREE.MeshStandardMaterial({ color: 0x2a2016, roughness: 0.6, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.4), placeholder);
     // flip: eased inspect-rotation. aspect: art height/width — the geometry's local
     // height equals it, so the handoff can size the pack to the SVG pack's screen rect.
@@ -1094,12 +1095,12 @@ function makeEdgeWall(outline, halfT) {
   g.computeVertexNormals();
   return g;
 }
-// Brushed-silver foil for the edge wall — metallic so it catches the env sheen as the
-// wheel turns, reading as a real foil edge rather than a flat grey band. One per pack
+// Polished-gold foil for the edge wall — metallic so it catches the env sheen as the
+// wheel turns, reading as a real gold foil edge rather than a flat band. One per pack
 // (so it can fade with its pack during the intro/breakaway).
 function makeEdgeMaterial() {
   return new THREE.MeshStandardMaterial({
-    color: 0xb9bdca, metalness: 0.6, roughness: 0.42, envMapIntensity: 1.1, side: THREE.DoubleSide,
+    color: 0xd4a63a, metalness: 0.72, roughness: 0.36, envMapIntensity: 1.1, side: THREE.DoubleSide,
   });
 }
 
@@ -1257,13 +1258,15 @@ function makeEnvTexture() {
   const g = ctx.createLinearGradient(0, 0, 0, 256);
   // a WIDE bright band (azimuth-independent) so every pack on the wheel — at any
   // rotation — reflects a foil sheen, not only the front one
-  g.addColorStop(0.0, "#1a2232");
-  g.addColorStop(0.30, "#97a3b8");
-  g.addColorStop(0.46, "#f1f5ff");
+  // warm — bronze shadow → champagne → the white glint — so the sheen the foil
+  // reflects is gold light, not a cool studio flash
+  g.addColorStop(0.0, "#1a1208");
+  g.addColorStop(0.30, "#a88a52");
+  g.addColorStop(0.46, "#ffe9b8");
   g.addColorStop(0.5, "#ffffff");  // bright core → the glint
-  g.addColorStop(0.54, "#f1f5ff");
-  g.addColorStop(0.70, "#97a3b8");
-  g.addColorStop(1.0, "#0d121c");
+  g.addColorStop(0.54, "#ffe9b8");
+  g.addColorStop(0.70, "#a88a52");
+  g.addColorStop(1.0, "#0d0a06");
   ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -1275,9 +1278,9 @@ function makeEnvTexture() {
 // A fullscreen quad painted in CLIP SPACE (the vertex shader writes gl_Position
 // directly from a 2×2 plane's xy, so it ignores the camera, fog and projection and
 // always fills the frame). The fragment shader is loop-free — a vertical palette,
-// two floodlights with soft beams, the stands (a darker band salted with camera
-// flashes), a cool stage pool behind the front pack, a mown pitch on the floor and
-// a soft vignette — so the whole lit stadium costs one cheap fullscreen pass. The
+// two warm spotlights with soft beams, the gallery (a darker band salted with camera
+// flashes), an amber pool behind the front pack, a polished black floor with a gold
+// horizon and a soft vignette — so the whole lit stage costs one cheap fullscreen pass. The
 // quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every
 // pack and reflection lands on top of it. uMobile calms it on phones.
 const BG_VERT = `
@@ -1293,16 +1296,16 @@ const BG_FRAG = `
   void main() {
     vec2 uv = vUv;
     vec2 p = vec2(uv.x * uAspect, uv.y);
-    // Vertical palette — pitch-dark green floor (clean reflection contrast) → stadium
-    // navy → a floodlit haze at the top. Desaturated, so the lit packs stay the only
-    // vivid thing in frame.
-    vec3 base = vec3(0.030, 0.070, 0.058);
-    vec3 mid  = vec3(0.072, 0.112, 0.200);
-    vec3 top  = vec3(0.190, 0.262, 0.410);
+    // Vertical palette — a warm black stage floor → dark brown charcoal → a faint
+    // amber haze at the top. Dark and desaturated, so the gold packs stay the only
+    // bright thing in frame.
+    vec3 base = vec3(0.040, 0.030, 0.020);
+    vec3 mid  = vec3(0.095, 0.072, 0.048);
+    vec3 top  = vec3(0.150, 0.110, 0.070);
     vec3 col = mix(base, mid, smoothstep(0.0, 0.5, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
 
-    // the stands — a darker tier across the upper middle, with camera flashes
+    // the gallery — a darker tier across the upper middle, with camera flashes
     float stands = smoothstep(0.55, 0.63, uv.y) * (1.0 - smoothstep(0.80, 0.88, uv.y));
     col *= 1.0 - stands * 0.22;
     vec2 g = p * vec2(64.0, 64.0);
@@ -1311,27 +1314,28 @@ const BG_FRAG = `
     float blink = smoothstep(0.93, 1.0, fract(h * 17.0 + uTime * (0.22 + 0.5 * h)));
     float dotm = smoothstep(0.42, 0.0, length(fract(g) - 0.5));
     float live = step(0.9 + 0.05 * uMobile, h);
-    col += vec3(1.0, 0.97, 0.9) * dotm * blink * live * stands * 0.95;
+    col += vec3(1.0, 0.95, 0.84) * dotm * blink * live * stands * 0.95;
 
-    // two floodlights at the top corners + their soft beams toward the pitch
+    // two warm spotlights at the top corners + their soft beams onto the stage
     vec2 L1 = vec2(0.08 * uAspect, 1.02), L2 = vec2(0.92 * uAspect, 1.02);
-    vec3 lamp = vec3(0.86, 0.93, 1.0);
-    col += lamp * (exp(-length(p - L1) * 6.5) + exp(-length(p - L2) * 6.5)) * 0.62;
+    vec3 lamp = vec3(1.0, 0.86, 0.58);
+    col += lamp * (exp(-length(p - L1) * 6.5) + exp(-length(p - L2) * 6.5)) * 0.55;
     vec2 aim = vec2(0.5 * uAspect, 0.32);
     float b1 = smoothstep(0.955, 1.0, dot(normalize(p - L1), normalize(aim - L1)));
     float b2 = smoothstep(0.955, 1.0, dot(normalize(p - L2), normalize(aim - L2)));
     float shimmer = 0.88 + 0.12 * sin(uTime * 0.6 + uv.y * 6.0);
-    col += lamp * (b1 + b2) * smoothstep(0.1, 0.95, uv.y) * 0.075 * shimmer;
+    col += lamp * (b1 + b2) * smoothstep(0.1, 0.95, uv.y) * 0.07 * shimmer;
 
-    // a cool-white stage pool behind the focused pack — a floodlit spot
-    vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
-    col += vec3(0.90, 0.95, 1.0) * smoothstep(0.66, 0.0, length(d)) * 0.30;
+    // the amber pool behind the focused pack — the glow behind the main object
+    vec2 d = (uv - vec2(0.5, 0.58)) * vec2(uAspect, 1.0);
+    col += vec3(1.0, 0.70, 0.32) * smoothstep(0.62, 0.0, length(d)) * 0.26;
 
-    // the floor is a pitch: a green cast with mown stripes running to the horizon
+    // the floor is a polished black stage: a faint warm sheen rising toward the
+    // horizon, and a thin gold edge where the floor meets the backdrop
     float floorM = 1.0 - smoothstep(0.28, 0.44, uv.y);
-    float depth = 1.0 / max(0.06, 0.47 - uv.y);
-    float stripe = step(0.5, fract((uv.x - 0.5) * uAspect * depth * 0.55));
-    col += vec3(0.010, 0.040, 0.022) * floorM + vec3(0.012, 0.030, 0.016) * stripe * floorM;
+    float horizon = exp(-abs(uv.y - 0.43) * 38.0);
+    col += vec3(0.060, 0.042, 0.022) * floorM * smoothstep(0.0, 0.44, uv.y);
+    col += vec3(0.95, 0.72, 0.36) * horizon * 0.10;
 
     // gentle vignette — settle the corners without crushing them to near-black
     col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.30;
@@ -1385,8 +1389,8 @@ const REFL_FRAG = `
     else { tx = texture2D(uMap, uv); }
     if (tx.a < 0.5) discard;                      // drop the pack art's transparent bg
     float fade = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 1.4); // bright at the contact, gone below
-    vec3 tint = tx.rgb * vec3(0.78, 0.84, 1.0);   // cool, glossy-floor cast
-    gl_FragColor = vec4(tint, tx.a * fade * 0.42 * uOpacity);
+    vec3 tint = tx.rgb * vec3(1.0, 0.90, 0.74);   // warm, polished-black-floor cast
+    gl_FragColor = vec4(tint, tx.a * fade * 0.40 * uOpacity);
   }`;
 function makeReflectionMaterial(faceTex) {
   return new THREE.ShaderMaterial({
@@ -1402,9 +1406,9 @@ function makeReflectionMaterial(faceTex) {
   });
 }
 
-// A few footballs that drift slowly UPWARD behind the wheel, so the carousel has a
-// sense of motes rising through the stadium haze. Placed in the 3D scene (not a flat
-// CSS layer), they depth-sort with the packs. Round icons (the ball is drawn into a
+// A few golden balls that drift slowly UPWARD behind the wheel, so the carousel has a
+// sense of motes rising through the haze. Placed in the 3D scene (not a flat CSS
+// layer), they depth-sort with the packs. Round icons (the ball is drawn into a
 // circular clip so the plane's corners are cut away), tinted down so they recede.
 function makeRisingCards() {
   const tex = footballTexture();
@@ -1414,9 +1418,9 @@ function makeRisingCards() {
   const cards = [];
   const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 0..1, seeded by index
   for (let i = 0; i < COUNT; i++) {
-    // footballs, tinted to the floodlit haze (a cool multiply + low opacity) so they
+    // golden balls, dimmed into the haze (a warm multiply + low opacity) so they
     // recede behind the packs as ambiance and never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x8b97ad, transparent: true, opacity: 0.42, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xcfa456, transparent: true, opacity: 0.36, depthWrite: false });
     const m = new THREE.Mesh(geo, mat);
     const u = {
       x: (rand(i, 1) - 0.5) * 9,          // spread across the wheel's width
@@ -1448,7 +1452,7 @@ function makeRisingCards() {
   };
 }
 
-// A football icon drawn on a canvas (transparent outside the ball circle, so the
+// The golden ball drawn on a canvas (transparent outside the ball circle, so the
 // plane's corners cut away to a round icon). Shared by every rising ball.
 let _ballTex = null;
 function footballTexture() {
@@ -1456,7 +1460,7 @@ function footballTexture() {
   const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
   const x = c.getContext("2d");
   x.scale(S / 100, S / 100);
-  drawBall(x, { body: "#e8eaef", panel: "#1b1c22", seam: "#8a8f9c" });
+  drawBall(x, { gold: true });
   // soften the whole icon — it's only a background mote, it must NOT grab the eye:
   // blur a copy and use THAT, so the details AND the edge read slightly out of focus
   const soft = document.createElement("canvas"); soft.width = soft.height = S;
@@ -1469,7 +1473,7 @@ function footballTexture() {
   return tex;
 }
 
-// A field of slow-drifting glow motes for the "digital space" backdrop.
+// A field of slow-drifting gold dust for the stage backdrop.
 function makeParticles() {
   // each frame this re-uploads the whole position buffer to the GPU, so the count is
   // a direct per-frame CPU+upload cost — keep the field much thinner on a phone
@@ -1485,7 +1489,7 @@ function makeParticles() {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const mat = new THREE.PointsMaterial({
-    color: 0xfff0d2, size: 0.06, transparent: true, opacity: 0.55,
+    color: 0xffd37a, size: 0.07, transparent: true, opacity: 0.6,
     blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
   });
   const points = new THREE.Points(geo, mat);

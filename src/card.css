@@ -99,14 +99,14 @@
   flex-direction: column;
   gap: 2px;
   padding: 22px 10px 9px;
-  background: linear-gradient(to top, rgba(8, 9, 13, 0.92), transparent);
+  background: linear-gradient(to top, rgba(10, 8, 5, 0.92), transparent);
   pointer-events: none;
 }
 
 .card__name {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: #fff6e3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -212,7 +212,7 @@
   border-radius: inherit;
   backface-visibility: hidden;
   overflow: hidden;
-  background: #0b1a33 url("../assets/card-back.jpg") center / cover no-repeat;
+  background: #0d0b08 url("../assets/card-back.jpg") center / cover no-repeat;
 }
 
 /* thin paper edge — flat matte color, deliberately no holo/glare/reflection
@@ -447,11 +447,11 @@ body.holo-on .card--detail .card__vfx[data-vfx="legend"] {
 }
 body.holo-on .card--detail .card__vfx[data-vfx="toty"] {
   --foil-a: #4f7dff;
-  --foil-b: #f2c54b;
+  --foil-b: #d4a63a;
   --foil-c: #8fb0ff;
 }
 body.holo-on .card--detail .card__vfx[data-vfx="legend"] {
-  --foil-a: #ffe08a;
-  --foil-b: #f7c768;
-  --foil-c: #fff6dc;
+  --foil-a: #f7e4aa;
+  --foil-b: #e8bf5a;
+  --foil-c: #fff8e6;
 }

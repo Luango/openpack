@@ -44,7 +44,7 @@ const DEPTH_SHRINK = 0.01; // each card behind shrinks this much per stack step 
 const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Team of the Week and up
 const WALKOUT_TIER = 7; // tier ≥ this gets the walkout (nation → position → club) — Team of the Season and up
 const WALKOUT_BEAT = 700; // ms each walkout clue holds the stage
-const CONFETTI = ["#ffffff", "#ffe08a", "#f2c54b"]; // gold-and-white ticker tape for the top pulls
+const CONFETTI = ["#ffffff", "#f7e4aa", "#d4a63a"]; // champagne-and-gold ticker tape for the top pulls
 
 // Per-tier HIT escalation — the ONE dial that keeps a crescendo: a Team of the
 // Week is a shimmer, only a Legend is a screen-takeover. burst = particle count,
@@ -94,11 +94,16 @@ export function createReveal({ mountEl, onAgain }) {
     <div class="reveal__binder" aria-hidden="true">
       <div class="binder-icon">
         <svg viewBox="0 0 72 88" width="100%" height="100%">
-          <path d="M8 7 H64 V44 C64 63 49 76 36 82 C23 76 8 63 8 44 Z" fill="#13233a" stroke="#f2c54b" stroke-width="3.5" stroke-linejoin="round"/>
-          <path d="M9.8 8.8 H62.2 V23 H9.8 Z" fill="#f2c54b"/>
-          <path d="M18 15.9 h36" stroke="#13233a" stroke-width="2.4" stroke-dasharray="3 3"/>
-          <path d="M36 32 l3.7 7.6 8.3 1.2 -6 5.9 1.4 8.3 -7.4 -3.9 -7.4 3.9 1.4 -8.3 -6 -5.9 8.3 -1.2z" fill="#fff3c8"/>
-          <path d="M22 64 C30 69 42 69 50 64" stroke="#f2c54b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <defs>
+            <linearGradient id="binder-gold" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#f7e4aa"/><stop offset="0.5" stop-color="#d4a63a"/><stop offset="1" stop-color="#9a701c"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 7 H64 V44 C64 63 49 76 36 82 C23 76 8 63 8 44 Z" fill="#1a140c" stroke="url(#binder-gold)" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M9.8 8.8 H62.2 V23 H9.8 Z" fill="url(#binder-gold)"/>
+          <path d="M18 15.9 h36" stroke="#1a140c" stroke-width="2.4" stroke-dasharray="3 3"/>
+          <path d="M36 32 l3.7 7.6 8.3 1.2 -6 5.9 1.4 8.3 -7.4 -3.9 -7.4 3.9 1.4 -8.3 -6 -5.9 8.3 -1.2z" fill="#f7e4aa"/>
+          <path d="M22 64 C30 69 42 69 50 64" stroke="#d4a63a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
         </svg>
       </div>
     </div>`;
