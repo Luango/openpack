@@ -105,21 +105,30 @@ That's **155 cards** in the pool.
 
 ### Player photos
 
-[`tools/players`](tools/players) turns each player into
+Every portrait is a **bust shot**, framed the way an ultimate-team card frames
+its player: facing the lens, head level, square shoulders, sharp, alone.
+[`tools/players`](tools/players) finds them, cuts them out to
 `assets/players/<id>.webp` (600px, background removed) and writes the credits
 module [`src/photos.js`](src/photos.js):
 
 ```sh
 pip install "rembg[cpu]" "opencv-python-headless<5"
-python tools/players/fetch.py  <cache-dir>   # lead photo + licence + club, per player
-python tools/players/cutout.py <cache-dir>   # matte, find the face, crop, credits
+python tools/players/scout.py  <cache-dir> [id …]  # rank Commons bust-shot candidates
+python tools/players/fetch.py  <cache-dir>         # pinned photo + licence + club, per player
+python tools/players/cutout.py <cache-dir>         # matte, find + level the face, crop, credits
 ```
 
-[`roster.py`](tools/players/roster.py) maps each id to its Wikipedia article;
-the article's lead image is always a free one. `FILE` pins a better Commons
-file where the lead image won't crop well, and `CROP` nudges a crop. The run
-writes contact sheets into the cache dir so every crop can be eyeballed. Adding
-a player is a row in `players.js` plus one in `roster.py`, then a re-run.
+`scout.py` searches Commons for files whose **title** names the player (that is
+where identity comes from, never the face), keeps only photos with one dominant
+face, and scores each with YuNet face landmarks: frontal, level, chin neither up
+nor down, big enough, sharp, with room for the shoulders. It cuts the top three
+out and writes contact sheets beside the current portrait. A pick still gets a
+human look: same-name strangers and match frames where an opponent is the
+subject get rejected when the kit or setting doesn't fit the player. Winners are
+pinned in [`roster.py`](tools/players/roster.py)'s `FILE` (`CROP` nudges a
+crop); a player with no good bust shot on Commons is swapped for one who has.
+Adding a player is a row in `players.js` plus one in `roster.py`, then a
+scout, a pin and a re-run.
 
 The licences (CC BY, CC BY-SA, CC0, public domain) cover the photographers'
 copyright, which is why each card credits its photo. They don't cover the
