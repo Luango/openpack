@@ -206,10 +206,13 @@ finaliser) keeps every card stable.
 
 The pack's front and back and the card back are composed on canvas in
 [`tools/art/packart.js`](tools/art/packart.js), using the same modules as the
-cards: a black foil pouch with hammered-gold crimps, engraved gold lettering,
-and the mystery card (a real card render in silhouette) in a pool of amber
-light; the golden ball is pressed into the back and the card back. Render them
-into the shipped files with:
+cards: a gold satin foil pouch — the brand lockup in black at the top (`BRAND`
+in packart.js is the one place to re-brand it), an embossed hammered golden ball
+at the centre, GOLD PACK · FOOTBALL COLLECTION at the foot, between ribbed
+crimped seals; the back carries the contents, odds, fin seal and barcode on the
+same foil. The art is a flat base-colour map: the 3D pack adds the folds and
+reflections, and derives its roughness/metalness masks from it (gold = metal,
+black print = ink). Render them into the shipped files with:
 
 ```sh
 node tools/render_art.mjs     # needs Chrome/Edge + Python with Pillow
@@ -282,8 +285,9 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
   from its edition.
 - **Pick, then tear.** The app opens on a kick-off gate. The tap unlocks audio,
   then the 3D wheel ([`select3d.js`](src/select3d.js), three.js vendored) flies
-  in: ten foil pouches on a revolving ring, with the focused pack popped toward
-  the lens. The ring sits on a one-pass stage shader with two warm spotlights
+  in: ten procedural foil pouches — the same envelope, print and finish as the
+  tear-pack, from one shared asset ([`src/pack3d/asset.js`](src/pack3d/asset.js))
+  — on a revolving ring, with the focused pack popped toward the lens. The ring sits on a one-pass stage shader with two warm spotlights
   and their beams, camera flashes twinkling in the gallery, an amber pool behind
   the front pack and a polished black floor the packs reflect in. Choosing a
   pack breaks it away toward the lens, then cross-dissolves into the 3D
