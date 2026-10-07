@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pack Art</title>
+<link id="font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&display=swap" onload="this.dataset.ready=1" />
+<style>
+  body { margin: 0; background: #1b2233; color: #dfe6ee; font: 13px system-ui, sans-serif; }
+  .row { display: flex; gap: 28px; padding: 24px; align-items: flex-start; flex-wrap: wrap; }
+  figure { margin: 0; }
+  canvas { display: block; height: var(--h, 640px); width: auto; background: repeating-conic-gradient(#2a3247 0% 25%, #222a3d 0% 50%) 50% / 24px 24px; }
+  figcaption { margin-top: 6px; color: #8b95a3; }
+</style>
+</head>
+<body>
+<div class="row" id="row"></div>
+<script type="module">
+  // Live preview of the printed art (tools/art/packart.js). tools/render_art.mjs
+  // loads this page headless and calls window.renderArt(name) → a PNG data URL.
+  import { PIECES } from "./packart.js";
+  const row = document.getElementById("row");
+  const params = new URLSearchParams(location.search);
+  if (params.get("h")) document.documentElement.style.setProperty("--h", params.get("h") + "px");
+  const canvases = {};
+  for (const [name, p] of Object.entries(PIECES)) {
+    const fig = document.createElement("figure");
+    const c = document.createElement("canvas");
+    c.width = p.w; c.height = p.h;
+    fig.append(c);
+    const cap = document.createElement("figcaption");
+    cap.textContent = `${name} · ${p.w}×${p.h}`;
+    fig.append(cap);
+    row.append(fig);
+    canvases[name] = c;
+  }
+  window.artReady = (async () => {
+    for (const [name, p] of Object.entries(PIECES)) await p.draw(canvases[name].getContext("2d"));
+    return true;
+  })();
+  window.renderArt = async (name) => {
+    await window.artReady;
+    return canvases[name].toDataURL("image/png");
+  };
+</script>
+</body>
+</html>

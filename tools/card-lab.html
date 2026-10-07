@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Card Lab</title>
+<link id="font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&display=swap" onload="this.dataset.ready=1" />
+<style>
+  body { margin: 0; background: #0d1117; color: #dfe6ee; font: 13px/1.4 system-ui, sans-serif; }
+  header { padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--w, 220px), 1fr)); gap: 18px; padding: 16px; }
+  figure { margin: 0; }
+  canvas { width: 100%; aspect-ratio: 63 / 88; border-radius: 12px; display: block; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  figcaption { margin-top: 6px; color: #8b95a3; font-size: 12px; }
+  button, select { font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Card Lab</strong>
+  <select id="filter">
+    <option value="sample">one per edition</option>
+    <option value="all">all cards</option>
+    <option value="bronze">bronze</option><option value="silver">silver</option><option value="gold">gold</option>
+    <option value="raregold">rare gold</option><option value="totw">TOTW</option><option value="potm">POTM</option>
+    <option value="future">future stars</option><option value="tots">TOTS</option><option value="toty">TOTY</option>
+    <option value="legend">legend</option>
+  </select>
+  <label>size <input id="size" type="range" min="140" max="520" value="230" /></label>
+  <span id="info"></span>
+</header>
+<div class="grid" id="grid"></div>
+<script type="module">
+  import { POOL } from "../src/pool.js";
+  import { drawCard, ensureFonts, ART_W, ART_H } from "../src/cardart.js";
+  const grid = document.getElementById("grid");
+  const sel = document.getElementById("filter");
+  const size = document.getElementById("size");
+  const params = new URLSearchParams(location.search);
+  if (params.get("f")) sel.value = params.get("f");
+  if (params.get("w")) size.value = params.get("w");
+  const apply = () => document.documentElement.style.setProperty("--w", size.value + "px");
+  size.oninput = apply; apply();
+
+  async function render() {
+    await ensureFonts();
+    grid.innerHTML = "";
+    let list;
+    if (sel.value === "sample") {
+      const seen = new Set();
+      list = POOL.filter((c) => !seen.has(c.edition) && seen.add(c.edition));
+    } else if (sel.value === "all") list = POOL;
+    else list = POOL.filter((c) => c.edition === sel.value);
+    // ?hair=dreads / ?beard=full / ?ids=p01,p02 narrow the view while tuning
+    if (params.get("hair")) list = POOL.filter((c) => c.look.hairStyle === params.get("hair"));
+    if (params.get("beard")) list = list.filter((c) => c.look.beard === params.get("beard"));
+    if (params.get("ids")) list = POOL.filter((c) => params.get("ids").split(",").includes(c.playerId));
+    const t0 = performance.now();
+    for (const card of list) {
+      const fig = document.createElement("figure");
+      const cv = document.createElement("canvas");
+      cv.width = ART_W; cv.height = ART_H;
+      drawCard(cv.getContext("2d"), card);
+      fig.append(cv);
+      const cap = document.createElement("figcaption");
+      cap.textContent = `${card.id} · ${card.rarity} · ${card.look.hairStyle}/${card.look.beard}`;
+      fig.append(cap);
+      grid.append(fig);
+    }
+    document.getElementById("info").textContent = `${list.length} cards · ${(performance.now() - t0).toFixed(0)}ms · pool ${POOL.length}`;
+  }
+  sel.onchange = render;
+  render();
+</script>
+</body>
+</html>

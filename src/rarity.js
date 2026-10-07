@@ -1,42 +1,46 @@
 // Single source of truth for rarity → tier.
 //
-// Rarity vocabulary varies a lot across eras, so tiers are derived by keyword
-// rather than a fixed list. Each tier carries the metadata everything else
-// reads: the filter sorts by tier, the gallery glows by tier, and (future)
-// VFX is chosen by tier. To add or retune an effect, edit the `vfx` field here
-// in ONE place and it applies to every card of that rarity.
+// The football reskin keeps the 0–9 tier ladder the whole engine runs on (pack
+// odds, the hit escalation, glows, foil VFX) and re-dresses each rung as a card
+// EDITION: the base Bronze / Silver / Gold metals, then the special promos that
+// count as a "hit" (Team of the Week and up). Every card carries its edition
+// label as `rarity` (and its `tier` directly), so everything downstream keys off
+// one mapping here. To retune an edition's foil, edit its `vfx` id (card.css).
 
 export const TIERS = [
-  { id: 0, key: "common",       label: "Common",               vfx: "common" },
-  { id: 1, key: "uncommon",     label: "Uncommon",             vfx: "uncommon" },
-  { id: 2, key: "rare",         label: "Rare",                 vfx: "rare" },
-  { id: 3, key: "holo",         label: "Holo",                 vfx: "holo" },
-  { id: 4, key: "double",       label: "Double Rare",          vfx: "double" },
-  { id: 5, key: "ultra",        label: "Ultra Rare",           vfx: "ultra" },
-  { id: 6, key: "illustration", label: "Illustration Rare",    vfx: "illustration" },
-  { id: 7, key: "special",      label: "Special Illustration", vfx: "special" },
-  { id: 8, key: "secret",       label: "Secret / Rainbow",     vfx: "secret" },
-  { id: 9, key: "hyper",        label: "Hyper",                vfx: "hyper" },
+  { id: 0, key: "bronze",   label: "Bronze",              short: "BRONZE",       vfx: "bronze" },
+  { id: 1, key: "silver",   label: "Silver",              short: "SILVER",       vfx: "silver" },
+  { id: 2, key: "gold",     label: "Gold",                short: "GOLD",         vfx: "gold" },
+  { id: 3, key: "raregold", label: "Rare Gold",           short: "RARE GOLD",    vfx: "raregold" },
+  { id: 4, key: "totw",     label: "Team of the Week",    short: "TOTW",         vfx: "totw" },
+  { id: 5, key: "potm",     label: "Player of the Match", short: "POTM",         vfx: "potm" },
+  { id: 6, key: "future",   label: "Future Stars",        short: "FUTURE STARS", vfx: "future" },
+  { id: 7, key: "tots",     label: "Team of the Season",  short: "TOTS",         vfx: "tots" },
+  { id: 8, key: "toty",     label: "Team of the Year",    short: "TOTY",         vfx: "toty" },
+  { id: 9, key: "legend",   label: "Legend",              short: "LEGEND",       vfx: "legend" },
 ];
 
-function rarityString(x) {
-  return (typeof x === "string" ? x : x?.rarity || "").toLowerCase();
+// Tier at which a card counts as a special promo (and carries its edition mark).
+export const PROMO_TIER = 4;
+
+const BY_NAME = new Map();
+for (const t of TIERS) {
+  BY_NAME.set(t.key, t.id);
+  BY_NAME.set(t.label.toLowerCase(), t.id);
+  BY_NAME.set(t.short.toLowerCase(), t.id);
 }
 
-// Map any rarity (string or card) to a tier id (0–9). Most specific first.
+function rarityString(x) {
+  return (typeof x === "string" ? x : x?.rarity || "").toLowerCase().trim();
+}
+
+// Map any rarity (edition label string, or a card) to a tier id (0–9). A card
+// that carries its own numeric `tier` wins; otherwise the label is looked up.
 export function rarityToTier(x) {
-  const r = rarityString(x);
-  if (!r || r === "promo" || r === "common") return 0;
-  if (r === "uncommon") return 1;
-  if (r.includes("hyper")) return 9; // Hyper Rare, Mega Hyper Rare
-  if (r.includes("secret") || r.includes("rainbow")) return 8;
-  if (r.includes("special illustration")) return 7;
-  if (r.includes("illustration")) return 6;
-  if (r.includes("ultra") || r.includes("ace spec") || r.includes("amazing") || r.includes("radiant")) return 5;
-  if (r.includes("double")) return 4;
-  if (r.includes("holo") || r.includes("prism") || r.includes("shiny") || r.includes("break")) return 3;
-  if (r.includes("rare")) return 2;
-  return 0;
+  if (x && typeof x === "object" && Number.isInteger(x.tier)) {
+    return Math.max(0, Math.min(TIERS.length - 1, x.tier));
+  }
+  return BY_NAME.get(rarityString(x)) ?? 0;
 }
 
 export function tierOf(x) {
@@ -46,18 +50,19 @@ export function tierOf(x) {
 // Tier accent colors as real hex — the single source of truth, mirroring the
 // --tier-N tokens in base.css. CSS reads the vars; JS (canvas particles, the
 // pack/reveal "tell", color-mix targets) reads these, since it can't resolve a
-// `var(--tier-n)` string into a paintable colour.
+// `var(--tier-n)` string into a paintable colour. Each is the edition's
+// signature glow: the metals, then one distinct hue per promo.
 export const TIER_HEX = [
-  "#aab3c2", // 0 common
-  "#5fcf8e", // 1 uncommon
-  "#57a6ee", // 2 rare
-  "#3fd6c8", // 3 holo
-  "#f2c84b", // 4 double rare
-  "#b072e6", // 5 ultra rare
-  "#f59247", // 6 illustration
-  "#ef5e92", // 7 special
-  "#ff6fd8", // 8 secret / rainbow
-  "#ffd24a", // 9 hyper
+  "#d08a56", // 0 bronze
+  "#c3ccd8", // 1 silver
+  "#e9c45f", // 2 gold
+  "#ffcf3d", // 3 rare gold
+  "#f3c652", // 4 team of the week (black + gold)
+  "#ff4f6a", // 5 player of the match (crimson)
+  "#b46bff", // 6 future stars (violet)
+  "#2fd9c4", // 7 team of the season (aqua)
+  "#4f7dff", // 8 team of the year (royal blue)
+  "#ffe08a", // 9 legend (pale gold)
 ];
 
 // The hex accent for any rarity (string or card).
@@ -78,7 +83,7 @@ export function lighten(hex, amt = 0.5) {
 }
 
 // Effect id for a card's tier — the Card stamps this as data-vfx, and the
-// (future) per-tier effect CSS keys on it.
+// per-edition foil CSS (card.css) keys on it.
 export function vfxFor(x) {
   return tierOf(x).vfx;
 }

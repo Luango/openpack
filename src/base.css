@@ -2,36 +2,39 @@
  *
  * Tier accent colors (--tier-0 … --tier-9) are the single source of truth for
  * rarity color: the filter chips, gallery glows, and card VFX all read them.
- * The tier ladder is defined in rarity.js; the colors below line up with it. */
+ * The tier ladder (the card editions) is defined in rarity.js; the colors below
+ * line up with its TIER_HEX. The palette is a night match under floodlights:
+ * deep navy surfaces, a gold accent, a touch of pitch green. */
 
 :root {
   /* surfaces */
-  --bg: #0b0d12;
-  --bg-elev: #141821;
-  --bg-elev-2: #1c212c;
-  --line: #2a313f;
-  --line-soft: #20262f;
+  --bg: #070d16;
+  --bg-elev: #0f1826;
+  --bg-elev-2: #162236;
+  --line: #22314a;
+  --line-soft: #18233a;
 
   /* text */
-  --text: #eef1f6;
-  --text-dim: #9aa3b2;
-  --text-faint: #5e6675;
+  --text: #eef2f8;
+  --text-dim: #97a4b8;
+  --text-faint: #5a6780;
 
   /* brand */
-  --accent: #6ea8fe;
-  --accent-strong: #9b8cff;
+  --accent: #f2c54b;
+  --accent-strong: #ffdf7a;
+  --pitch: #2fbf71;
 
-  /* tier accents — low → high rarity */
-  --tier-0: #aab3c2; /* common      */
-  --tier-1: #5fcf8e; /* uncommon    */
-  --tier-2: #57a6ee; /* rare        */
-  --tier-3: #3fd6c8; /* holo        */
-  --tier-4: #f2c84b; /* double rare */
-  --tier-5: #b072e6; /* ultra rare  */
-  --tier-6: #f59247; /* illustration*/
-  --tier-7: #ef5e92; /* special     */
-  --tier-8: #ff6fd8; /* secret      */
-  --tier-9: #ffd24a; /* hyper       */
+  /* tier accents — the card editions, low → high */
+  --tier-0: #d08a56; /* bronze              */
+  --tier-1: #c3ccd8; /* silver              */
+  --tier-2: #e9c45f; /* gold                */
+  --tier-3: #ffcf3d; /* rare gold           */
+  --tier-4: #f3c652; /* team of the week    */
+  --tier-5: #ff4f6a; /* player of the match */
+  --tier-6: #b46bff; /* future stars        */
+  --tier-7: #2fd9c4; /* team of the season  */
+  --tier-8: #4f7dff; /* team of the year    */
+  --tier-9: #ffe08a; /* legend              */
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -51,11 +54,11 @@ body {
 
 body {
   background:
-    radial-gradient(1100px 700px at 75% -10%, rgba(110, 168, 254, 0.12), transparent 60%),
-    radial-gradient(900px 600px at 10% 0%, rgba(155, 140, 255, 0.1), transparent 55%),
+    radial-gradient(1100px 700px at 75% -10%, rgba(196, 220, 255, 0.10), transparent 60%),
+    radial-gradient(900px 600px at 10% 110%, rgba(47, 191, 113, 0.08), transparent 55%),
     var(--bg);
   color: var(--text);
-  font: 15px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation; /* no double-tap-to-zoom (iOS ignores user-scalable); panning/scroll still work */
@@ -89,16 +92,8 @@ body {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: conic-gradient(
-    from 210deg,
-    #ff6fd8,
-    #ffd24a,
-    #3fd6c8,
-    #6ea8fe,
-    #b072e6,
-    #ff6fd8
-  );
-  box-shadow: 0 0 18px rgba(155, 140, 255, 0.55);
+  background: linear-gradient(135deg, #ffe9a8, #f2c54b 45%, #b8862b);
+  box-shadow: 0 0 18px rgba(242, 197, 75, 0.45);
 }
 
 .brand-name {
@@ -185,7 +180,7 @@ body.revealing .app-nav--floating {
 .select:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.25);
+  box-shadow: 0 0 0 3px rgba(242, 197, 75, 0.25);
 }
 
 .card-count {
@@ -204,7 +199,7 @@ body.revealing .app-nav--floating {
   display: flex;
   flex-direction: column;
   padding: 12px clamp(16px, 4vw, 40px);
-  background: rgba(11, 13, 18, 0.72);
+  background: rgba(7, 13, 22, 0.72);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line-soft);
 }

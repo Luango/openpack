@@ -836,8 +836,8 @@ export function spinTick(vel = 6) {
 // has weight, not just hiss, AND a short foil-crinkle attack so the first contact
 // reads as metallic foil, not paper. tearStart(tier) on the first cut, tearMove()
 // each move, tearEnd() on release (with a fibrous snap if it committed). The tier
-// (the rarest card hidden inside) brightens + energizes the rip — a Hyper pack
-// tears with more sparkle than a Common.
+// (the rarest card hidden inside) brightens + energizes the rip — a Legend pack
+// tears with more sparkle than a Bronze one.
 let tear = null;
 
 // THE CHIME-UP — as you drag the rip across the pack an ascending pentatonic bell
@@ -988,7 +988,7 @@ export function tearStart(tier = 0) {
   stopTear();
   const loop = startLoopSample("tear_loop");
   if (loop) { tear = { ...loop, sample: true, tier, step: -1 }; return; } // recorded rip — modulated in tearMove
-  const tg = Math.max(0, Math.min(1, (tier - 3) / 6)); // 0 below Holo → 1 at Hyper
+  const tg = Math.max(0, Math.min(1, (tier - 3) / 6)); // 0 below Rare Gold → 1 at Legend
   const src = c.createBufferSource();
   src.buffer = noiseBuffer(c);
   src.loop = true;
@@ -1233,7 +1233,7 @@ export function burst(power = 0.7, tier = 5) {
   const c = live();
   if (!c) return;
   const p = Math.max(0, Math.min(1, power));
-  const tg = Math.max(0, Math.min(1, (tier - 4) / 5)); // 0 at Double Rare → 1 at Hyper
+  const tg = Math.max(0, Math.min(1, (tier - 4) / 5)); // 0 at Team of the Week → 1 at Legend
   const t = c.currentTime;
 
   // body thud — short lowpassed noise, with a wet tail so the room "opens",
@@ -1303,7 +1303,7 @@ export function burst(power = 0.7, tier = 5) {
 
 // THE REVEAL IMPACT — the downbeat the anticipation riser LANDS on, the instant a
 // chase card uncovers. This is the money moment: it scales hard with tier so a
-// Hyper pull is a different EVENT than a Double Rare. Three layers — a pitched BOOM
+// Legend pull is a different EVENT than a Team of the Week. Three layers — a pitched BOOM
 // you feel (phone-audible), a bright noise CRASH that blooms into the room (the
 // "tsss" under the flash), and a sharp leading-edge crack — plus a felt sub at the
 // top tiers. Fired ~just before the chime so impact → arpeggio → glitter reads as
@@ -1315,7 +1315,7 @@ export function revealImpact(tier = 5) {
   const c = live();
   if (!c) return;
   const t = c.currentTime;
-  const p = Math.max(0, Math.min(1, (tier - 4) / 5)); // 0 at Double Rare → 1 at Hyper
+  const p = Math.max(0, Math.min(1, (tier - 4) / 5)); // 0 at Team of the Week → 1 at Legend
 
   // 1) BOOM — a pitched body drop kept in the phone-audible 165→70 Hz band
   const boom = c.createOscillator();
@@ -1434,7 +1434,7 @@ export function riser(tier = 5, ms = 600) {
 
 // A scatter of tiny high bell grains in a pentatonic set — "glitter you can hear".
 // Layered over the chime and the open tail. Now scales genuinely with `count` (no
-// hard 18 cap) so a Hyper shimmers far more than a Double Rare, with per-grain
+// hard 18 cap) so a Legend shimmers far more than a Team of the Week, with per-grain
 // detune + envelope spread so it sparkles instead of buzzing.
 export function sparkleDust(count = 10, spread = 0.6) {
   const c = live();

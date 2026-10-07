@@ -3,20 +3,22 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Pokémon Cover Flow — 封面浏览选择器</title>
+<title>OpenPack FC Cover Flow — 球星卡封面浏览</title>
+<!-- 卡面字体（Barlow Condensed）：球星卡是用 canvas 现画的（src/cardart.js），会等这张样式表加载完再画 -->
+<link id="font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&display=swap" onload="this.dataset.ready=1" />
 <style>
   /* ===================================================================
-   *  宝可梦卡牌 Cover Flow（iPod/iTunes 封面浏览）
-   *  纯原生 HTML + CSS 3D + JavaScript，无任何依赖。
+   *  OpenPack FC 球星卡 Cover Flow（iPod/iTunes 封面浏览）
+   *  纯原生 HTML + CSS 3D + JavaScript，无任何依赖。卡面由 src/cardart.js 现场绘制。
    *
    *  ▼▼▼ 所有 3D 视觉参数都集中在 JS 顶部的 CONFIG 里，方便微调 ▼▼▼
    *  （旋转角度 / 卡间距 / 后退距离 / 缩放 / 变暗程度 等，见下方注释）
    * =================================================================== */
 
   :root {
-    /* 卡牌尺寸 —— 标准宝可梦卡约为 3:4 的纵向比例 */
+    /* 卡牌尺寸 —— 标准球星卡 63:88 的纵向比例 */
     --card-w: 240px;
-    --card-h: 336px;   /* 240 * 4/3 ≈ 320~336，这里取 1.4 略高一点更挺拔 */
+    --card-h: 335px;   /* 240 × 88/63 ≈ 335 */
   }
 
   * { box-sizing: border-box; }
@@ -25,8 +27,8 @@
     height: 100%;
     overflow: hidden;
     background:
-      radial-gradient(120% 80% at 50% 0%, #1b2030 0%, #0a0c12 60%, #06070b 100%);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      radial-gradient(120% 80% at 50% 0%, #1c2c48 0%, #0a1220 60%, #050a12 100%);
+    font-family: "Barlow Condensed", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
     color: #e7ebf3;
     -webkit-user-select: none; user-select: none;
     touch-action: none; /* 自己接管拖拽手势，禁止页面横向滚动 */
@@ -78,7 +80,7 @@
     height: 100%;
     border-radius: 14px;
     overflow: hidden;
-    background: linear-gradient(160deg, #2a2f44, #161a28); /* 图片未加载时的占位底色 */
+    background: linear-gradient(160deg, #24324d, #121a2a); /* 图片未加载时的占位底色 */
     box-shadow: 0 30px 60px -18px rgba(0, 0, 0, 0.85);
     -webkit-box-reflect: below 6px
       linear-gradient(transparent, transparent 62%, rgba(255, 255, 255, 0.28));
@@ -118,19 +120,19 @@
     100% { transform: translateX(120%);  opacity: 0; }
   }
 
-  /* —— 全息闪卡叠层（可选）——
-   * 给 .cf-card 加 class="holo"（或 data-holo）即可叠加一层彩虹流光，
-   * 用来表现像 ACE SPEC 王牌卡那种粉彩闪卡。仅 active 时增强。 */
+  /* —— 闪卡叠层 ——
+   * 特殊版本（周最佳 TOTW 及以上）的 .cf-card 会带 class="holo"，叠加一层流光，
+   * 仅 active 时增强。 */
   .cf-card.holo::after {
     content: "";
     position: absolute; inset: 0;
     pointer-events: none;
     background: linear-gradient(115deg,
-      rgba(255,120,200,0.0) 20%,
-      rgba(255,120,200,0.35) 38%,
-      rgba(130,200,255,0.35) 50%,
-      rgba(180,255,180,0.30) 62%,
-      rgba(255,120,200,0.0) 80%);
+      rgba(255,214,110,0.0) 20%,
+      rgba(255,214,110,0.32) 38%,
+      rgba(220,234,255,0.36) 50%,
+      rgba(255,214,110,0.28) 62%,
+      rgba(255,214,110,0.0) 80%);
     mix-blend-mode: color-dodge;
     opacity: 0.25;
     transition: opacity 0.5s ease;
@@ -147,30 +149,18 @@
     z-index: 5;
   }
   .cf-caption .name {
-    font-size: 20px; font-weight: 800; letter-spacing: 0.02em;
+    font-size: 26px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; font-style: italic;
     text-shadow: 0 2px 12px rgba(0,0,0,0.6);
   }
   .cf-caption .hint {
-    margin-top: 6px; font-size: 12px; color: #8b93a6; letter-spacing: 0.04em;
+    margin-top: 6px; font-size: 14px; color: #8b97ad; letter-spacing: 0.08em;
   }
 </style>
 </head>
 <body>
   <div class="cf-viewport" id="viewport">
     <div class="cf-track" id="track">
-      <!-- ====== 卡牌列表 ======
-           替换 <img src> 为你的真实宝可梦卡牌图即可（保持 3:4 比例最佳）。
-           想让某张卡变成闪卡，给它的 .cf-card 加上 class="cf-card holo"。
-           data-name 会显示在底部标题。 -->
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Charizard"  src="https://images.pokemontcg.io/base1/4.png"  /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Blastoise"  src="https://images.pokemontcg.io/base1/2.png"  /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Venusaur (Holo)" src="https://images.pokemontcg.io/base1/15.png" /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Pikachu"    src="https://images.pokemontcg.io/base1/58.png" /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Mewtwo (ACE)" src="https://images.pokemontcg.io/base1/10.png" /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Gyarados"   src="https://images.pokemontcg.io/base1/6.png"  /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Alakazam"   src="https://images.pokemontcg.io/base1/1.png"  /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card holo"><img alt="" data-name="Chansey (Holo)" src="https://images.pokemontcg.io/base1/3.png" /><div class="cf-shine"></div></div></div>
-      <div class="cf-item"><div class="cf-card"><img alt="" data-name="Hitmonchan" src="https://images.pokemontcg.io/base1/7.png"  /><div class="cf-shine"></div></div></div>
+      <!-- 卡牌由下方脚本从球员池（src/pool.js）生成：每个版本各一张 + 几张精选 -->
     </div>
   </div>
 
@@ -179,7 +169,24 @@
     <div class="hint">拖拽 / 滑动 / 滚轮 切换 · 点击两侧卡牌居中</div>
   </div>
 
-<script>
+<script type="module">
+import { POOL } from "./src/pool.js";
+import { cardArt } from "./src/cardart.js";
+
+/* —— 选卡：每个版本（铜/银/金/稀有金/各特殊版本）各一张，再补几张金卡 —— */
+const pickOne = (ed) => POOL.find((c) => c.edition === ed);
+const picks = ["bronze", "silver", "gold", "raregold", "totw", "potm", "future", "tots", "toty", "legend"].map(pickOne).filter(Boolean);
+const trackEl = document.getElementById("track");
+for (const card of picks) {
+  const item = document.createElement("div");
+  item.className = "cf-item";
+  item.innerHTML = `<div class="cf-card${card.tier >= 4 ? " holo" : ""}"><img alt="" /><div class="cf-shine"></div></div>`;
+  const img = item.querySelector("img");
+  img.dataset.name = `${card.display} · ${card.rarity}`;
+  cardArt(card).then((url) => { img.src = url; });
+  trackEl.append(item);
+}
+
 /* ===================================================================
  *  CONFIG —— 全部 3D 视觉参数集中在这里，调这几个数就能改变观感
  * =================================================================== */

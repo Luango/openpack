@@ -2,8 +2,10 @@
 //
 // The booster's cards rise out of the opening as a stack; you tap the front one
 // to flick it away and bring up the next, rarest LAST. Drag the front card to
-// tilt it and watch the holo foil play. The big pull lands with a sparkle burst,
-// a chime, and a glow.
+// tilt it and watch the foil play. A promo pull lands with a burst, a chime and a
+// glow — and the very top editions (Team of the Season and up) get a WALKOUT
+// first: the player's nation, position and club are teased one by one, in the
+// dark, before the card itself drops (see walkout()).
 //
 // Once every card is seen they fan back into the HAUL — a draggable fan SELECTOR of
 // the pull: drag / swipe / wheel / arrow-keys rotate the fan to switch which card
@@ -17,6 +19,7 @@ import { renderCard } from "./card.js";
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import { rarityToTier, tierOf, TIER_HEX, lighten } from "./rarity.js";
+import { NATIONS, drawFlag, drawCrest, emblemCanvas } from "./emblems.js";
 import * as sfx from "./sfx.js";
 
 const TILT = 12; // max pointer tilt on the front card (deg)
@@ -37,11 +40,13 @@ const SLIDE_SLOP = 6; // px of drag before a press becomes a slide (under this i
 const SLIDE_DRAG = 42; // px of drag that opens the stack to its full edge spread
 const EXPAND_EDGE = 15; // px of side edge each card slides out to reveal — the parallel cascade step
 const DEPTH_SHRINK = 0.01; // each card behind shrinks this much per stack step → a natural receding deck (keep in sync with the resting scale in index.html)
-const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Double Rare ex and up
-const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
+const RARE_TIER = 4; // tier ≥ this gets the flourish (burst + chime + glow) — Team of the Week and up
+const WALKOUT_TIER = 7; // tier ≥ this gets the walkout (nation → position → club) — Team of the Season and up
+const WALKOUT_BEAT = 700; // ms each walkout clue holds the stage
+const CONFETTI = ["#ffffff", "#ffe08a", "#f2c54b"]; // gold-and-white ticker tape for the top pulls
 
-// Per-tier HIT escalation — the ONE dial that keeps a crescendo: a Double Rare
-// is a shimmer, only a Hyper is a screen-takeover. burst = particle count,
+// Per-tier HIT escalation — the ONE dial that keeps a crescendo: a Team of the
+// Week is a shimmer, only a Legend is a screen-takeover. burst = particle count,
 // flash = full-stage flash opacity, rays = sunburst opacity (0 = no rays),
 // fine = add the counter-rotating fine ray layer, fast = faster spin, antic =
 // anticipation-tell hold (ms) before the card uncovers, slow = held beat,
@@ -72,27 +77,26 @@ export function createReveal({ mountEl, onAgain }) {
     <div class="reveal__shock"></div>
     <div class="reveal__flash"></div>
     <p class="reveal__stamp" aria-hidden="true"></p>
+    <div class="reveal__walkout" aria-hidden="true"></div>
     <div class="reveal__haul-cap" aria-hidden="true">
-      <p class="hc-kicker">Your pull</p>
+      <p class="hc-kicker">New signings</p>
       <p class="hc-best"></p>
     </div>
     <div class="reveal__status">
       <p class="reveal__hint"></p>
     </div>
     <p class="reveal__sr" aria-live="polite"></p>
-    <button class="reveal__again" type="button" hidden>Collect</button>
-    <!-- the binder the cards get vacuumed into on Collect; rises as the button drops,
-         and bloats once per card (see collect() in this file) -->
+    <button class="reveal__again" type="button" hidden>Send to Club</button>
+    <!-- your CLUB: the badge the signings get vacuumed into on Send to Club; rises as the
+         button drops, and bloats once per card (see collect() in this file) -->
     <div class="reveal__binder" aria-hidden="true">
       <div class="binder-icon">
         <svg viewBox="0 0 72 88" width="100%" height="100%">
-          <rect x="6" y="5" width="60" height="78" rx="7" fill="#2a2150" stroke="#b49bff" stroke-width="3"/>
-          <rect x="6" y="5" width="15" height="78" rx="7" fill="#1c1638" stroke="#b49bff" stroke-width="3"/>
-          <circle cx="13.5" cy="26" r="3.2" fill="#d8ccff"/>
-          <circle cx="13.5" cy="44" r="3.2" fill="#d8ccff"/>
-          <circle cx="13.5" cy="62" r="3.2" fill="#d8ccff"/>
-          <rect x="30" y="30" width="26" height="28" rx="3" fill="#b49bff" opacity="0.85"/>
-          <path d="M43 33 l3 6 6 .8 -4.4 4.2 1 6.2 -5.6-3 -5.6 3 1-6.2 -4.4-4.2 6-.8z" fill="#fff2c8"/>
+          <path d="M8 7 H64 V44 C64 63 49 76 36 82 C23 76 8 63 8 44 Z" fill="#13233a" stroke="#f2c54b" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M9.8 8.8 H62.2 V23 H9.8 Z" fill="#f2c54b"/>
+          <path d="M18 15.9 h36" stroke="#13233a" stroke-width="2.4" stroke-dasharray="3 3"/>
+          <path d="M36 32 l3.7 7.6 8.3 1.2 -6 5.9 1.4 8.3 -7.4 -3.9 -7.4 3.9 1.4 -8.3 -6 -5.9 8.3 -1.2z" fill="#fff3c8"/>
+          <path d="M22 64 C30 69 42 69 50 64" stroke="#f2c54b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
         </svg>
       </div>
     </div>`;
@@ -110,6 +114,7 @@ export function createReveal({ mountEl, onAgain }) {
   const flashEl = host.querySelector(".reveal__flash");
   const shockEl = host.querySelector(".reveal__shock");
   const stampEl = host.querySelector(".reveal__stamp");
+  const walkoutEl = host.querySelector(".reveal__walkout");
   const haulCapEl = host.querySelector(".reveal__haul-cap");
   const srEl = host.querySelector(".reveal__sr");
   const particles = createParticles(host.querySelector(".reveal__fx"));
@@ -132,6 +137,7 @@ export function createReveal({ mountEl, onAgain }) {
   let anticipating = false; // true during the held "something rare is coming" beat
   let anticTimer = null; // the pending uncover after the anticipation tell
   let lastAdvanceT = 0; // timestamp of the last tap-advance — throttles machine-gun tapping (ADVANCE_MIN_MS)
+  let walkTimers = []; // the walkout's clue beats (cleared on close/replay)
 
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
@@ -238,6 +244,7 @@ export function createReveal({ mountEl, onAgain }) {
   // top card sits INSIDE the pack and peeks through the tear gap as you rip — and
   // there's nothing to fetch or build when the pack finally opens.
   function prepare(packCards) {
+    clearWalkout();
     cards = packCards || [];
     pos = 0;
     sliding = false;
@@ -396,7 +403,7 @@ export function createReveal({ mountEl, onAgain }) {
     // Scale the entrance AMPLITUDE by tier (the card itself punches, not just the
     // backdrop): a common sets down gently on the defaults; a chase drops from
     // higher, overshoots deeper, and pops larger. Timing is fixed (see the CSS) so
-    // the contact dip stays locked to the impact cues. punch: 0 below Double Rare → 1 at Hyper.
+    // the contact dip stays locked to the impact cues. punch: 0 below Team of the Week → 1 at Legend.
     const punch = Math.max(0, Math.min(1, (rarityToTier(entry.card) - 3) / 6));
     el.style.setProperty("--enter-rise", (34 + punch * 26).toFixed(0) + "px");
     el.style.setProperty("--enter-dip", (-(6 + punch * 12)).toFixed(0) + "px");
@@ -435,6 +442,7 @@ export function createReveal({ mountEl, onAgain }) {
   }
 
   function close() {
+    clearWalkout();
     host.classList.add("hidden");
     host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting");
     binderEl.classList.remove("rising");
@@ -552,10 +560,8 @@ export function createReveal({ mountEl, onAgain }) {
       cur.slot.style.pointerEvents = "none";
       host.style.setProperty("--tier-color", TIER_HEX[nextTier]);
       host.classList.add("telling");
-      const wait = REDUCED ? Math.min(220, cfg.antic) : cfg.antic;
-      sfx.riser(nextTier, wait); // duration = the actual hold, so the climax lands on the uncover
       if (navigator.vibrate) navigator.vibrate(8);
-      anticTimer = setTimeout(() => {
+      const uncover = () => {
         host.classList.remove("telling");
         anticipating = false;
         pos++;
@@ -563,7 +569,15 @@ export function createReveal({ mountEl, onAgain }) {
         enter(slots[pos]);
         flourishIfRare(); // the hit lands
         updateHint();
-      }, wait);
+      };
+      // the top editions WALK OUT first (nation → position → club), then the hit
+      if (nextTier >= WALKOUT_TIER && !REDUCED) {
+        walkout(next.card, nextTier, uncover);
+        return;
+      }
+      const wait = REDUCED ? Math.min(220, cfg.antic) : cfg.antic;
+      sfx.riser(nextTier, wait); // duration = the actual hold, so the climax lands on the uncover
+      anticTimer = setTimeout(uncover, wait);
       return;
     }
 
@@ -578,6 +592,95 @@ export function createReveal({ mountEl, onAgain }) {
     } else {
       endOfPack();
     }
+  }
+
+  // THE WALKOUT — the signature football-pack moment for a top pull. The deck is
+  // veiled and the stage stays dark while three clues punch in one after another,
+  // centre stage: the player's NATION (flag), POSITION, then CLUB (crest). Each
+  // lands with a thud + haptic; a riser climbs out of the last into the card's own
+  // hit. `done` uncovers the card exactly as the plain anticipation beat would.
+  function walkout(card, tier, done) {
+    clearWalkout();
+    for (let i = pos + 1; i < slots.length; i++) slots[i].slot.classList.add("veiled");
+    host.classList.add("walkout");
+    const clues = [flagClue(card), posClue(card), crestClue(card)].filter(Boolean);
+    let prev = null;
+    clues.forEach((el, i) => {
+      walkTimers.push(setTimeout(() => {
+        if (prev) clueOut(prev);
+        walkoutEl.appendChild(el);
+        el.animate(
+          [
+            { opacity: 0, transform: "scale(1.7)", filter: "blur(6px)" },
+            { opacity: 1, transform: "scale(0.96)", filter: "blur(0px)", offset: 0.55 },
+            { opacity: 1, transform: "scale(1)", filter: "blur(0px)" },
+          ],
+          { duration: 380, easing: "cubic-bezier(0.2, 0.9, 0.3, 1)", fill: "forwards" }
+        );
+        sfx.setDown();
+        sfx.pipTone(2 + i * 2);
+        if (navigator.vibrate) navigator.vibrate(14 + i * 6);
+        prev = el;
+      }, 240 + i * WALKOUT_BEAT));
+    });
+    const end = 240 + clues.length * WALKOUT_BEAT;
+    walkTimers.push(setTimeout(() => sfx.riser(tier, 600), end - 600));
+    walkTimers.push(setTimeout(() => { if (prev) clueOut(prev); }, end - 140));
+    walkTimers.push(setTimeout(() => {
+      clearWalkout();
+      done();
+    }, end));
+  }
+
+  function clueOut(el) {
+    const a = el.animate(
+      [{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(0.88) translateY(-14px)" }],
+      { duration: 200, easing: "ease-in", fill: "forwards" }
+    );
+    a.onfinish = () => el.remove();
+  }
+
+  function clearWalkout() {
+    walkTimers.forEach(clearTimeout);
+    walkTimers = [];
+    walkoutEl.innerHTML = "";
+    host.classList.remove("walkout");
+    slots.forEach((s) => s.slot.classList.remove("veiled"));
+  }
+
+  function clue(content, caption) {
+    const el = document.createElement("div");
+    el.className = "wo-clue";
+    el.append(content);
+    if (caption) {
+      const cap = document.createElement("p");
+      cap.className = "wo-cap";
+      cap.textContent = caption;
+      el.append(cap);
+    }
+    return el;
+  }
+
+  function flagClue(card) {
+    if (!card.nation) return null;
+    const cv = emblemCanvas((ctx) => drawFlag(ctx, card.nation, 0, 0, 210, 140, { radius: 12 }), 210, 140);
+    cv.className = "wo-flag";
+    return clue(cv, NATIONS[card.nation]?.name);
+  }
+
+  function posClue(card) {
+    if (!card.pos) return null;
+    const el = document.createElement("p");
+    el.className = "wo-pos";
+    el.textContent = card.pos;
+    return clue(el, null);
+  }
+
+  function crestClue(card) {
+    if (!card.club) return null;
+    const cv = emblemCanvas((ctx) => drawCrest(ctx, card.club, 90, 100, 180), 180, 200);
+    cv.className = "wo-crest";
+    return clue(cv, card.club.name);
   }
 
   // Throw the CURRENT front card off with a little direction + spin (alternating
@@ -604,7 +707,7 @@ export function createReveal({ mountEl, onAgain }) {
 
   // An expanding tier-coloured ring on the hit. Scale + opacity only (the ring's
   // glow is a static box-shadow, transform-scaled, never re-rastered). Bigger +
-  // longer for rarer pulls; even a Double Rare (which gets no rays) gets this punch.
+  // longer for rarer pulls; even a Team of the Week (which gets no rays) gets this punch.
   function shockwave(tier) {
     if (REDUCED) return;
     const punch = Math.max(0, Math.min(1, (tier - 3) / 6));
@@ -681,7 +784,7 @@ export function createReveal({ mountEl, onAgain }) {
     // let the fan-in animate on the CSS transition, THEN switch to 1:1 rAF control
     setTimeout(() => { if (host.classList.contains("haul")) host.classList.add("haul-live"); }, 620);
     hintEl.textContent = "";
-    srEl.textContent = `That's your pack. Best pull: ${tierOf(slots[hero].card).label}. Drag to browse, or open another.`;
+    srEl.textContent = `That's your pack. Best signing: ${slots[hero].card.name}, ${tierOf(slots[hero].card).label}. Drag to browse, or send them to your club.`;
   }
 
   // place every card on the fan for the (fractional) centre position
@@ -728,7 +831,7 @@ export function createReveal({ mountEl, onAgain }) {
       const card = slots[haulOrder[idx]].card;
       host.style.setProperty("--tier-color", TIER_HEX[rarityToTier(card)]);
       haulCapEl.querySelector(".hc-best").textContent = tierOf(card).label;
-      srEl.textContent = `${card.name} · ${tierOf(card).label}`;
+      srEl.textContent = `${card.name} · ${card.pos || ""} ${card.ovr || ""} · ${tierOf(card).label}`;
     }
   }
 
@@ -809,10 +912,10 @@ export function createReveal({ mountEl, onAgain }) {
     else if (e.key === "ArrowLeft") { haulTarget = Math.max(0, Math.round(haulCenter) - 1); startHaulLoop(); }
   });
 
-  // THE HIT — when the current front card is a chase pull, fire the full payoff
-  // scaled by tier: sunburst rays, a screen flash, a rarity stamp, a glowing
+  // THE HIT — when the current front card is a promo pull, fire the full payoff
+  // scaled by tier: sunburst rays, a screen flash, an edition stamp, a glowing
   // star/bokeh burst, a fuller chime + sparkle dust, haptics, and (top tiers) a
-  // held beat. A Double Rare is a shimmer; a Hyper takes the whole screen.
+  // held beat. A Team of the Week is a shimmer; a Legend takes the whole screen.
   function flourishIfRare() {
     const s = slots[pos];
     if (!s) return;
@@ -829,7 +932,7 @@ export function createReveal({ mountEl, onAgain }) {
     const hex = TIER_HEX[tier];
     host.style.setProperty("--tier-color", hex);
 
-    // rotating sunburst rays — gated by tier (a Double Rare gets none)
+    // rotating sunburst rays — gated by tier (a Team of the Week gets none)
     if (cfg.rays > 0) {
       setRays(raysEl, cfg.rays, cfg.fast);
       if (cfg.fine) setRays(raysFineEl, cfg.rays * 0.7, cfg.fast);
@@ -841,14 +944,14 @@ export function createReveal({ mountEl, onAgain }) {
     );
     // the rarity label punches in
     stampHit(tier);
-    shockwave(tier);  // an expanding tier ring — even a Double Rare (no rays) lands a punch
+    shockwave(tier);  // an expanding tier ring — even a Team of the Week (no rays) lands a punch
     shakeStack(tier); // the hand JOLTS on the hit — tactile weight, scaled by tier
 
     // a glowing burst around the card — soft bokeh + 4-point sparkles, additive
     const r = host.getBoundingClientRect();
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height * 0.44;
-    const pal = tier >= 8 ? ["#ffffff", ...FOIL] : ["#ffffff", lighten(hex, 0.55), hex];
+    const pal = tier >= 8 ? ["#ffffff", hex, lighten(hex, 0.45), ...CONFETTI] : ["#ffffff", lighten(hex, 0.55), hex];
     particles.emit(cx, cy, {
       count: Math.round(cfg.burst * 0.6), speed: 7.5, spread: Math.PI * 2,
       colors: pal, gravity: 0.05, life: 80, size: 3, bloom: true, trail: true,
@@ -885,7 +988,7 @@ export function createReveal({ mountEl, onAgain }) {
     el.classList.toggle("fast", !!fast);
   }
 
-  // the rarity label punches in over the card, settles, then fades
+  // the edition label punches in over the card, settles, then fades
   function stampHit(tier) {
     const s = slots[pos];
     if (!s) return;
@@ -915,12 +1018,13 @@ export function createReveal({ mountEl, onAgain }) {
   // Announce the current card to screen readers (the SR live region).
   function updateHint() {
     const card = slots[pos]?.card;
-    if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}, ${card.rarity}. Tap for the next card.`;
+    if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}: ${card.name}, ${card.pos || ""} ${card.ovr || ""}, ${card.rarity}. Tap for the next card.`;
   }
 
-  // COLLECT — the button drops away as a binder rises, then the pull is vacuumed into
-  // it one card at a time; the binder bloats + gulps on each card (Cult-of-the-Lamb
-  // munch). When the last card lands, hand back to the host (→ pick another pack).
+  // SEND TO CLUB — the button drops away as your club badge rises, then the signings
+  // are vacuumed into it one card at a time; the badge bloats + gulps on each card
+  // (Cult-of-the-Lamb munch). When the last card lands, hand back to the host (→ pick
+  // another pack).
   let collecting = false;
   function collect() {
     if (collecting || !slots.length) return;

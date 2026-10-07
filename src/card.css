@@ -14,7 +14,7 @@
  *   --hyp         pointer intensity (0–1)  */
 
 :root {
-  /* card aspect ratio — standard TCG card is 63mm × 88mm */
+  /* card aspect ratio — a standard trading card is 63mm × 88mm */
   --card-aspect: 63 / 88;
   /* the ONE size for a full (detail) card — used by the gallery lightbox AND the
      pack reveal, so a card is the same size everywhere */
@@ -159,17 +159,17 @@
   border-radius: inherit;
 }
 
-/* card back — user-supplied artwork (assets/card-back.jpg), shown when the card
-   is turned to its back (the front face hides via backface-visibility). The card
-   rounds + clips the corners, so the image can be full-bleed with square edges.
-   Path is relative to this file (src/). */
+/* card back — the OpenPack FC back (assets/card-back.jpg, rendered from
+   tools/art/card-back.html), shown when the card is turned to its back (the front
+   face hides via backface-visibility). The card rounds + clips the corners, so
+   the image can be full-bleed with square edges. Path is relative to this file. */
 .card__back {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   backface-visibility: hidden;
   overflow: hidden;
-  background: #1f3a8a url("../assets/card-back.jpg") center / cover no-repeat;
+  background: #0b1a33 url("../assets/card-back.jpg") center / cover no-repeat;
 }
 
 /* thin paper edge — flat matte color, deliberately no holo/glare/reflection
@@ -249,7 +249,7 @@ body.holo-on .card--grid .card__vfx {
   opacity: 0;
 }
 
-/* commons/uncommons stay matte; tier 3+ gets the sheen on hover */
+/* Bronze/Silver/Gold stay matte; Rare Gold and up get the sheen on hover */
 body.holo-on .card--grid.tier-3:hover .card__vfx,
 body.holo-on .card--grid.tier-4:hover .card__vfx,
 body.holo-on .card--grid.tier-5:hover .card__vfx,
@@ -268,20 +268,20 @@ body.holo-on .card--grid.tier-9:hover .card__vfx {
 
 /* --- detail: interactive foil driven by --posx/--posy/--hyp ------------- */
 
-/* base foil layer shared by all holo tiers in the lightbox */
+/* base foil layer shared by all foiled editions in the lightbox / reveal */
 body.holo-on .card--detail .card__vfx {
   opacity: calc(var(--hyp, 0) * 0.9);
 }
 
-/* tiers 0–1 are non-foil: nothing to show in detail either */
-body.holo-on .card--detail .card__vfx[data-vfx="common"],
-body.holo-on .card--detail .card__vfx[data-vfx="uncommon"] {
+/* Bronze + Silver are matte metal: no foil */
+body.holo-on .card--detail .card__vfx[data-vfx="bronze"],
+body.holo-on .card--detail .card__vfx[data-vfx="silver"] {
   background: none;
   opacity: 0;
 }
 
-/* tier 2 rare — subtle silver shimmer */
-body.holo-on .card--detail .card__vfx[data-vfx="rare"] {
+/* Gold — a soft white shimmer across the metal */
+body.holo-on .card--detail .card__vfx[data-vfx="gold"] {
   background: linear-gradient(
     115deg,
     transparent,
@@ -293,9 +293,11 @@ body.holo-on .card--detail .card__vfx[data-vfx="rare"] {
   opacity: calc(var(--hyp, 0) * 0.5);
 }
 
-/* tiers 3–4 holo / double — single-hue cosmos holo in the tier color */
-body.holo-on .card--detail .card__vfx[data-vfx="holo"],
-body.holo-on .card--detail .card__vfx[data-vfx="double"] {
+/* Rare Gold, Team of the Week, Player of the Match — single-hue foil bands
+   in the edition's own colour */
+body.holo-on .card--detail .card__vfx[data-vfx="raregold"],
+body.holo-on .card--detail .card__vfx[data-vfx="totw"],
+body.holo-on .card--detail .card__vfx[data-vfx="potm"] {
   background:
     repeating-linear-gradient(
       115deg,
@@ -308,38 +310,50 @@ body.holo-on .card--detail .card__vfx[data-vfx="double"] {
   background-position: var(--posx, 50%) var(--posy, 50%);
 }
 
-/* tiers 5–7 ultra / illustration / special — rainbow linear foil */
-body.holo-on .card--detail .card__vfx[data-vfx="ultra"],
-body.holo-on .card--detail .card__vfx[data-vfx="illustration"],
-body.holo-on .card--detail .card__vfx[data-vfx="special"] {
+/* Future Stars — a two-tone neon sweep (violet ↔ mint) */
+body.holo-on .card--detail .card__vfx[data-vfx="future"] {
   background:
     repeating-linear-gradient(
       110deg,
-      #ff5d8f 0%,
-      #ffd24a 12%,
-      #5fcf8e 24%,
-      #3fd6c8 36%,
-      #6ea8fe 48%,
-      #b072e6 60%,
-      #ff5d8f 72%
+      #b46bff 0%,
+      #7dffd2 14%,
+      #ffffff 20%,
+      #6c3cff 30%,
+      #b46bff 40%
     );
   background-size: 300% 300%;
   background-position: var(--posx, 50%) var(--posy, 50%);
-  opacity: calc(0.35 + var(--hyp, 0) * 0.6);
+  opacity: calc(0.1 + var(--hyp, 0) * 0.55);
+}
+
+/* Team of the Season — a cool aqua-to-white prism */
+body.holo-on .card--detail .card__vfx[data-vfx="tots"] {
+  background:
+    repeating-linear-gradient(
+      110deg,
+      #2fd9c4 0%,
+      #9ff7ec 12%,
+      #ffffff 18%,
+      #4fb3ff 30%,
+      #2fd9c4 42%
+    );
+  background-size: 300% 300%;
+  background-position: var(--posx, 50%) var(--posy, 50%);
+  opacity: calc(0.1 + var(--hyp, 0) * 0.55);
 }
 
 /* Moving GLITTER DUST — a field of tiny specular points laid OVER the foil band
-   (tiers 3+). It parallaxes with --posx/--posy at its own rate and twinkles on a
-   short loop, so the surface sparkles like real holo instead of a flat gradient.
-   Opacity rides --hyp via the parent .card__vfx, so it only sparkles as you tilt.
-   Animates opacity ONLY (compositor-cheap) — never the filter property. */
-body.holo-on .card--detail .card__vfx[data-vfx="holo"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="double"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="ultra"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="illustration"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="special"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="secret"]::after,
-body.holo-on .card--detail .card__vfx[data-vfx="hyper"]::after {
+   (Rare Gold and up). It parallaxes with --posx/--posy at its own rate and
+   twinkles on a short loop, so the surface sparkles like real foil instead of a
+   flat gradient. Opacity rides --hyp via the parent .card__vfx, so it only
+   sparkles as you tilt. Animates opacity ONLY (compositor-cheap). */
+body.holo-on .card--detail .card__vfx[data-vfx="raregold"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="totw"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="potm"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="future"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="tots"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="toty"]::after,
+body.holo-on .card--detail .card__vfx[data-vfx="legend"]::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -356,26 +370,26 @@ body.holo-on .card--detail .card__vfx[data-vfx="hyper"]::after {
   animation: glitter 1.5s ease-in-out infinite;
 }
 @keyframes glitter {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 0.35; }
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.2; }
 }
 @media (prefers-reduced-motion: reduce) {
   body.holo-on .card--detail .card__vfx::after { animation: none; opacity: 0.7; }
 }
 
-/* tiers 8–9 secret / hyper — denser cross-hatched rainbow + scanlines */
-body.holo-on .card--detail .card__vfx[data-vfx="secret"],
-body.holo-on .card--detail .card__vfx[data-vfx="hyper"] {
+/* Team of the Year + Legend — the premium foil: a denser prism in the edition's
+   own palette (royal blue + gold / ivory + gold) over fine engraved hatching */
+body.holo-on .card--detail .card__vfx[data-vfx="toty"],
+body.holo-on .card--detail .card__vfx[data-vfx="legend"] {
   background:
     repeating-linear-gradient(
       110deg,
-      #ff5d8f 0%,
-      #ffd24a 9%,
-      #5fcf8e 18%,
-      #3fd6c8 27%,
-      #6ea8fe 36%,
-      #b072e6 45%,
-      #ff5d8f 54%
+      var(--foil-a) 0%,
+      var(--foil-b) 9%,
+      #ffffff 15%,
+      var(--foil-c) 24%,
+      var(--foil-b) 33%,
+      var(--foil-a) 42%
     ),
     repeating-linear-gradient(
       -70deg,
@@ -385,5 +399,16 @@ body.holo-on .card--detail .card__vfx[data-vfx="hyper"] {
   background-size: 280% 280%, 100% 100%;
   background-position: var(--posx, 50%) var(--posy, 50%), 0 0;
   background-blend-mode: color-dodge, overlay;
-  opacity: calc(0.45 + var(--hyp, 0) * 0.55);
+  /* a painted card is flatter than a scan, so the prism must sit lighter on it */
+  opacity: calc(0.12 + var(--hyp, 0) * 0.5);
+}
+body.holo-on .card--detail .card__vfx[data-vfx="toty"] {
+  --foil-a: #4f7dff;
+  --foil-b: #f2c54b;
+  --foil-c: #8fb0ff;
+}
+body.holo-on .card--detail .card__vfx[data-vfx="legend"] {
+  --foil-a: #ffe08a;
+  --foil-b: #f7c768;
+  --foil-c: #fff6dc;
 }

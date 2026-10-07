@@ -1,12 +1,19 @@
-# OpenPack
+# OpenPack FC
 
-A Pokémon TCG card gallery for the browser. Pick any set ever printed, browse
-its cards in a responsive grid, filter by rarity, and open any card in a
-**lightbox** that tilts toward your pointer with per-rarity holographic foil and
-flips over to a custom card back — the "poke-holo" feel, rendered entirely in CSS.
+Rip open a pack of football player cards in the browser. Pick a **Premium Gold
+Pack** off a floodlit 3D wheel, tear it open along the seal with your finger,
+and flip through five players, rarest last. The best pulls get a **walkout**:
+the nation, position and club are teased in the dark before the card drops.
 
-No build step, no framework, no dependencies. Just vanilla ES modules and a
-tiny static server.
+Every player, club and crest is **fictional**, and every card is **painted in the
+browser** from its player data, so there are no image downloads and no licensed
+likenesses. Nation flags are real, shown as public symbols. There's no build
+step, no framework and no dependencies: vanilla ES modules and a tiny static
+server.
+
+> This is the `soccer-pack` reskin of OpenPack, which on `main` is a Pokémon TCG
+> pack opener. The engine is the same (carousel, tear, reveal, haul, sound). Every
+> asset, the card data and the art direction are new.
 
 ## Quick start
 
@@ -15,186 +22,196 @@ python serve.py        # serves the current dir on http://127.0.0.1:8123
 python serve.py 8080   # …or pick a port
 ```
 
-Then open <http://127.0.0.1:8123/>.
+Then open <http://127.0.0.1:8123/>. `serve.py` is `http.server` with caching
+disabled (`no-store` on every response, so a reload always gets the current
+modules) and a deep listen backlog: the page fires ~20 module requests at once,
+and on Windows the stdlib's default backlog of 5 refuses some of them.
 
-> `serve.py` is `http.server` with caching disabled — it sends `no-store` on
-> every response so a reload always fetches the current modules (the preview
-> webview otherwise holds onto stale JS between edits).
+Handy URLs while working:
+
+- `/?hit=9` forces the pack's promo slot to a tier (4–9). Use it to preview a
+  walkout or a specific edition without waiting on luck.
+- `/?audiodebug` shows a live audio-status HUD.
+- `/coverflow.html` is a cover-flow showcase with one card of every edition.
+- `/tools/card-lab.html` shows every card in the pool, filterable (`?f=toty`,
+  `?hair=afro`, `?ids=p01,p02`). It's the bench for tuning the card art.
+- `/tools/art/` is a live preview of the printed art (pack front/back, card back).
 
 ## Deploy
 
-Hosted on **Vercel** (static, no build step) at **<https://openpack.vercel.app>**.
-It's pure HTML/CSS/ES-modules, so Vercel just serves the repo root — `serve.py` is
-local-dev only. [`vercel.json`](vercel.json) sets `Cache-Control: must-revalidate`
-on everything so a redeploy is picked up immediately (no content-hashing here, so
-nothing must cache stale); [`.vercelignore`](.vercelignore) keeps dev-only files
-out of the deploy. To ship: `vercel deploy --prod` from the repo (the CLI is linked
-to the `openpack` project).
+Hosted on **Vercel** as a static site (no build step): this branch is the
+separate **`soccer-pack`** project. To ship, link the checkout to that project
+and deploy:
 
-## Data
+```sh
+vercel link --project soccer-pack
+vercel deploy --prod
+```
 
-- **Open Pack** builds its booster from a **local snapshot** bundled in
-  [`src/pool.js`](src/pool.js) — no realtime API call, so the pack arms instantly
-  (that fetch was the old "Preparing pack…" wait). Card *art* still streams from
-  the TCG image CDN (browser-cached + preloaded as you tear), but the metadata +
-  rarities are local. To refresh or swap the set, re-run the snapshot and replace
-  the file (the recipe is in the header of [`src/pool.js`](src/pool.js)).
-- **The gallery** still pulls live from the [Pokémon TCG API](https://pokemontcg.io/)
-  (`v2`), since it browses *every set ever printed*:
-  - the **set list** (`/v2/sets`, newest first) populates the picker
-  - a **set's cards** (`/v2/cards`) are paged in and cached per set id
+[`vercel.json`](vercel.json) sets `Cache-Control: must-revalidate` on everything,
+so a redeploy is picked up immediately (there's no content hashing here).
+[`.vercelignore`](.vercelignore) keeps dev-only files out of the deploy
+(`serve.py`, `docs/`, `tools/`, the source PNG).
 
-  Both calls work without auth at a lower rate limit. To raise it, grab a free
-  key at <https://dev.pokemontcg.io/> and paste it into `API_KEY` in
-  [`src/api.js`](src/api.js).
+## The set
 
-## Features
+The squad lives in [`src/players.js`](src/players.js):
 
-- **Every set, newest first** — full set list, sorted by release date.
-- **Natural card order** — cards sort by the numeric part of their number, so
-  `1, 2, … 23, TG01, GG70` lands in sensible set order.
-- **Rarity filter** with two modes:
-  - **All** — multi-select; everything shows, click a chip to hide/show a rarity.
-  - **Only** — single-select; click a chip to isolate that one rarity.
-  - Your intent persists across set changes.
-- **Holo toggle** — switches the holographic foil VFX on/off; persisted to
-  `localStorage`.
-- **Lightbox** — click any card to open it face-up: a spring-driven tilt follows
-  the pointer with momentum (so the near corner grows in perspective), with a
-  tracking glare and a tier-appropriate foil that shifts as you move. Hold and
-  swipe to flip it over to the card back.
-- **Sound design** — the whole experience is scored with **synthesized** Web Audio
-  (no audio files; unlocked on first interaction): a foil crinkle as you grab the
-  pack, a speed-tracked rip, a chest-thump open, an anticipation riser that lands on
-  a tier-scaled **reveal impact** before the rare chime, plus the gallery's hover
-  tick. It runs through a phone-tuned master bus (soft limiter + makeup, sub
-  high-passed, a band-limited reverb) and rarity threads the loudest moments (the
-  tear, the open, the hit). A **volume + mute** control sits top-right and persists.
+- **16 invented clubs** (plus the Legends hall of fame). Each is a name, three
+  colours, a crest recipe (shape × field pattern × emblem glyph) and a kit
+  recipe (pattern × collar).
+- **85 players + 8 legends**, one row each: name, nation, club, position,
+  overall, age. Everything else is **rolled deterministically from the player's
+  id**. Face stats come from a positional archetype. The portrait look (skin
+  tone, hairstyle, hair colour, facial hair, features) comes from weighted
+  tables. The same player always renders the same card, and adding a player is
+  one line.
+- **Promo editions** are listed in `PROMOS`: a player, an edition and an overall
+  boost. A Team of the Year is a full XI.
 
-## How rarity works
+That's **144 cards** in the pool.
 
-Rarity vocabulary varies wildly across TCG eras, so OpenPack derives a **tier
-(0–9)** from rarity *keywords* rather than a fixed list. The tier is the single
-source of truth that drives everything downstream:
+### Editions = rarity tiers
 
-| Tier | Rarity | Foil in lightbox |
-|------|--------|------------------|
-| 0 | Common / Promo | none (matte) |
-| 1 | Uncommon | none (matte) |
-| 2 | Rare | subtle silver shimmer |
-| 3 | Holo | single-hue cosmos holo |
-| 4 | Double Rare | single-hue cosmos holo |
-| 5 | Ultra Rare | rainbow linear foil |
-| 6 | Illustration Rare | rainbow linear foil |
-| 7 | Special Illustration | rainbow linear foil |
-| 8 | Secret / Rainbow | dense cross-hatched rainbow |
-| 9 | Hyper | dense cross-hatched rainbow |
+The engine still runs on the 0–9 tier ladder. Pack odds, the hit escalation,
+glows, foil and the pack's "tell" all key off it. Each rung is now a card
+edition, defined once in [`src/rarity.js`](src/rarity.js):
 
-The filter sorts chips low → high tier, the grid glows by tier, and the lightbox
-foil is chosen by tier — all from one mapping in
-[`src/rarity.js`](src/rarity.js).
+| Tier | Edition | Card | Foil (card.css) |
+|-----:|---------|------|-----------------|
+| 0 | Bronze | brushed bronze | matte |
+| 1 | Silver | brushed silver | matte |
+| 2 | Gold | brushed gold | soft shimmer |
+| 3 | Rare Gold | gold + sunburst | gold foil bands |
+| 4 | Team of the Week | black carbon + gold | gold foil bands |
+| 5 | Player of the Match | crimson speed streaks | crimson foil bands |
+| 6 | Future Stars | violet + neon ribbons | violet ↔ mint sweep |
+| 7 | Team of the Season | aqua crystal shards | aqua prism · **walkout** |
+| 8 | Team of the Year | midnight blue + gold stars | blue-gold prism · **walkout** |
+| 9 | Legend | ivory marble + gold filigree | gold prism · **walkout** |
+
+Base cards come from the overall: Bronze below 65, Silver below 75, Gold
+above (about a third of golds are Rare).
+
+### A pack
+
+[`src/booster.js`](src/booster.js) builds a pack of five: three Bronze/Silver
+fillers, one Gold (Rare 32% of the time) and one guaranteed promo, never the
+same player twice. The promo tier is weighted: TOTW 31 · POTM 24 · Future Stars
+16 · TOTS 13 · TOTY 10 · Legend 6 (%). The pack is sorted rarest-last. The odds
+are printed on the pack's back, so re-render the art if you retune them.
+
+## How a card is drawn
+
+[`src/cardart.js`](src/cardart.js) paints a card onto a 756×1056 canvas (63:88)
+and hands back a JPEG blob URL, cached per card. The reveal shows it through the
+same `<img class="card__art">` the old scans used, so the foil layers, the tilt
+and the Android compositing fixes all carry over untouched. Layers, back to
+front:
+
+1. The edition's **material** (diagonal metal gradient plus sheen bands) and
+   **pattern** (honeycomb, sunburst, carbon, streaks, neon, shards, stars,
+   marble), inside the crowned **shield** frame.
+2. The **portrait** ([`src/portrait.js`](src/portrait.js)): a head-and-shoulders
+   bust in a painted-vector style, with soft shaded skin, 16 hairstyles, facial
+   hair and the club's kit with the crest over the heart. Shading uses blurred
+   shapes via the shadow trick, because canvas `filter` isn't in every Safari.
+   The bust is rim-lit and faded into the card at the chest.
+3. **Rating, position, flag, crest**, then the **name** and **six face stats**
+   (keepers get DIV/HAN/KIC/REF/SPD/POS), plus the edition mark for promos.
+   Flags and crests come from [`src/emblems.js`](src/emblems.js).
+
+The face font is **Barlow Condensed**, loaded non-blocking from Google Fonts.
+The text is baked into the image, so `ensureFonts()` waits for the face (up to
+3s) before painting and otherwise falls back to a system condensed face. Seeded
+randomness ([`src/paint.js`](src/paint.js), mulberry32 over an FNV + murmur
+finaliser) keeps every card stable.
+
+## The printed art
+
+The pack's front and back and the card back are composed on canvas in
+[`tools/art/packart.js`](tools/art/packart.js), using the same modules as the
+cards: the mystery card on the pack front is a real card render in silhouette.
+Render them into the shipped files with:
+
+```sh
+node tools/render_art.mjs     # needs Chrome/Edge + Python with Pillow
+```
+
+That writes `assets/pack.png` (source), `pack-hi.webp`, `pack-hi-720.webp`,
+`pack.webp`, `pack-back-hi.webp`, `pack-back-hi-720.webp` and `card-back.jpg`.
+The tear-pack reads the image's aspect and re-derives its tear geometry, and the
+3D carousel traces its rim light from the art's alpha, so any silhouette works.
+[`tools/cdp.mjs`](tools/cdp.mjs) is the tiny headless-Chrome driver (no
+dependencies) behind it. It's also handy for scripted smoke tests of the flow.
 
 ## Project layout
 
 ```
 .
-├── index.html        the app — opens into the 3D pack picker, then tear-to-open
-├── serve.py          no-cache static server
-├── docs/             design specs (e.g. the pack tear & exit)
+├── index.html        the app: kick-off gate → 3D pack wheel → tear → reveal → haul
+├── coverflow.html    cover-flow showcase of the editions
+├── serve.py          no-cache dev server
+├── docs/             design specs from the original build (tear & exit, sound map)
+├── tools/
+│   ├── card-lab.html every card in the pool, for tuning the card art
+│   ├── art/          the printed art (packart.js) + its live preview
+│   ├── render_art.mjs  renders the printed art into assets/
+│   └── cdp.mjs       headless-Chrome driver
 └── src/
-    ├── api.js        Pokémon TCG API wrapper (paging + per-set cache)
-    ├── select3d.js   three.js pack-SELECTION carousel — swipe/tap, then hand off
-    ├── rarity.js     rarity → tier mapping; the single source of truth
-    ├── card.js       the Card component — one template, grid + detail variants
-    ├── pack.js       OpenPack: SVG pack that tears open along a finger-drawn path
-    ├── booster.js    assembles one booster from the local pool (rarest last)
-    ├── pool.js       LOCAL bundled card snapshot — the pack opens with no API fetch
-    ├── reveal.js     card-stack reveal: cards rise from the opened pack
-    ├── motion.js     shared spring engine (rAF integrator) behind the pack tear
-    ├── particles.js  tiny canvas particle system — foil flecks + sparks
-    ├── sfx.js        Web Audio engine + every cue: phone-tuned master bus, grab, tear, open burst, reveal impact, chime; volume/mute
-    ├── util.js       escapeHtml / escapeAttr / delegated events
-    ├── base.css      design tokens, layout, toolbar/chips/toggles chrome
-    └── card.css      the Card component: grid tiles, detail card, holo VFX
+    ├── players.js    the squad: clubs, players, promos → the card pool
+    ├── pool.js       the pool's front door (re-exports players.js)
+    ├── rarity.js     editions ↔ tiers, tier colours — the single source of truth
+    ├── booster.js    builds one pack (odds, rarest last) and paints its cards
+    ├── cardart.js    paints a card (materials, patterns, layout, text) → blob URL
+    ├── portrait.js   the player bust: head, features, hair, beard, kit
+    ├── emblems.js    nation flags + fictional club crests
+    ├── ball.js       the match-ball geometry (gate, backdrop, carousel)
+    ├── paint.js      colour maths, seeded RNG, path/gradient/text helpers
+    ├── card.js       the Card component (the <img> + foil layers)
+    ├── card.css      card chrome + per-edition foil
+    ├── select3d.js   three.js pack wheel on a floodlit-stadium shader
+    ├── pack.js       the SVG pack you tear open along a finger-drawn path
+    ├── reveal.js     card stack, hit escalation, walkout, haul, Send to Club
+    ├── motion.js     shared spring engine
+    ├── particles.js  canvas particle system (foil flecks, sparks)
+    ├── flowlight.js  WebGL light leaking along the tear
+    ├── sfx.js        Web Audio engine: samples-first SFX, BGM, master bus
+    ├── util.js       escapeHtml / escapeAttr / delegate
+    └── base.css      design tokens (night-match palette, tier colours)
 ```
 
 ## Architecture notes
 
-- **One Card, two variants.** [`card.js`](src/card.js) renders a single template
-  in `grid` (flat thumbnail + meta overlay) or `detail` (a flat double-sided
-  card — front face + back face). Both carry `.tier-N` + `data-vfx`, so a card
-  inherits its look purely from its rarity — no per-card wiring.
-- **Perspective on the parent.** The detail card foreshortens because
-  `#lightbox-host` (its direct parent) carries the `perspective` — so tilting it
-  makes the near corner grow and the far corner shrink. It must be the *direct*
-  parent, or an `transform-style: flat` element in between flattens it to an
-  orthographic skew. Flip is just an accumulated `rotateY`; `backface-visibility`
-  hides whichever face is turned away.
-- **Spring, not transition.** Gesture motion is rAF-driven by a shared engine in
-  [`motion.js`](src/motion.js) — a velocity integrator with stiffness / damping
-  constants, so it follows the pointer with momentum and eases back to rest. The
-  lightbox (tilt/flip/scale) and the pack (tear fling + recombine) both drive
-  their motion through it, so the feel stays consistent. The lightbox tuning is
-  matched to [Simey's poke-holo](https://poke-holo.simey.me/).
-- **Pick, then tear.** The app opens into a 3D **pack carousel**
-  ([`select3d.js`](src/select3d.js), three.js via an import-map CDN) — a full ring
-  of ~16 sealed packs on a horizontal wheel that revolves around a vertical axis,
-  TCG-Pocket style: the pack at the FRONT faces you, large and clear; the rest curl
-  to the sides and round the back, receding with perspective and darkening into
-  distance fog. The focused pack **pops toward the lens** (bigger, with a gap) so it
-  clearly dominates the row. Each pack is a **procedural foil pouch** (not a box):
-  `makePackGeometry` builds a pillow whose front and back sheets bulge through the
-  body and press flat into a crimped top seal + a longer tapered bottom seal (a slim
-  profile, per the product design sheet), tapering to a thin lip at the edges — the
-  curved surface is what makes the glint slide across it like real foil. The pouch
-  carries a **distinct front and back** (two geometry groups → two materials): the
-  printed art on the front, and a generated G-MAX AURA back (`makeBackTexture` —
-  swirl vortex, centre seal, Contents/legal/lot-code, Pokémon wordmark) you glimpse
-  on the far side of the wheel. No text chrome — swipe to spin with real **inertia** (a flick carries
-  through several packs, decelerates, then snaps to the nearest); tap a side pack to
-  spin it to the front, tap the front pack to choose; `flip()` turns the focused
-  pack to inspect its back. A canvas-gradient env map + a lens-side glint light give
-  the foil its sheen. On select the chosen pack **breaks away** — it rushes toward the lens with
-  an emissive flash and grows while the others recede, darken and fade — then the
-  canvas **cross-dissolves into the SVG tear-pack** behind it (same art → no seam).
-  "Open another" returns to the carousel. While the carousel is up the tear-pack is
-  hidden (`body.picking`) so it can't bleed through the transparent canvas; it's
-  unhidden a beat before the dissolve. The roster lives in `DEFAULT_PACKS` (sixteen
-  identical packs by default, one shared GPU texture) — give a pack its own art by
-  pointing `img` at a new file, or set `hue` to recolour the shared art on a canvas;
-  an optional one-shot `hue-rotate` filter then carries that tint onto the tear-pack
-  (set once, so the mobile tear stays re-raster-free).
-- **One pack, shared parts.** The OpenPack prototype ([`pack.js`](src/pack.js),
-  hosted by [`index.html`](index.html)) is an SVG pack you tear open by dragging a
-  path across it: the rip propagates along your finger, splits into two
-  complementary pieces, and the smaller one flies off while the body stays. It
-  reuses the same `motion.js` spring, [`particles.js`](src/particles.js) flecks,
-  and [`sfx.js`](src/sfx.js) sounds as the gallery. The exact tear-zone,
-  tear-validity, commit, and exit rules live in
-  [`docs/tear-and-exit.md`](docs/tear-and-exit.md) — keep it in sync with `pack.js`.
-- **Tear → reveal, same Card.** When the pack opens, [`reveal.js`](src/reveal.js)
-  raises the booster's cards as a stack you tap through — rarest last, the hit
-  landing with a glow, foil burst, and chime. When every card is seen they fan into
-  the **haul** — a draggable fan SELECTOR of your pull. Every card fans out as a
-  hand; the centred one is popped forward, enlarged, glowing and carries a live holo
-  sheen. Drag · swipe · wheel · arrow-keys rotate the fan to switch which card sits
-  centre (eased + snapped, geometry computed per-frame from a continuous
-  `haulCenter`), tap a side card to bring it in; the glow + tier caption track the
-  centred card. The rarest starts centred as the payoff. The cards are the very same
-  [`card.js`](src/card.js) `detail` component the lightbox uses (holo foil driven
-  by a `motion.js` tilt). [`booster.js`](src/booster.js) assembles the pack from a
-  **local snapshot** ([`src/pool.js`](src/pool.js)) — no realtime API fetch, so the
-  pack arms instantly — falling back to offline placeholders if the pool is empty.
-- **Drop-in pack art.** Replace [`assets/pack.png`](assets/pack.png) with any
-  design, any size — the pack reads the image's aspect on load and re-derives the
-  whole tear geometry to fit.
-- **Extensible toggles.** Adding a display option is one entry in
-  [`options.js`](src/options.js) + a matching `body.<class>` CSS rule. Nothing
-  else to wire.
-- **Delegated events** survive grid re-renders — hover/click are bound to the
-  grid, not individual cards (see [`util.js`](src/util.js)).
+- **One card component.** [`card.js`](src/card.js) renders one template; every
+  card carries `.tier-N` + `data-vfx`, so it inherits its glow and foil purely
+  from its edition.
+- **Pick, then tear.** The app opens on a kick-off gate. The tap unlocks audio,
+  then the 3D wheel ([`select3d.js`](src/select3d.js), three.js vendored) flies
+  in: ten foil pouches on a revolving ring, with the focused pack popped toward
+  the lens. The ring sits on a one-pass stadium shader with floodlights and
+  beams, camera flashes twinkling in the stands, and a mown pitch the packs
+  reflect in. Choosing a pack breaks it away toward the lens, then
+  cross-dissolves into the identical SVG tear-pack.
+- **The tear** ([`pack.js`](src/pack.js)) starts on the top or bottom seal and
+  follows your finger. The rip splits the pouch into two pieces once it crosses,
+  and the small piece flies off. The rules live in
+  [`docs/tear-and-exit.md`](docs/tear-and-exit.md).
+- **The reveal** ([`reveal.js`](src/reveal.js)) uncovers the stack in place.
+  Each promo is announced by an anticipation beat, then a hit scaled by tier
+  (rays, flash, stamp, shockwave, haptics), so a TOTW shimmers and a Legend
+  takes the screen. Tiers 7+ **walk out** first. The deck is veiled and three
+  clues land on a thud each, then a riser climbs into the hit. Afterwards the
+  cards fan into the **haul**, a draggable selector of your new signings, and
+  **Send to Club** vacuums them into your club badge.
+- **Spring, not transition.** Gesture motion runs through
+  [`motion.js`](src/motion.js) (a velocity integrator), so the tilt, the tear
+  fling and the haul all share one feel.
+- **Sound** is sample-first ([`assets/sfx`](assets/sfx), synth fallback) on a
+  phone-tuned master bus. BGM plays natively (`el.volume`, not WebAudio) so it
+  isn't silent on iOS.
 
 ## Browser support
 
 Modern evergreen browsers. Uses ES modules, `aspect-ratio`, CSS `color-mix()`,
-3D transforms with `preserve-3d`, and Web Audio.
+3D transforms, canvas `Path2D`/`roundRect`, WebGL and Web Audio.

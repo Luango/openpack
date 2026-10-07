@@ -1,6 +1,6 @@
 // select3d.js — the 3D pack-SELECTION carousel that fronts the tear-to-open flow.
 //
-// A full 3D ring of booster packs (three.js), TCG-Pocket style: ~10 sealed packs
+// A full 3D ring of sealed football packs (three.js), gacha style: ~10 packs
 // stand on a horizontal wheel that revolves around a vertical axis like a carousel
 // / revolver cylinder. The pack at the FRONT faces you, large and clear; packs
 // curving to the sides and round the back recede with perspective and darken into
@@ -23,6 +23,7 @@
 
 import * as THREE from "three";
 import * as sfx from "./sfx.js";
+import { drawBall } from "./ball.js";
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Phones (coarse pointer) carry the whole "卡顿" complaint, so the carousel scales
@@ -53,12 +54,12 @@ const REENTER_FADE = 0.6;
 // recolours it on a canvas (0 = leave the art untouched); `accent` tints the HTML
 // name plate. To give a pack its OWN real art, point `img` at a new file (hue: 0).
 export const DEFAULT_PACKS = Array.from({ length: 10 }, (_, i) => ({
-  id: `genetic-apex-${i + 1}`,
-  name: "Genetic Apex",
-  sub: "Genetic Apex",
-  img: "assets/pack-hi.webp", // hi-res WebP (1083×1794, ~270KB, transparent bg) — crisp on the 3D mesh
+  id: `premium-gold-${i + 1}`,
+  name: "Premium Gold Pack",
+  sub: "OpenPack FC · Ultimate XI",
+  img: "assets/pack-hi.webp", // hi-res WebP (1083×1794, transparent bg) — crisp on the 3D mesh
   hue: 0,
-  accent: "#b49bff",
+  accent: "#f2c54b",
 }));
 
 // ---- ring layout tuning ---------------------------------------------------
@@ -132,10 +133,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;z-index:1;";
 
   const scene = new THREE.Scene();
-  // Fog tinted to the aurora's mid-horizon indigo (not the old near-black) so the back
-  // of the ring recedes into a LIT haze that blends with the shader backdrop, instead
-  // of fading every far pack into a dark halo against the brighter background.
-  scene.fog = new THREE.Fog(0x282b4d, FOG_NEAR, FOG_FAR);
+  // Fog tinted to the stadium's mid-horizon navy (not near-black) so the back of the
+  // ring recedes into a LIT floodlight haze that blends with the shader backdrop,
+  // instead of fading every far pack into a dark halo against the brighter background.
+  scene.fog = new THREE.Fog(0x1a2740, FOG_NEAR, FOG_FAR);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, CAM_H, CAM_D);
   camera.lookAt(0, LOOK_Y, 0);
@@ -149,7 +150,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
   scene.add(new THREE.AmbientLight(0xffffff, 2.05)); // strong fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
-  scene.add(new THREE.HemisphereLight(0xe4e9ff, 0x46406a, 3.4)); // cool sky / lifted violet floor → mood + shape, no dead-black undersides
+  scene.add(new THREE.HemisphereLight(0xe6efff, 0x2e4a3c, 3.4)); // floodlit sky / pitch-green bounce → mood + shape, no dead-black undersides
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
   const key = new THREE.DirectionalLight(0xfff1da, 1.55);
@@ -176,22 +177,22 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // moving holographic sheen (metalness reflects it) as packs rotate — cheap, no HDR.
   scene.environment = makeEnvTexture();
 
-  // --- shader backdrop: a lit Pokémon-palette aurora ------------------------
+  // --- shader backdrop: a floodlit stadium at night ---------------------------
   // The canvas is transparent, so the carousel used to sit on the page's near-black
-  // bg → "太黑太暗". This fills the frame FIRST with a drifting aurora (deep indigo →
-  // electric blue → cyan, a warm stage-glow pooled behind the front pack, soft
-  // vignette). It's ONE fullscreen quad drawn in clip space (camera-independent, no
-  // fog/projection) with a loop-free fragment shader — the brightness lift at almost
-  // no GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
+  // bg → "太黑太暗". This fills the frame FIRST with a night stadium: floodlights
+  // blazing at the top corners with soft beams, the stands twinkling with camera
+  // flashes, a cool-white pool on the front pack and a mown pitch for the floor
+  // the packs reflect in. It's ONE fullscreen quad drawn in clip space (camera-
+  // independent, no fog/projection) with a loop-free fragment shader — the whole lit
+  // stage at almost no GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
   const backdrop = makeBackground();
   scene.add(backdrop.mesh);
 
   // --- ambiance: drifting glow particles -----------------------------------
   const particles = makeParticles();
   scene.add(particles.points);
-  // slowly-rising card-backs at the MIDDLE depth of the wheel (z≈0) — they drift up
-  // THROUGH the carousel: occluded by the front pack, passing in front of the back
-  // ones, so they read as part of the scene's depth, not a flat backdrop.
+  // slowly-rising footballs BEHIND the wheel — they drift up through the stadium
+  // haze, so the scene has motes of depth rather than a flat backdrop.
   const rising = makeRisingCards();
   scene.add(rising.group);
 
@@ -348,7 +349,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // before the motion, which is the bulk of the mobile "卡顿" during the entrance.
   const assetsReady = [];
   packs.forEach((p) => {
-    const placeholder = new THREE.MeshStandardMaterial({ color: 0x222030, roughness: 0.6, side: THREE.DoubleSide });
+    const placeholder = new THREE.MeshStandardMaterial({ color: 0x1b2433, roughness: 0.6, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.4), placeholder);
     // flip: eased inspect-rotation. aspect: art height/width — the geometry's local
     // height equals it, so the handoff can size the pack to the SVG pack's screen rect.
@@ -360,8 +361,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       mesh.userData.aspect = aspect;
       mesh.geometry.dispose();              // drop the placeholder plane (shared geo is kept)
       mesh.geometry = packGeometry(aspect);
-      // The FRONT face shows the printed art; the BACK face shows the real G-MAX AURA
-      // back (per the product design sheet) — different art per face, mapped to the two
+      // The FRONT face shows the printed art; the BACK face shows the pack's printed
+      // back (contents, legal, barcode) — different art per face, mapped to the two
       // geometry groups. The flight rotates each pack 180° (its back faces the lens
       // mid-arc), so the back material must be in place BEFORE the intro to avoid a
       // swap stall — we resolve this pack's readiness only once both faces are set.
@@ -500,7 +501,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
 
     particles.update(dt);
     rising.update(dt);
-    backdrop.update(t);                                   // drift the aurora
+    backdrop.update(t);                                   // the stadium lives: camera flashes, beam shimmer
     for (const m of rimMats) m.uniforms.uTime.value = t; // one clock; each beam's own phase/speed offsets it
     // While dissolving we hold the hero frozen on its landed frame — running layout()
     // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
@@ -1256,13 +1257,13 @@ function makeEnvTexture() {
   const g = ctx.createLinearGradient(0, 0, 0, 256);
   // a WIDE bright band (azimuth-independent) so every pack on the wheel — at any
   // rotation — reflects a foil sheen, not only the front one
-  g.addColorStop(0.0, "#20243a");
-  g.addColorStop(0.30, "#8a8fc0");
-  g.addColorStop(0.46, "#eef1ff");
+  g.addColorStop(0.0, "#1a2232");
+  g.addColorStop(0.30, "#97a3b8");
+  g.addColorStop(0.46, "#f1f5ff");
   g.addColorStop(0.5, "#ffffff");  // bright core → the glint
-  g.addColorStop(0.54, "#eef1ff");
-  g.addColorStop(0.70, "#8a8fc0");
-  g.addColorStop(1.0, "#10131f");
+  g.addColorStop(0.54, "#f1f5ff");
+  g.addColorStop(0.70, "#97a3b8");
+  g.addColorStop(1.0, "#0d121c");
   ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -1273,11 +1274,12 @@ function makeEnvTexture() {
 // ---- shader backdrop -------------------------------------------------------
 // A fullscreen quad painted in CLIP SPACE (the vertex shader writes gl_Position
 // directly from a 2×2 plane's xy, so it ignores the camera, fog and projection and
-// always fills the frame). The fragment shader is loop-free — a vertical palette
-// gradient, two drifting aurora bands, a warm stage-glow behind the front pack and a
-// soft vignette — so the whole lit background costs one cheap fullscreen pass. The
-// quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every pack
-// and reflection lands on top of it. uMobile dials the aurora down on phones.
+// always fills the frame). The fragment shader is loop-free — a vertical palette,
+// two floodlights with soft beams, the stands (a darker band salted with camera
+// flashes), a cool stage pool behind the front pack, a mown pitch on the floor and
+// a soft vignette — so the whole lit stadium costs one cheap fullscreen pass. The
+// quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every
+// pack and reflection lands on top of it. uMobile calms it on phones.
 const BG_VERT = `
   varying vec2 vUv;
   void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }`;
@@ -1285,33 +1287,52 @@ const BG_FRAG = `
   precision mediump float;
   varying vec2 vUv;
   uniform float uTime;
-  uniform float uAspect;  // viewport w/h → keeps the radial glow round
-  uniform float uMobile;  // 1 on phones → calmer aurora
+  uniform float uAspect;  // viewport w/h → keeps the radial glows round
+  uniform float uMobile;  // 1 on phones → calmer stands
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   void main() {
     vec2 uv = vUv;
-    // Vertical palette — a "twilight gallery": deep ink-violet base (clean reflection
-    // contrast) → muted indigo → a SOFT periwinkle/slate at the top. Deliberately
-    // DESATURATED — the old top was an electric sky-blue (0.28,0.50,0.88) that read as
-    // default game-UI; pulling the saturation and value down lets the lit packs be the
-    // only vivid thing in frame, which is the whole point of the stage.
-    vec3 base = vec3(0.085, 0.092, 0.150);
-    vec3 mid  = vec3(0.185, 0.196, 0.360);
-    vec3 top  = vec3(0.320, 0.355, 0.560);
-    vec3 col = mix(base, mid, smoothstep(0.0, 0.55, uv.y));
+    vec2 p = vec2(uv.x * uAspect, uv.y);
+    // Vertical palette — pitch-dark green floor (clean reflection contrast) → stadium
+    // navy → a floodlit haze at the top. Desaturated, so the lit packs stay the only
+    // vivid thing in frame.
+    vec3 base = vec3(0.030, 0.070, 0.058);
+    vec3 mid  = vec3(0.072, 0.112, 0.200);
+    vec3 top  = vec3(0.190, 0.262, 0.410);
+    vec3 col = mix(base, mid, smoothstep(0.0, 0.5, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
-    // two slow aurora bands — desaturated teal ↔ violet, tuned to HARMONISE with the
-    // plum/teal pack art instead of a clashing electric cyan, and dialled gently down
-    float t = uTime * 0.06;
-    float b1 = sin(uv.x * 3.1 + t * 2.0) * 0.5 + 0.5;
-    float b2 = sin(uv.x * 5.7 - uv.y * 2.3 - t * 3.0) * 0.5 + 0.5;
-    vec3 aur = mix(vec3(0.16, 0.34, 0.42), vec3(0.30, 0.24, 0.46), b1);
-    float aurAmt = (1.0 - 0.55 * uMobile) * 0.28;
-    col += aur * pow(b2, 2.0) * smoothstep(0.15, 0.95, uv.y) * aurAmt;
-    // a soft warm-WHITE stage pool behind the focused pack — a gallery spotlight, not
-    // the old orange wash that fought both the cool field and the purple foil. A
-    // restrained warm key against a cool ambient is the classic premium-product look.
+
+    // the stands — a darker tier across the upper middle, with camera flashes
+    float stands = smoothstep(0.55, 0.63, uv.y) * (1.0 - smoothstep(0.80, 0.88, uv.y));
+    col *= 1.0 - stands * 0.22;
+    vec2 g = p * vec2(64.0, 64.0);
+    vec2 cell = floor(g);
+    float h = hash(cell);
+    float blink = smoothstep(0.93, 1.0, fract(h * 17.0 + uTime * (0.22 + 0.5 * h)));
+    float dotm = smoothstep(0.42, 0.0, length(fract(g) - 0.5));
+    float live = step(0.9 + 0.05 * uMobile, h);
+    col += vec3(1.0, 0.97, 0.9) * dotm * blink * live * stands * 0.95;
+
+    // two floodlights at the top corners + their soft beams toward the pitch
+    vec2 L1 = vec2(0.08 * uAspect, 1.02), L2 = vec2(0.92 * uAspect, 1.02);
+    vec3 lamp = vec3(0.86, 0.93, 1.0);
+    col += lamp * (exp(-length(p - L1) * 6.5) + exp(-length(p - L2) * 6.5)) * 0.62;
+    vec2 aim = vec2(0.5 * uAspect, 0.32);
+    float b1 = smoothstep(0.955, 1.0, dot(normalize(p - L1), normalize(aim - L1)));
+    float b2 = smoothstep(0.955, 1.0, dot(normalize(p - L2), normalize(aim - L2)));
+    float shimmer = 0.88 + 0.12 * sin(uTime * 0.6 + uv.y * 6.0);
+    col += lamp * (b1 + b2) * smoothstep(0.1, 0.95, uv.y) * 0.075 * shimmer;
+
+    // a cool-white stage pool behind the focused pack — a floodlit spot
     vec2 d = (uv - vec2(0.5, 0.6)) * vec2(uAspect, 1.0);
-    col += vec3(1.0, 0.93, 0.82) * smoothstep(0.66, 0.0, length(d)) * 0.34;
+    col += vec3(0.90, 0.95, 1.0) * smoothstep(0.66, 0.0, length(d)) * 0.30;
+
+    // the floor is a pitch: a green cast with mown stripes running to the horizon
+    float floorM = 1.0 - smoothstep(0.28, 0.44, uv.y);
+    float depth = 1.0 / max(0.06, 0.47 - uv.y);
+    float stripe = step(0.5, fract((uv.x - 0.5) * uAspect * depth * 0.55));
+    col += vec3(0.010, 0.040, 0.022) * floorM + vec3(0.012, 0.030, 0.016) * stripe * floorM;
+
     // gentle vignette — settle the corners without crushing them to near-black
     col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.30;
     gl_FragColor = vec4(col, 1.0);
@@ -1381,23 +1402,21 @@ function makeReflectionMaterial(faceTex) {
   });
 }
 
-// A few Poké Ball icons that drift slowly UPWARD at the middle depth of the wheel
-// (z≈0), so the carousel has a sense of motes rising through it. Placed in the 3D
-// scene (not a flat CSS layer), they depth-sort with the packs: behind the popped
-// front pack, in front of the back ones. Round icons (the ball is drawn into a
+// A few footballs that drift slowly UPWARD behind the wheel, so the carousel has a
+// sense of motes rising through the stadium haze. Placed in the 3D scene (not a flat
+// CSS layer), they depth-sort with the packs. Round icons (the ball is drawn into a
 // circular clip so the plane's corners are cut away), tinted down so they recede.
 function makeRisingCards() {
-  const tex = pokeballTexture();
+  const tex = footballTexture();
   const COUNT = COARSE ? 5 : 9;
   const group = new THREE.Group();
-  const geo = new THREE.PlaneGeometry(1, 1); // square — the Poké Ball icon is round
+  const geo = new THREE.PlaneGeometry(1, 1); // square — the ball icon is round
   const cards = [];
   const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 0..1, seeded by index
   for (let i = 0; i < COUNT; i++) {
-    // Poké Ball icons (alphaTest cuts the plane's corners to the round ball), tinted
-    // DOWN via a cool colour multiply so they recede behind the packs as ambiance and
-    // never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x3a3e52, transparent: true, opacity: 0.95, depthWrite: false });
+    // footballs, tinted to the floodlit haze (a cool multiply + low opacity) so they
+    // recede behind the packs as ambiance and never upstage the wheel.
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x8b97ad, transparent: true, opacity: 0.42, depthWrite: false });
     const m = new THREE.Mesh(geo, mat);
     const u = {
       x: (rand(i, 1) - 0.5) * 9,          // spread across the wheel's width
@@ -1405,6 +1424,7 @@ function makeRisingCards() {
       speed: 0.18 + rand(i, 3) * 0.32,    // rise speed (units/sec) — slow, gentle drift
       scale: 0.45 + rand(i, 4) * 1.2,     // small → large ↔ size variety
       rot: (rand(i, 5) - 0.5) * 0.5,
+      spin: (rand(i, 6) - 0.5) * 0.6,     // a lazy roll as it rises
       y: -8 + i * (16 / COUNT),           // staggered start heights
     };
     m.userData = u;
@@ -1422,34 +1442,21 @@ function makeRisingCards() {
         u.y += u.speed * dt;
         if (u.y > 8) u.y -= 16;   // wrap back to the bottom; they slide on/off at the screen edges
         m.position.y = u.y;
+        m.rotation.z += u.spin * dt;
       }
     },
   };
 }
 
-// A Poké Ball icon drawn on a canvas (transparent outside the ball circle, so the
-// plane's corners cut away to a round icon). Shared by every rising element.
-let _pokeballTex = null;
-function pokeballTexture() {
-  if (_pokeballTex) return _pokeballTex;
+// A football icon drawn on a canvas (transparent outside the ball circle, so the
+// plane's corners cut away to a round icon). Shared by every rising ball.
+let _ballTex = null;
+function footballTexture() {
+  if (_ballTex) return _ballTex;
   const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
   const x = c.getContext("2d");
-  const cx = S / 2, cy = S / 2, R = S * 0.46;
-  const BLACK = "#1b1c22", WHITE = "#f4f4f6", GREY = "#b9bcc8";
-  // body — clipped to the ball circle: BLACK-AND-WHITE — grey top half, white bottom
-  // half, black centre band (no colour, so it reads as a monochrome icon)
-  x.save();
-  x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
-  x.fillStyle = GREY;  x.fillRect(0, 0, S, cy);
-  x.fillStyle = WHITE; x.fillRect(0, cy, S, S - cy);
-  x.fillStyle = BLACK; x.fillRect(0, cy - S * 0.085, S, S * 0.17);
-  x.restore();
-  // outer rim
-  x.strokeStyle = BLACK; x.lineWidth = S * 0.05;
-  x.beginPath(); x.arc(cx, cy, R - x.lineWidth / 2, 0, Math.PI * 2); x.stroke();
-  // centre button: black ring → white core
-  x.fillStyle = BLACK; x.beginPath(); x.arc(cx, cy, S * 0.135, 0, Math.PI * 2); x.fill();
-  x.fillStyle = WHITE; x.beginPath(); x.arc(cx, cy, S * 0.088, 0, Math.PI * 2); x.fill();
+  x.scale(S / 100, S / 100);
+  drawBall(x, { body: "#e8eaef", panel: "#1b1c22", seam: "#8a8f9c" });
   // soften the whole icon — it's only a background mote, it must NOT grab the eye:
   // blur a copy and use THAT, so the details AND the edge read slightly out of focus
   const soft = document.createElement("canvas"); soft.width = soft.height = S;
@@ -1458,7 +1465,7 @@ function pokeballTexture() {
   sx.drawImage(c, 0, 0);
   const tex = new THREE.CanvasTexture(soft);
   tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  _pokeballTex = tex;
+  _ballTex = tex;
   return tex;
 }
 
@@ -1478,7 +1485,7 @@ function makeParticles() {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const mat = new THREE.PointsMaterial({
-    color: 0xc9b8ff, size: 0.06, transparent: true, opacity: 0.6,
+    color: 0xfff0d2, size: 0.06, transparent: true, opacity: 0.55,
     blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
   });
   const points = new THREE.Points(geo, mat);
@@ -1536,8 +1543,8 @@ function loadFaceTexture(p) {
   return pr;
 }
 
-// The pack BACK — the real G-MAX AURA art (cropped + green-keyed from the product
-// design sheet). One shared texture across the whole rack (the back is identical).
+// The pack BACK — the printed reverse of the pouch (contents, legal, barcode; see
+// tools/art/pack-back.html). One shared texture across the whole rack.
 const BACK_IMG = "assets/pack-back-hi.webp";
 let _backArtTex = null;
 function loadBackTexture() {

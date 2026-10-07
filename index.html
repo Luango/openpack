@@ -3,9 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>OpenPack — tear it open</title>
+    <title>OpenPack FC — tear it open</title>
+    <meta name="description" content="Rip open a pack of football player cards — fictional stars, real walkouts." />
+    <meta name="theme-color" content="#0a1018" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23e8eaef'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%238a8f9c' stroke-width='1.6' fill='none'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='%231b1c22'/%3E%3Cpath d='M50.00 36.50 L62.84 45.83 L57.94 60.92 L42.06 60.92 L37.16 45.83 Z' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%231b1c22' stroke-width='2.4' stroke-opacity='0.55'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="src/base.css" />
     <link rel="stylesheet" href="src/card.css" />
+    <!-- THE CARD FACE FONT (Barlow Condensed) — loaded NON-BLOCKING (media=print, then
+         swapped in on load) so a slow or blocked font CDN can never hold up first paint.
+         Cards are PAINTED into images (src/cardart.js), so it waits for this sheet + the
+         faces before drawing one, and falls back to a system condensed face if they never
+         arrive. The UI labels use it too (with the same fallback stack). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link id="font-css" rel="stylesheet" media="print" onload="this.media='all';this.dataset.ready=1"
+          href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&display=swap" />
     <!-- FIRST-OPEN: kick the slow critical resources off at HTML-parse time instead of
          waiting for the ESM waterfall to discover them. Without these, three.js only
          downloads after index→select3d.js download+parse, and the hi-res foil textures
@@ -41,14 +53,17 @@
     <style>
       :root {
         color-scheme: dark;
+        /* the sporty display face for UI labels (stamps, captions, buttons) */
+        --display: "Barlow Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
       }
       html, body {
         margin: 0;
         height: 100%;
+        /* a night match: floodlight haze from above, a hint of pitch green below */
         background:
-          radial-gradient(1000px 680px at 50% -6%, rgba(170, 156, 255, 0.20), transparent 62%),
-          radial-gradient(900px 760px at 50% 116%, rgba(120, 110, 180, 0.14), transparent 60%),
-          #16181f;
+          radial-gradient(1000px 680px at 50% -6%, rgba(196, 218, 255, 0.17), transparent 62%),
+          radial-gradient(900px 760px at 50% 116%, rgba(38, 150, 92, 0.16), transparent 60%),
+          #0a1018;
         overflow: hidden;
         /* Kill the browser's native pull-to-refresh / overscroll bounce. Without this,
            a fast tap-flick or fan-drag with any downward drift — landing on the gaps
@@ -61,7 +76,7 @@
            own UI face (SF on iOS, Roboto on Android, Segoe on Windows): zero network
            weight and intentional type on the very first frame. */
         font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color: #eef1f6;
+        color: #eef2f8;
         /* iOS ignores user-scalable=no, so kill the gestures that zoom/blow up the
            cards: double-tap-to-zoom, the long-press image preview, and selection. */
         touch-action: manipulation;
@@ -177,7 +192,7 @@
         .pack.ready ~ .pack-glow { animation: none; opacity: calc(var(--idle-heat, 0) * 0.6); }
       }
       /* CHASE idle — a top-tier card is sealed inside (#pack-stage.chase, set by
-         pack.setTell for Secret/Hyper): the breathing halo quickens and the crimp
+         pack.setTell for Team of the Year / Legend): the breathing halo quickens and the crimp
          beam sweeps faster, so the sealed pack feels restless before you even tear. */
       #pack-stage.chase .pack.ready ~ .pack-glow { animation-duration: 3.1s; }
       #pack-stage.chase .pack.ready ~ .crimp-streak .cs-beam { animation-duration: 1.9s; }
@@ -487,26 +502,26 @@
            backdrop as one continuous brightness ramp rather than a cut. */
         transition: opacity 1.7s ease-in-out 0.38s;
         background:
-          /* soft warm-white stage pool behind the focused pack (centre, a little high) */
-          radial-gradient(58% 46% at 50% 40%, rgba(255, 228, 200, 0.20), transparent 66%),
+          /* cool-white floodlight pool behind the focused pack (centre, a little high) */
+          radial-gradient(58% 46% at 50% 40%, rgba(226, 238, 255, 0.20), transparent 66%),
           /* gentle vignette so the corners settle, like the shader's */
-          radial-gradient(120% 120% at 50% 50%, transparent 44%, rgba(6, 7, 16, 0.45) 100%),
-          /* vertical palette: deep ink-violet → muted indigo → soft periwinkle (bottom → top) */
-          linear-gradient(to top, #131526 0%, #1f2140 56%, #3c436e 100%);
+          radial-gradient(120% 120% at 50% 50%, transparent 44%, rgba(3, 8, 14, 0.45) 100%),
+          /* vertical palette: pitch-dark green → stadium navy → floodlit night sky (bottom → top) */
+          linear-gradient(to top, #0b1a16 0%, #13233a 56%, #2c4266 100%);
       }
       /* entering/holding the picker: brighten the lit field back UP. The canvas fades
          in over it (REENTER_FADE ~0.6s), so this rides a touch slower (~0.8s ease-in-out)
          to match — a gentle dark→bright ramp on the way back, not a 0.4s pop. */
       body.picking #scene-bg { opacity: 1; transition: opacity 0.8s ease-in-out; }
 
-      /* Floating Poké Ball icons — monochrome (grey/white/black) balls drifting up
-         through the dark at different depths and angles, behind the pack and the
-         reveal. Ambient backdrop; matches the B&W balls inside the 3D carousel. */
+      /* Floating footballs — monochrome (grey/white/black) balls drifting up through the
+         dark at different depths and angles, behind the pack and the reveal. Ambient
+         backdrop; matches the balls rising through the 3D carousel. */
       .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
       .float-card {
         position: absolute; bottom: -32%;
-        width: 132px; aspect-ratio: 1; /* square → the round Poké Ball icon */
-        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Crect width='100' height='50' fill='%23b9bcc8'/%3E%3Crect y='50' width='100' height='50' fill='%23f4f4f6'/%3E%3Crect y='41.5' width='100' height='17' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='46' fill='none' stroke='%231b1c22' stroke-width='5'/%3E%3Ccircle cx='50' cy='50' r='13.5' fill='%231b1c22'/%3E%3Ccircle cx='50' cy='50' r='8.8' fill='%23f4f4f6'/%3E%3C/svg%3E") center / contain no-repeat;
+        width: 132px; aspect-ratio: 1; /* square → the round ball icon */
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23e8eaef'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%238a8f9c' stroke-width='1.6' fill='none'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='%231b1c22'/%3E%3Cpath d='M50.00 36.50 L62.84 45.83 L57.94 60.92 L42.06 60.92 L37.16 45.83 Z' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%231b1c22' stroke-width='2.4' stroke-opacity='0.55'/%3E%3C/svg%3E") center / contain no-repeat;
         opacity: 0;
         filter: blur(var(--b, 0px)); /* far balls = blurrier (depth of field) */
         will-change: transform, opacity;
@@ -571,17 +586,17 @@
         cursor: pointer;
         color: #eaf0ff;
         font: inherit;
-        background: radial-gradient(120% 90% at 50% 42%, rgba(40, 54, 120, 0.28), rgba(6, 8, 22, 0.55) 70%);
+        background: radial-gradient(120% 90% at 50% 42%, rgba(46, 74, 120, 0.30), rgba(4, 10, 16, 0.6) 70%);
         -webkit-tap-highlight-color: transparent;
         transition: opacity 0.5s ease;
       }
       #start-gate.gone { opacity: 0; pointer-events: none; }
       #start-gate { cursor: default; }
-      /* The hero is a real Poké Ball: a top lid + bottom base (same red/white SVG
-         split at the seam) wrapping a glowing CENTRE BUTTON — that button is the
-         only thing you can press. Pressing it cracks the ball open: the lid hinges
-         up, the base drops, and white light bursts from the seam. A halo breathes
-         behind the whole ball to mark it as the live target. */
+      /* The hero is a match ball: two halves of one SVG (top + bottom, so the press can
+         squash it as a unit) around the centre PENTAGON — that panel is the button, the
+         only thing you press. A floodlight halo breathes behind the whole ball to mark
+         it as the live target; pressing it kicks off (the ball pops and vanishes into
+         the carousel fly-in). */
       #start-gate .start-gate__ball {
         position: relative;
         width: clamp(108px, 26vw, 152px);
@@ -599,39 +614,39 @@
         border-radius: 50%;
         z-index: 1;
       }
-      /* breathing glow halo behind the ball */
+      /* breathing floodlight halo behind the ball */
       #start-gate .start-gate__ball::before {
         content: "";
         position: absolute;
         inset: -30%;
         border-radius: 50%;
-        background: radial-gradient(closest-side, rgba(140, 178, 255, 0.5), transparent 72%);
+        background: radial-gradient(closest-side, rgba(255, 226, 150, 0.45), rgba(200, 222, 255, 0.12) 52%, transparent 72%);
         z-index: 0;
         animation: gateHalo 2s ease-in-out infinite;
       }
-      /* the two ball halves share ONE full-ball SVG (no centre dot — that's the
+      /* the two ball halves share ONE full-ball SVG (no centre pentagon — that's the
          button); each box is half-height and shows its half of the 200%-tall image */
       #start-gate .start-gate__half {
         position: absolute;
         left: 0;
         width: 100%;
         height: 50%;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Crect width='100' height='50' fill='%23ee3b46'/%3E%3Crect y='50' width='100' height='50' fill='%23f4f4f6'/%3E%3Crect y='41.5' width='100' height='17' fill='%231b1c22'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='46' fill='none' stroke='%231b1c22' stroke-width='5'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CradialGradient id='s' cx='0.36' cy='0.3' r='0.75'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='0.62' stop-color='%23000' stop-opacity='0.05'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='0.42'/%3E%3C/radialGradient%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23f7f8fa'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%239aa0ab' stroke-width='1.6' fill='none'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='%2316181d'/%3E%3Ccircle cx='50' cy='50' r='46' fill='url(%23s)'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%2316181d' stroke-width='2.4' stroke-opacity='0.55'/%3E%3C/svg%3E");
         background-size: 100% 200%;
         background-repeat: no-repeat;
         z-index: 2;
-        filter: brightness(1.16) contrast(1.04)
-                drop-shadow(0 0 13px rgba(150, 188, 255, 0.7));
+        filter: brightness(1.08) contrast(1.04)
+                drop-shadow(0 0 13px rgba(255, 226, 150, 0.55));
         transition: transform 0.12s ease;
       }
       #start-gate .start-gate__half--top    { top: 0;    background-position: top;    transform-origin: 50% 100%; }
       #start-gate .start-gate__half--bottom { bottom: 0; background-position: bottom; transform-origin: 50% 0%; }
-      /* white light core, hidden in the seam until the ball opens */
+      /* white light core, hidden behind the ball until it opens */
       #start-gate .start-gate__burst {
         position: absolute;
         inset: 26%;
         border-radius: 50%;
-        background: radial-gradient(closest-side, #fff, rgba(196, 222, 255, 0.92) 46%, transparent 76%);
+        background: radial-gradient(closest-side, #fff, rgba(255, 236, 190, 0.92) 46%, transparent 76%);
         opacity: 0;
         z-index: 1;
         pointer-events: none;
@@ -641,36 +656,45 @@
         position: absolute;
         inset: 0;
         border-radius: 50%;
-        border: 3px solid rgba(195, 218, 255, 0.9);
+        border: 3px solid rgba(255, 226, 150, 0.9);
         opacity: 0;
         z-index: 4;
         pointer-events: none;
       }
-      /* the centre button — the ONLY tap target. White cap, black ring, lit so it
-         clearly invites the press; an attract-pulse glow loops to say "press me". */
+      /* the centre button — the ONLY tap target: the ball's centre pentagon panel. The
+         round element carries the gold attract-pulse ring ("press me"); the pentagon
+         itself is its ::before (clip-path would clip a box-shadow, so they're split). */
       #start-gate .start-gate__center {
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 30%;
+        width: 31%;
         aspect-ratio: 1;
         margin: 0;
         padding: 0;
-        border: 4px solid #1b1c22;
+        border: 0;
         border-radius: 50%;
-        background: radial-gradient(circle at 38% 34%, #ffffff, #e2e7f0 58%, #b9c0cf);
-        box-shadow: inset 0 0 0 2px #f4f4f6,
-                    0 0 0 0 rgba(150, 188, 255, 0.7),
-                    0 0 16px rgba(150, 188, 255, 0.6);
+        background: transparent;
+        box-shadow: 0 0 0 0 rgba(255, 214, 110, 0.7),
+                    0 0 16px rgba(255, 214, 110, 0.55);
         transform: translate(-50%, -50%);
         cursor: pointer;
         z-index: 5;
         -webkit-tap-highlight-color: transparent;
         animation: gateBtnPulse 1.7s ease-in-out infinite;
       }
+      #start-gate .start-gate__center::before {
+        content: "";
+        position: absolute;
+        inset: 4%;
+        clip-path: polygon(50% 0%, 97.6% 34.5%, 79.4% 90.5%, 20.6% 90.5%, 2.4% 34.5%);
+        background: radial-gradient(circle at 40% 30%, #4a4f5c, #16181d 62%);
+      }
       #start-gate .start-gate__label {
-        font-size: clamp(1rem, 4vw, 1.4rem);
-        letter-spacing: 0.22em;
+        font-family: var(--display);
+        font-weight: 700;
+        font-size: clamp(1.15rem, 4.6vw, 1.6rem);
+        letter-spacing: 0.24em;
         text-transform: uppercase;
         text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
         animation: gatePulse 2s ease-in-out infinite;
@@ -687,13 +711,13 @@
       #start-gate.loading .start-gate__ball   { animation-duration: 3.2s; }
       /* the loading bar: a thin track whose fill tracks sfx audio-decode progress
          (set in JS from sfx.onReadyProgress). It only exists while loading — once the
-         audio is ready it fades out and the label flips to "Tap to open". */
+         audio is ready it fades out and the label flips to "Tap to kick off". */
       #start-gate .start-gate__bar {
         display: block;
         width: clamp(120px, 40vw, 220px);
         height: 3px;
         border-radius: 999px;
-        background: rgba(190, 208, 255, 0.18);
+        background: rgba(255, 226, 150, 0.16);
         overflow: hidden;
         opacity: 0;
         transition: opacity 0.45s ease;
@@ -704,8 +728,8 @@
         height: 100%;
         width: 0%;
         border-radius: inherit;
-        background: linear-gradient(90deg, #8cb2ff, #f4f4f6);
-        box-shadow: 0 0 10px rgba(150, 188, 255, 0.75);
+        background: linear-gradient(90deg, #f2c54b, #fff6dc);
+        box-shadow: 0 0 10px rgba(255, 214, 110, 0.75);
         transition: width 0.3s ease;
       }
       @keyframes gateBall {
@@ -718,12 +742,12 @@
       }
       /* attract-pulse: the centre button's glow ring breathes outward */
       @keyframes gateBtnPulse {
-        0%, 100% { box-shadow: inset 0 0 0 2px #f4f4f6, 0 0 0 0 rgba(150, 188, 255, 0.55), 0 0 14px rgba(150, 188, 255, 0.5); }
-        50%      { box-shadow: inset 0 0 0 2px #f4f4f6, 0 0 0 7px rgba(150, 188, 255, 0), 0 0 24px rgba(150, 188, 255, 0.85); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 110, 0.55), 0 0 14px rgba(255, 214, 110, 0.45); }
+        50%      { box-shadow: 0 0 0 7px rgba(255, 214, 110, 0), 0 0 24px rgba(255, 214, 110, 0.85); }
       }
 
       /* ---- becomes tappable: the gate flips to .ready ---------------------
-         whenReady() (audio decoded, label → "Tap to open") adds .ready. The ball
+         whenReady() (audio decoded, label → "Tap to kick off") adds .ready. The ball
          now breathes DEEPER and QUICKER than its loading idle so "you can press
          now" is unmistakable, the centre button's attract-pulse speeds up, the
          halo keeps pace, and one shock ring rings outward once to punctuate the
@@ -750,7 +774,7 @@
       #start-gate.nudge .start-gate__label  { animation: gateLabelKick 0.6s ease-out; }
       @keyframes gateBtnNudge {
         0%   { transform: translate(-50%, -50%) scale(1); }
-        30%  { transform: translate(-50%, -50%) scale(1.22); box-shadow: inset 0 0 0 2px #f4f4f6, 0 0 0 9px rgba(150, 188, 255, 0.35), 0 0 28px rgba(150, 188, 255, 0.95); }
+        30%  { transform: translate(-50%, -50%) scale(1.22); box-shadow: 0 0 0 9px rgba(255, 214, 110, 0.35), 0 0 28px rgba(255, 214, 110, 0.95); }
         60%  { transform: translate(-50%, -50%) scale(0.96); }
         100% { transform: translate(-50%, -50%) scale(1); }
       }
@@ -813,9 +837,10 @@
       }
       .reveal.hidden { display: none; }
 
-      /* Iridescent backdrop — only painted in for a Double Rare-or-above pull.
-         Layered conic + radial sweeps drift and hue-rotate so the whole scene
-         shimmers behind the card. Off by default; fades in when .iridescent. */
+      /* Floodlit backdrop — only painted in for a promo pull (Team of the Week and up).
+         Layered conic + radial sweeps in the EDITION's colour (--tier-color) plus white
+         floodlight, drifting so the whole scene glows behind the card. Off by default;
+         fades in when .iridescent. */
       .reveal__aura {
         position: absolute;
         inset: -20%;
@@ -824,13 +849,14 @@
         /* default = fade-OUT timing: snappy, so it clears as the card leaves */
         transition: opacity 0.45s ease-out;
         background:
-          radial-gradient(120% 90% at 30% 20%, rgba(255, 93, 143, 0.55), transparent 60%),
-          radial-gradient(110% 90% at 75% 30%, rgba(110, 168, 254, 0.55), transparent 60%),
-          radial-gradient(120% 100% at 50% 85%, rgba(95, 207, 142, 0.5), transparent 62%),
+          radial-gradient(120% 90% at 30% 20%, color-mix(in srgb, var(--tier-color, #f2c54b) 60%, transparent), transparent 60%),
+          radial-gradient(110% 90% at 75% 30%, rgba(220, 234, 255, 0.42), transparent 60%),
+          radial-gradient(120% 100% at 50% 85%, color-mix(in srgb, var(--tier-color, #f2c54b) 45%, #0a1018), transparent 62%),
           conic-gradient(from 0deg at 50% 50%,
-            #ff5d8f, #ffd24a, #5fcf8e, #3fd6c8, #6ea8fe, #b072e6, #ff5d8f);
+            var(--tier-color, #f2c54b), #ffffff, color-mix(in srgb, var(--tier-color, #f2c54b) 55%, #0a1018),
+            var(--tier-color, #f2c54b), #fff3d0, color-mix(in srgb, var(--tier-color, #f2c54b) 70%, #ffffff), var(--tier-color, #f2c54b));
         background-blend-mode: screen;
-        filter: blur(40px) saturate(1.3); /* STATIC — rastered once, then transform-only */
+        filter: blur(40px) saturate(1.2); /* STATIC — rastered once, then transform-only */
         will-change: opacity, transform; /* NOT filter — animating a 40px blur per frame janks mobile */
       }
       .reveal.iridescent .reveal__aura {
@@ -973,13 +999,16 @@
         padding: 13px 40px;
         border-radius: 999px;
         border: 0;
-        background: linear-gradient(180deg, #fff 0%, var(--tier-color, #b49bff) 150%);
-        color: #1a1622;
+        background: linear-gradient(180deg, #fff 0%, var(--tier-color, #f2c54b) 150%);
+        color: #10151f;
         font: inherit;
+        font-family: var(--display);
+        font-size: 17px;
         font-weight: 800;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.16em;
+        white-space: nowrap; /* left:50% leaves it only half the screen to shrink-wrap into */
         text-transform: uppercase;
-        box-shadow: 0 10px 30px -8px var(--tier-color, #b49bff);
+        box-shadow: 0 10px 30px -8px var(--tier-color, #f2c54b);
         cursor: pointer;
         pointer-events: auto;
         z-index: 330;
@@ -987,7 +1016,7 @@
       }
       .reveal__again[hidden] { display: none; }
       .reveal__again:active { filter: brightness(0.95); }
-      /* COLLECT: the button drops away as the binder rises to take its place */
+      /* SEND TO CLUB: the button drops away as the club badge rises to take its place */
       .reveal.collecting .reveal__again {
         transform: translateX(-50%) translateY(180px);
         opacity: 0;
@@ -996,7 +1025,7 @@
       .reveal.collecting .reveal__status,
       .reveal.collecting .reveal__haul-cap { opacity: 0; }
 
-      /* the binder the pull is vacuumed into — parked below, rises on Collect */
+      /* the club badge the pull is vacuumed into — parked below, rises on Send to Club */
       .reveal__binder {
         position: fixed;
         left: 50%;
@@ -1016,7 +1045,7 @@
       /* ======================================================================
        *  THE HIT — sunburst rays, screen flash, anticipation tell, rarity stamp,
        *  interior glow, card entrance. All live inside the .reveal host and are
-       *  gated/scaled per tier by reveal.js (a Double Rare just shimmers; a Hyper
+       *  gated/scaled per tier by reveal.js (a Team of the Week just shimmers; a Legend
        *  takes the whole screen). New selectors only — they don't touch the
        *  pack's open-light system above.
        * ==================================================================== */
@@ -1126,7 +1155,9 @@
         transform: translate(-50%, -50%) scale(1.6);
         pointer-events: none;
         opacity: 0;
-        font-size: clamp(15px, 4.4vw, 24px);
+        font-family: var(--display);
+        font-style: italic;
+        font-size: clamp(19px, 5.6vw, 32px);
         font-weight: 800;
         letter-spacing: 0.3em;
         text-transform: uppercase;
@@ -1189,7 +1220,7 @@
       }
 
       /* SHOCKWAVE — a quick expanding tier-coloured ring on the hit, so even the
-         lowest chase (Double Rare, which gets no rays) lands with a punch. Driven by
+         lowest promo (Team of the Week, which gets no rays) lands with a punch. Driven by
          WAAPI in reveal.js (scale + opacity only; the ring's glow is a STATIC
          box-shadow, rastered once then transform-scaled — never animated). */
       .reveal__shock {
@@ -1247,7 +1278,8 @@
       .reveal.haul .reveal__haul-cap { opacity: 1; transform: translateY(0); }
       .reveal__haul-cap .hc-kicker {
         margin: 0;
-        font-size: 12px;
+        font-family: var(--display);
+        font-size: 14px;
         letter-spacing: 0.24em;
         text-transform: uppercase;
         color: #9aa3b2;
@@ -1255,7 +1287,11 @@
       }
       .reveal__haul-cap .hc-best {
         margin: 7px 0 0;
-        font-size: clamp(18px, 5.4vw, 27px);
+        font-family: var(--display);
+        font-style: italic;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: clamp(21px, 6.2vw, 32px);
         font-weight: 800;
         color: #fff;
         text-shadow: 0 0 16px var(--tier-color, #fff), 0 2px 10px rgba(0, 0, 0, 0.6);
@@ -1263,6 +1299,65 @@
       @media (prefers-reduced-motion: reduce) {
         .reveal__haul-cap { transition: opacity 0.4s ease; transform: none; }
       }
+
+      /* THE WALKOUT (reveal.js walkout()) — for Team of the Season and up, the deck is
+         VEILED and the stage stays dark while the player's nation, position and club
+         punch in one at a time, centre stage, before the card drops. Each clue is
+         animated in by WAAPI (scale + opacity); the glow is a static shadow. */
+      .reveal__slot.veiled { opacity: 0 !important; transition: opacity 0.12s ease !important; }
+      .reveal__walkout {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+      }
+      .wo-clue {
+        grid-area: 1 / 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        margin-top: -6vh;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .wo-flag {
+        width: min(46vw, 210px);
+        height: auto;
+        border-radius: 12px;
+        box-shadow:
+          0 0 44px color-mix(in srgb, var(--tier-color, #fff) 70%, transparent),
+          0 22px 50px rgba(0, 0, 0, 0.6);
+      }
+      .wo-crest {
+        width: min(38vw, 180px);
+        height: auto;
+        filter: drop-shadow(0 0 26px color-mix(in srgb, var(--tier-color, #fff) 75%, transparent));
+      }
+      .wo-pos {
+        margin: 0;
+        font-family: var(--display);
+        font-weight: 800;
+        font-style: italic;
+        font-size: clamp(96px, 32vw, 180px);
+        line-height: 0.9;
+        letter-spacing: 0.02em;
+        color: #fff;
+        text-shadow: 0 0 34px var(--tier-color, #fff), 0 8px 24px rgba(0, 0, 0, 0.6);
+      }
+      .wo-cap {
+        margin: 0;
+        font-family: var(--display);
+        font-weight: 700;
+        font-size: clamp(14px, 3.8vw, 18px);
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #eef2f8;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+      }
+      /* the stage goes darker for a walkout than for a plain tell */
+      .reveal.walkout .reveal__dim { opacity: 1; background: radial-gradient(120% 100% at 50% 44%, rgba(2, 4, 8, 0.35) 20%, rgba(2, 4, 8, 0.86) 80%); }
 
       /* stacking order inside the reveal host: backdrop → rays → cards → sparkles
          → shock → flash → stamp */
@@ -1273,7 +1368,7 @@
       .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
       .reveal__shock { z-index: 160; } /* ring reads just in front of the sparkles */
       .reveal__flash { z-index: 300; }
-      .reveal__stamp { z-index: 320; }
+      .reveal__stamp, .reveal__walkout { z-index: 320; }
 
       @media (prefers-reduced-motion: reduce) {
         .reveal__rays.spin, .reveal__rays--fine.spin { animation: none; }
@@ -1324,7 +1419,7 @@
         <span class="start-gate__half start-gate__half--bottom" aria-hidden="true"></span>
         <span class="start-gate__burst" aria-hidden="true"></span>
         <span class="start-gate__shock" aria-hidden="true"></span>
-        <button class="start-gate__center" type="button" aria-label="Press the Poké Ball button to open packs"></button>
+        <button class="start-gate__center" type="button" aria-label="Kick off — open packs"></button>
       </div>
       <span class="start-gate__label">Loading…</span>
       <span class="start-gate__bar" aria-hidden="true"><span class="start-gate__bar-fill"></span></span>
@@ -1345,7 +1440,7 @@
       let introStarted = false, onIntroStarted = null;
 
       // ---- start-gate reveal — wired FIRST, before any heavy init ------------
-      // The gate opens to "Loading…"; it must flip to "Tap to open" no matter what. We set
+      // The gate opens to "Loading…"; it must flip to "Tap to kick off" no matter what. We set
       // this up BEFORE createSelector (three.js) and the rest below, so if anything THERE
       // throws on a given device (a WebGL/mobile failure was stranding the gate on "Loading…"
       // forever), the reveal still happens. Three independent guarantees: real sfx decode
@@ -1378,7 +1473,7 @@
           if (gateBarFill) gateBarFill.style.width = "100%";
           startGate.classList.remove("loading"); // fades the bar out (CSS)
           startGate.classList.add("ready");       // ball breathes deeper/quicker + shock ring — "you can tap now"
-          gateLabel.textContent = "Tap to open";
+          gateLabel.textContent = "Tap to kick off";
           // a soft two-note "ready" ping to draw the ear to the now-live target.
           // NB: this is the very first frame BEFORE any user gesture, so browser
           // autoplay policy blocks it on a cold first load (the whole reason this
@@ -1616,8 +1711,8 @@
 
         selector.show(); // intro pre-arms the pack via onIntroEnd — runs under the open
       };
-      // Tapping anywhere on the ball opens it (the whole Poké Ball is the target, not
-      // just the tiny centre dot — a far more forgiving hit area on mobile).
+      // Tapping anywhere on the ball kicks off (the whole ball is the target, not just
+      // the centre pentagon — a far more forgiving hit area on mobile).
       gateBall.addEventListener("click", (e) => { e.stopPropagation(); openBall(); });
       // tap further out (the dimmed backdrop): nudge the eye back to the ball
       startGate.addEventListener("click", () => {

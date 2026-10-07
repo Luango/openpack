@@ -62,7 +62,8 @@ const TEAR_CORNER_Y = 0.22; // corner strip depth — the taller "green" part (f
 const TEAR_MID_Y = 0.15; // middle strip depth — the shorter "red" part (fraction of the height); widened to forgive presses just inside the crimp
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
-const FOIL = ["#ff5d8f", "#ffd24a", "#5fcf8e", "#3fd6c8", "#6ea8fe", "#b072e6"];
+// gold-pack foil flecks: the shreds a tear sprays are the pouch's own gold + silver
+const FOIL = ["#fff3c4", "#f2c54b", "#d9a92e", "#ffffff", "#c9ced8", "#b8862b"];
 const CORNERS = [
   { s: 0, x: 0, y: 0 },
   { s: 1, x: VB.w, y: 0 },
@@ -865,8 +866,8 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     setTell: (peak) => {
       tellTier = peak | 0;
       const hex = TIER_HEX[tellTier] || TIER_HEX[0];
-      // 0 below Double Rare (a dud pack stays dark — no false promise), then a clear
-      // FLOOR so a real chase actually reads: 0.4 at Double Rare → 1.0 at Hyper.
+      // 0 below Team of the Week (a dud pack stays dark — no false promise), then a clear
+      // FLOOR so a real chase actually reads: 0.4 at Team of the Week → 1.0 at Legend.
       const heat = tellTier <= 3 ? 0 : Math.min(1, 0.4 + (tellTier - 4) * 0.12);
       mountEl.style.setProperty("--tell", hex);
       mountEl.style.setProperty("--idle-heat", heat.toFixed(2));
