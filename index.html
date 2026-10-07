@@ -37,7 +37,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link id="font-css" rel="stylesheet" media="print" onload="this.media='all';this.dataset.ready=1"
-          href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Cinzel:wght@500;700;800&display=swap" />
+          href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Cinzel:wght@500;700;800&family=Montserrat:wght@300&display=swap" />
     <!-- FIRST-OPEN: kick the slow critical resources off at HTML-parse time instead of
          waiting for the ESM waterfall to discover them. Without these, three.js only
          downloads after index→select3d.js download+parse, and the hi-res foil textures
@@ -80,6 +80,9 @@
         /* the display face for UI headings (stamps, captions, buttons): an engraved Roman
            capital, the awards-night register. The card faces keep Barlow Condensed. */
         --display: "Cinzel", "Trajan Pro", "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        /* the Ballon d'Or's own wordmark is a light, wide, monoline geometric capital —
+           Montserrat Light is the open stand-in (used for the start gate's line) */
+        --wordmark: "Montserrat", "Gotham", "Avenir Next", "Century Gothic", "Helvetica Neue", Arial, sans-serif;
         /* the device's safe areas — every edge-pinned control pads by these */
         --safe-top: env(safe-area-inset-top, 0px);
         --safe-right: env(safe-area-inset-right, 0px);
@@ -764,125 +767,37 @@
         transition: opacity 0.5s ease;
       }
       #start-gate.gone { opacity: 0; pointer-events: none; }
-      #start-gate { cursor: default; }
-      /* The hero is THE golden ball: two halves of one SVG (top + bottom, so the press can
-         squash it as a unit) around the centre PENTAGON — that panel is the button, the
-         only thing you press. An amber halo breathes behind the whole ball to mark it as
-         the live target; pressing it kicks off (the ball pops and vanishes into the
-         carousel fly-in). */
-      #start-gate .start-gate__ball {
-        position: relative;
-        width: clamp(108px, 26vw, 152px);
-        aspect-ratio: 1;
-        perspective: 620px;
-        animation: gateBall 2s ease-in-out infinite;
-        cursor: pointer;
-      }
-      /* generous tap halo: a transparent ring around the ball so taps that land just
-         off the artwork still count as "on the ball" (forgiving on small screens) */
-      #start-gate .start-gate__ball::after {
-        content: "";
-        position: absolute;
-        inset: -28%;
-        border-radius: 50%;
-        z-index: 1;
-      }
-      /* breathing amber halo behind the ball */
-      #start-gate .start-gate__ball::before {
-        content: "";
-        position: absolute;
-        inset: -30%;
-        border-radius: 50%;
-        background: radial-gradient(closest-side, rgba(255, 200, 100, 0.5), rgba(255, 170, 60, 0.14) 52%, transparent 72%);
-        z-index: 0;
-        animation: gateHalo 2s ease-in-out infinite;
-      }
-      /* the two ball halves share ONE full-ball SVG (no centre pentagon — that's the
-         button); each box is half-height and shows its half of the 200%-tall image */
-      #start-gate .start-gate__half {
-        position: absolute;
-        left: 0;
-        width: 100%;
-        height: 50%;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CradialGradient id='b' cx='0.34' cy='0.28' r='0.84'%3E%3Cstop offset='0' stop-color='%23fff8dc'/%3E%3Cstop offset='0.26' stop-color='%23f4d57f'/%3E%3Cstop offset='0.6' stop-color='%23cc9830'/%3E%3Cstop offset='0.86' stop-color='%237b4f14'/%3E%3Cstop offset='1' stop-color='%233a2206'/%3E%3C/radialGradient%3E%3ClinearGradient id='p' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236a4512'/%3E%3Cstop offset='1' stop-color='%231f1305'/%3E%3C/linearGradient%3E%3CradialGradient id='s' cx='0.36' cy='0.3' r='0.78'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0.4'/%3E%3Cstop offset='0.42' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='0.5'/%3E%3C/radialGradient%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='url(%23b)'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%237e5a1e' stroke-width='1.6' fill='none' stroke-opacity='0.8'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='url(%23p)'/%3E%3Ccircle cx='50' cy='50' r='46' fill='url(%23s)'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%233a2206' stroke-width='2.4' stroke-opacity='0.6'/%3E%3C/svg%3E");
-        background-size: 100% 200%;
-        background-repeat: no-repeat;
-        z-index: 2;
-        filter: brightness(1.04) contrast(1.04)
-                drop-shadow(0 0 13px rgba(255, 190, 80, 0.6));
-        transition: transform 0.12s ease;
-      }
-      #start-gate .start-gate__half--top    { top: 0;    background-position: top;    transform-origin: 50% 100%; }
-      #start-gate .start-gate__half--bottom { bottom: 0; background-position: bottom; transform-origin: 50% 0%; }
-      /* white light core, hidden behind the ball until it opens */
-      #start-gate .start-gate__burst {
-        position: absolute;
-        inset: 26%;
-        border-radius: 50%;
-        background: radial-gradient(closest-side, #fff, rgba(255, 236, 190, 0.92) 46%, transparent 76%);
-        opacity: 0;
-        z-index: 1;
-        pointer-events: none;
-      }
-      /* shockwave ring — invisible until the open snaps it outward */
-      #start-gate .start-gate__shock {
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        border: 3px solid rgba(255, 226, 150, 0.9);
-        opacity: 0;
-        z-index: 4;
-        pointer-events: none;
-      }
-      /* the centre button — the ONLY tap target: the ball's centre pentagon panel. The
-         round element carries the gold attract-pulse ring ("press me"); the pentagon
-         itself is its ::before (clip-path would clip a box-shadow, so they're split). */
-      #start-gate .start-gate__center {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 31%;
-        aspect-ratio: 1;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        border-radius: 50%;
-        background: transparent;
-        box-shadow: 0 0 0 0 rgba(255, 214, 110, 0.7),
-                    0 0 16px rgba(255, 214, 110, 0.55);
-        transform: translate(-50%, -50%);
-        cursor: pointer;
-        z-index: 5;
-        -webkit-tap-highlight-color: transparent;
-        animation: gateBtnPulse 1.7s ease-in-out infinite;
-      }
-      #start-gate .start-gate__center::before {
-        content: "";
-        position: absolute;
-        inset: 4%;
-        clip-path: polygon(50% 0%, 97.6% 34.5%, 79.4% 90.5%, 20.6% 90.5%, 2.4% 34.5%);
-        background: radial-gradient(circle at 40% 30%, #8a5d1a, #2a1a06 62%);
-      }
+      /* Type only, no hero art: the line is set like the Ballon d'Or's own wordmark — a
+         light, wide, monoline geometric capital (--wordmark), widely tracked in champagne
+         gold. The whole screen is the tap target; the label is the <button> that gives
+         it keyboard focus. Letter-spacing trails the last glyph, so the left padding
+         carries one extra track to keep the line optically centred. */
       #start-gate .start-gate__label {
-        font-family: var(--display);
-        font-weight: 700;
-        font-size: clamp(1rem, 4vw, 1.3rem);
-        letter-spacing: 0.3em;
+        margin: 0;
+        padding: 0.7em 1em 0.7em calc(1em + 0.34em);
+        border: 0;
+        background: none;
+        font-family: var(--wordmark);
+        font-weight: 300;
+        font-size: clamp(1.1rem, 5vw, 1.5rem);
+        letter-spacing: 0.34em;
+        line-height: 1;
+        white-space: nowrap;
         text-transform: uppercase;
         color: #f7e4aa;
-        text-shadow: 0 0 18px rgba(212, 166, 58, 0.45), 0 2px 18px rgba(0, 0, 0, 0.55);
+        text-shadow: 0 0 18px rgba(212, 166, 58, 0.55), 0 2px 18px rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
         animation: gatePulse 2s ease-in-out infinite;
         transition: transform 0.14s ease, opacity 0.2s ease;
       }
+      #start-gate .start-gate__label:focus { outline: none; }
+      #start-gate .start-gate__label:focus-visible { outline: 1px solid rgba(247, 228, 170, 0.5); outline-offset: 2px; }
       @keyframes gatePulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
       /* before the audio is ready the gate reads as "Loading…": the label breathes
-         slower + dimmer and the button's attract-pulse is held back, so the invitation
-         to tap only arrives once whenReady() swaps the label (the button stays tappable). */
-      #start-gate.loading .start-gate__label  { animation-duration: 2.8s; opacity: 0.75; }
-      #start-gate.loading .start-gate__center { animation-duration: 2.8s; }
-      /* calm, slow bob while loading — so the deeper/quicker .ready breathe below
-         reads as a clear state change the instant the ball becomes tappable */
-      #start-gate.loading .start-gate__ball   { animation-duration: 3.2s; }
+         slower + dimmer, so the invitation to tap only arrives once whenReady() swaps
+         the label (the gate stays tappable throughout). */
+      #start-gate.loading .start-gate__label { animation-duration: 2.8s; opacity: 0.75; }
       /* the loading bar: a thin track whose fill tracks sfx audio-decode progress
          (set in JS from sfx.onReadyProgress). It only exists while loading — once the
          audio is ready it fades out and the label flips to "Tap to kick off". */
@@ -906,78 +821,37 @@
         box-shadow: 0 0 10px rgba(255, 214, 110, 0.75);
         transition: width 0.3s ease;
       }
-      @keyframes gateBall {
-        0%, 100% { transform: translateY(0) scale(1); }
-        50%      { transform: translateY(-5px) scale(1.04); }
-      }
-      @keyframes gateHalo {
-        0%, 100% { opacity: 0.55; transform: scale(1); }
-        50%      { opacity: 0.95; transform: scale(1.12); }
-      }
-      /* attract-pulse: the centre button's glow ring breathes outward */
-      @keyframes gateBtnPulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 110, 0.55), 0 0 14px rgba(255, 214, 110, 0.45); }
-        50%      { box-shadow: 0 0 0 7px rgba(255, 214, 110, 0), 0 0 24px rgba(255, 214, 110, 0.85); }
-      }
 
       /* ---- becomes tappable: the gate flips to .ready ---------------------
-         whenReady() (audio decoded, label → "Tap to kick off") adds .ready. The ball
-         now breathes DEEPER and QUICKER than its loading idle so "you can press
-         now" is unmistakable, the centre button's attract-pulse speeds up, the
-         halo keeps pace, and one shock ring rings outward once to punctuate the
-         moment the target goes live (paired with the ready ping in JS). */
-      #start-gate.ready .start-gate__ball         { animation: gateReadyBreathe 1.5s ease-in-out infinite; }
-      #start-gate.ready .start-gate__center       { animation-duration: 1.3s; }
-      #start-gate.ready .start-gate__ball::before { animation-duration: 1.5s; }
-      #start-gate.ready .start-gate__shock        { animation: gateReadyShock 0.7s ease-out; }
-      @keyframes gateReadyBreathe {
-        0%, 100% { transform: translateY(0)    scale(1); }
-        50%      { transform: translateY(-6px) scale(1.09); }
+         whenReady() (audio decoded, label → "Tap to kick off") adds .ready. The new
+         line resolves out of a soft blur, then breathes quicker than the loading idle
+         so "you can tap now" reads as a clear change of state (paired with the ready
+         ping in JS). */
+      #start-gate.ready .start-gate__label {
+        animation: gateLabelIn 0.7s ease-out, gatePulse 1.6s ease-in-out 0.7s infinite;
       }
-      @keyframes gateReadyShock {
-        0%   { opacity: 0.9; transform: scale(0.62); }
-        100% { opacity: 0;   transform: scale(1.5); }
+      @keyframes gateLabelIn {
+        from { opacity: 0; filter: blur(6px); }
+        to   { opacity: 1; filter: blur(0); }
       }
 
       /* ---- tap feedback ---------------------------------------------------- */
-      /* finger down on the button: depress it + quiet the bob for a tactile press */
-      #start-gate.pressing .start-gate__ball   { animation: none; }
-      #start-gate.pressing .start-gate__center { animation: none; transform: translate(-50%, -50%) scale(0.82); }
-      /* tapped off-target: nudge the eye back to the button (bounce + glow flash) */
-      #start-gate.nudge .start-gate__center { animation: gateBtnNudge 0.6s ease-out; }
-      #start-gate.nudge .start-gate__label  { animation: gateLabelKick 0.6s ease-out; }
-      @keyframes gateBtnNudge {
-        0%   { transform: translate(-50%, -50%) scale(1); }
-        30%  { transform: translate(-50%, -50%) scale(1.22); box-shadow: 0 0 0 9px rgba(255, 214, 110, 0.35), 0 0 28px rgba(255, 214, 110, 0.95); }
-        60%  { transform: translate(-50%, -50%) scale(0.96); }
-        100% { transform: translate(-50%, -50%) scale(1); }
-      }
-      @keyframes gateLabelKick { 0%, 100% { opacity: 0.55; } 40% { opacity: 1; transform: scale(1.07); } }
+      /* finger down anywhere: the line lights up full and presses in a touch */
+      #start-gate.pressing .start-gate__label { animation: none; opacity: 1; transform: scale(0.96); }
 
-      /* ---- the open: the whole ball snaps up, then shrinks away ----------
-         A quick pop (overshoot up) immediately followed by a collapse to nothing
-         — a clean, snappy transition wipe into the carousel. The ball is one unit
-         (halves + button scale with it); the burst/shock are no longer used. */
-      #start-gate.opening .start-gate__ball     { animation: gatePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-      #start-gate.opening .start-gate__center,
-      #start-gate.opening .start-gate__half--top,
-      #start-gate.opening .start-gate__half--bottom { animation: none; }
-      #start-gate.opening .start-gate__burst,
-      #start-gate.opening .start-gate__shock    { opacity: 0; }
-      #start-gate.opening .start-gate__label    { opacity: 0; }
-      @keyframes gatePop {
-        0%   { transform: translateY(0)    scale(1);    opacity: 1; }
-        34%  { transform: translateY(-8px) scale(1.26); opacity: 1; } /* snap UP */
-        100% { transform: translateY(-4px) scale(0);    opacity: 0; } /* shrink + vanish */
+      /* ---- the open: the line flares and dissolves ------------------------
+         A quick swell + blur-out (0.4s, the MIN_OPEN the JS waits on) hands the
+         screen straight to the carousel fly-in beneath. */
+      #start-gate.opening .start-gate__label { animation: gateLabelOut 0.4s ease-out forwards; }
+      #start-gate.opening .start-gate__bar   { opacity: 0; }
+      @keyframes gateLabelOut {
+        0%   { opacity: 1; transform: scale(1);    filter: blur(0); }
+        100% { opacity: 0; transform: scale(1.12); filter: blur(5px); }
       }
       @media (prefers-reduced-motion: reduce) {
-        #start-gate .start-gate__ball, #start-gate .start-gate__center,
-        #start-gate .start-gate__label { animation: none; }
-        /* equal/higher specificity so the .ready breathe + shock don't re-enable here */
-        #start-gate.ready .start-gate__ball, #start-gate.ready .start-gate__center { animation: none; }
-        #start-gate.ready .start-gate__shock { animation: none; opacity: 0; }
-        #start-gate.opening .start-gate__ball { animation: none; opacity: 0; }
-        #start-gate.nudge .start-gate__center, #start-gate.nudge .start-gate__label { animation: none; }
+        #start-gate .start-gate__label,
+        #start-gate.ready .start-gate__label { animation: none; }
+        #start-gate.opening .start-gate__label { animation: none; opacity: 0; }
       }
       /* While the picker is up, the WebGL canvas is transparent — so the armed SVG
          tear-pack (#pack-stage, z 2) would otherwise show THROUGH it. Hide it until
@@ -1640,14 +1514,7 @@
     <!-- tap-to-start gate: first load only. The tap unlocks the audio context AND
          kicks off the carousel entrance, so the fly-in plays with sound. -->
     <div id="start-gate">
-      <div class="start-gate__ball">
-        <span class="start-gate__half start-gate__half--top" aria-hidden="true"></span>
-        <span class="start-gate__half start-gate__half--bottom" aria-hidden="true"></span>
-        <span class="start-gate__burst" aria-hidden="true"></span>
-        <span class="start-gate__shock" aria-hidden="true"></span>
-        <button class="start-gate__center" type="button" aria-label="Kick off — open packs"></button>
-      </div>
-      <span class="start-gate__label">Loading…</span>
+      <button class="start-gate__label" type="button">Loading…</button>
       <span class="start-gate__bar" aria-hidden="true"><span class="start-gate__bar-fill"></span></span>
     </div>
 
@@ -1680,7 +1547,7 @@
       const gateBarFill = startGate.querySelector(".start-gate__bar-fill");
       const GATE_FALLBACK_MS = 3500; // never sit on "Loading…" longer than this, audio or not
       let launched = false;     // set true on the opening tap (shared with the handlers below)
-      let gateRevealed = false; // set true once the gate flips to "Tap to open"
+      let gateRevealed = false; // set true once the gate flips to "Tap to kick off"
       (() => {
         startGate.classList.add("loading");
         const startT = performance.now();
@@ -1698,7 +1565,7 @@
           gateRevealed = true;
           if (gateBarFill) gateBarFill.style.width = "100%";
           startGate.classList.remove("loading"); // fades the bar out (CSS)
-          startGate.classList.add("ready");       // ball breathes deeper/quicker + shock ring — "you can tap now"
+          startGate.classList.add("ready");       // the line resolves in + breathes quicker — "you can tap now"
           gateLabel.textContent = "Tap to kick off";
           // a soft two-note "ready" ping to draw the ear to the now-live target.
           // NB: this is the very first frame BEFORE any user gesture, so browser
@@ -1897,15 +1764,14 @@
       // behind the gate, so by the time the intro fires the textures are usually ready.
       // startGate / gateLabel / launched / gateRevealed are declared up top (the gate's
       // loading→reveal is wired there, before the heavy init, so it can't be stranded).
-      const gateBall = startGate.querySelector(".start-gate__ball");
-      // finger-down squash → a tactile press, anywhere on the ball (not just the dot)
-      gateBall.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
+      // finger-down anywhere → the line lights up and presses in, a tactile press
+      startGate.addEventListener("pointerdown", () => startGate.classList.add("pressing"));
       const unpress = () => startGate.classList.remove("pressing");
-      gateBall.addEventListener("pointerup", unpress);
-      gateBall.addEventListener("pointercancel", unpress);
-      gateBall.addEventListener("pointerleave", unpress);
+      startGate.addEventListener("pointerup", unpress);
+      startGate.addEventListener("pointercancel", unpress);
+      startGate.addEventListener("pointerleave", unpress);
 
-      const openBall = () => {
+      const openGate = () => {
         if (launched) return;
         launched = true;
         // GUARANTEE music for the carousel: this tap is the definitive first gesture, so
@@ -1918,15 +1784,14 @@
         sfx.spark?.();
         sfx.burst?.(0.6, 5);
         sfx.riser?.(6, 620);
-        startGate.classList.remove("pressing", "nudge");
-        startGate.classList.add("opening"); // ball pops up, then shrinks away to nothing
-        gateLabel.textContent = "";
+        startGate.classList.remove("pressing");
+        startGate.classList.add("opening"); // the line swells and blurs away
 
-        // Fade the gate ONLY once both are true: (1) the pop has had time to read, and
-        // (2) the packs are actually flying in — so the ball shrinks straight into the
+        // Fade the gate ONLY once both are true: (1) the line's exit has had time to read,
+        // and (2) the packs are actually flying in — so it dissolves straight into the
         // fly-in. show()'s intro waits on asset decode (up to a 1.5s backstop), so a
-        // fixed timer would either gap (ball gone before packs) or hide the launch.
-        const MIN_OPEN = 400; // let the ball pop + shrink away land before handing off
+        // fixed timer would either gap (gate gone before packs) or hide the launch.
+        const MIN_OPEN = 400; // let the line's swell + blur-out land before handing off
         const openStart = performance.now();
         let faded = false;
         const fadeGate = () => {
@@ -1945,18 +1810,9 @@
 
         selector.show(); // intro pre-arms the pack via onIntroEnd — runs under the open
       };
-      // Tapping anywhere on the ball kicks off (the whole ball is the target, not just
-      // the centre pentagon — a far more forgiving hit area on mobile).
-      gateBall.addEventListener("click", (e) => { e.stopPropagation(); openBall(); });
-      // tap further out (the dimmed backdrop): nudge the eye back to the ball
-      startGate.addEventListener("click", () => {
-        if (launched) return;
-        startGate.classList.remove("nudge");
-        void startGate.offsetWidth; // reflow so the nudge animation restarts on repeat taps
-        startGate.classList.add("nudge");
-        sfx.flick?.();
-        setTimeout(() => startGate.classList.remove("nudge"), 650);
-      });
+      // A tap anywhere on the gate kicks off — there's no hero art to aim at, so the whole
+      // screen is the target (the label <button> bubbles here too, for keyboard users).
+      startGate.addEventListener("click", openGate);
     </script>
   </body>
 </html>
