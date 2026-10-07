@@ -76,10 +76,14 @@ export function ensureFonts(timeout = 3000) {
     link.addEventListener("load", res, { once: true });
     link.addEventListener("error", res, { once: true });
   });
+  // the card face (Barlow Condensed) and the printed-art display face (Cinzel —
+  // tools/art); a family the page doesn't link resolves at once, so neither waits
+  // on the other
   const faces = sheet.then(() =>
-    Promise.all(["600", "700", "800"].map((w) =>
-      document.fonts?.load(`${w} 100px "Barlow Condensed"`, "AÉĆØ0123").catch(() => null)
-    ))
+    Promise.all([
+      ...["600", "700", "800"].map((w) => document.fonts?.load(`${w} 100px "Barlow Condensed"`, "AÉĆØ0123")),
+      ...["700", "800"].map((w) => document.fonts?.load(`${w} 100px "Cinzel"`, "AÉØ0123")),
+    ].map((p) => (p || Promise.resolve()).catch(() => null)))
   );
   _fonts = Promise.race([faces, new Promise((r) => setTimeout(r, timeout))]);
   return _fonts;

@@ -30,7 +30,8 @@ import * as sfx from "../sfx.js";
 const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 const REST_YAW = 0.34; // ~19.5°: a slight three-quarter view, the notch corner toward the lens
 const REST_PITCH = -0.07; // the top edge tilts a touch toward the lens
-const FOIL = ["#fff3c4", "#f2c54b", "#d9a92e", "#ffffff", "#c9ced8", "#b8862b"];
+// foil flecks: the pouch's own black foil + its gold (champagne → gold → bronze), with a white-hot glint
+const FOIL = ["#fff3c4", "#d4a63a", "#b8862b", "#ffffff", "#2a2016", "#80521c"];
 const TORE_KEY = "openpack.toreOnce";
 let toredSession = false;
 const hasToredBefore = () => { if (toredSession) return true; try { return localStorage.getItem(TORE_KEY) === "1"; } catch { return false; } };

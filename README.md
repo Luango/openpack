@@ -1,10 +1,17 @@
 # OpenPack FC
 
 Rip open a pack of football player cards in the browser. Pick a **Premium Gold
-Pack** off a floodlit 3D wheel, tear it open with your finger — pinch the corner
+Pack** off a spotlit 3D wheel, tear it open with your finger — pinch the corner
 and rip the top strip off, or flip it over and peel the back seam — and flip
 through five players, rarest last. The best pulls get a **walkout**:
 the nation, position and club are teased in the dark before the card drops.
+
+The look is an **awards night**: warm black and dark charcoal, one gold that
+behaves like a metal (bronze shadow → rich gold → champagne highlight), a soft
+amber glow behind whatever matters, engraved Roman capitals for the headings,
+and the **golden ball** as the motif — on the kick-off gate, drifting behind
+the wheel, pressed into the pack and the card back. See
+[Art direction](#art-direction).
 
 The players are **real**, each with a real photo: a freely licensed Wikimedia
 Commons image, cut out and cropped by [`tools/players`](tools/players), and
@@ -66,6 +73,25 @@ vercel deploy --prod
 so a redeploy is picked up immediately (there's no content hashing here).
 [`.vercelignore`](.vercelignore) keeps dev-only files out of the deploy
 (`serve.py`, `docs/`, `tools/`, the source PNG).
+
+## Art direction
+
+Ballon d'Or-inspired, not branded: cinematic gold against warm black, with
+restraint. The rules the whole app follows:
+
+| Element | Direction |
+|---|---|
+| **Gold** | A material, never a flat colour: bronze shadow `#80521c` → rich gold `#d4a63a` → champagne `#f7e4aa`, with a reflective horizon through lettering and buttons (`--gold-material` in `base.css`), hammered texture on the pack's crimps. |
+| **Surfaces** | Warm black `#0d0b08` and dark brown charcoal `#211b13`; nothing cool or blue. |
+| **Light** | Two warm spotlights from above, an amber pool `#ffb547` behind the main object, deep shadow everywhere else, bloom only on the brightest highlights. |
+| **Composition** | One golden object per screen — the ball, the pack, the card — with space around it. |
+| **Type** | Cinzel (engraved Roman capitals) for headings, stamps and the primary button; the system sans for information; Barlow Condensed stays on the card faces. |
+| **Motion** | Slow: light sweeping across the gold button, gold dust drifting, the wheel's comets, deliberate reveals. |
+| **Text** | Warm ivory `#fff6e3`; dark lettering on gold buttons. |
+
+The tokens live in [`src/base.css`](src/base.css); the printed art
+([`tools/art/packart.js`](tools/art/packart.js)) and the 3D stage
+([`src/select3d.js`](src/select3d.js)) carry the same palette by hand.
 
 ## The set
 
@@ -132,7 +158,7 @@ edition, defined once in [`src/rarity.js`](src/rarity.js):
 | 6 | Future Stars | gold-rimmed shield, violet | violet ↔ mint sweep |
 | 7 | Team of the Season | gold-rimmed shield, aqua | aqua prism · **walkout** |
 | 8 | Team of the Year | gold-rimmed shield, royal blue | blue-gold prism · **walkout** |
-| 9 | Legend | gold-rimmed shield, ivory | gold prism · **walkout** |
+| 9 | Legend | gold-rimmed shield, ivory | champagne prism · **walkout** |
 
 Base cards come from the overall: Bronze below 65, Silver below 75, Gold
 above (the marquee golds are Rare).
@@ -169,9 +195,10 @@ shadow for one in the frame's shape. Layers, back to front:
    stats** (keepers get DIV/HAN/KIC/REF/SPD/POS), plus the edition mark for
    promos. Flags and badges come from [`src/emblems.js`](src/emblems.js).
 
-The face font is **Barlow Condensed**, loaded non-blocking from Google Fonts.
-The text is baked into the image, so `ensureFonts()` waits for the face (up to
-3s) before painting and otherwise falls back to a system condensed face. Seeded
+The face font is **Barlow Condensed**, loaded non-blocking from Google Fonts
+(next to **Cinzel**, the display face the UI and the printed art use). The text
+is baked into the image, so `ensureFonts()` waits for the faces (up to 3s)
+before painting and otherwise falls back to a system condensed face. Seeded
 randomness ([`src/paint.js`](src/paint.js), mulberry32 over an FNV + murmur
 finaliser) keeps every card stable.
 
@@ -179,8 +206,10 @@ finaliser) keeps every card stable.
 
 The pack's front and back and the card back are composed on canvas in
 [`tools/art/packart.js`](tools/art/packart.js), using the same modules as the
-cards: the mystery card on the pack front is a real card render in silhouette.
-Render them into the shipped files with:
+cards: a black foil pouch with hammered-gold crimps, engraved gold lettering,
+and the mystery card (a real card render in silhouette) in a pool of amber
+light; the golden ball is pressed into the back and the card back. Render them
+into the shipped files with:
 
 ```sh
 node tools/render_art.mjs     # needs Chrome/Edge + Python with Pillow
@@ -223,7 +252,7 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
     ├── paint.js      colour maths, seeded RNG, path/gradient/text helpers
     ├── card.js       the Card component (the <img> + foil layers)
     ├── card.css      card chrome + per-edition foil
-    ├── select3d.js   three.js pack wheel on a floodlit-stadium shader
+    ├── select3d.js   three.js pack wheel on an awards-night stage shader
     ├── pack3d/       the procedural 3D foil pack you tear open (see docs/pack3d.md)
     │   ├── config.js     dimensions, art, quality tiers
     │   ├── geometry.js   lofted envelope, prepared tear seams, fin, wrinkles, card stack
@@ -243,7 +272,7 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
     ├── flowlight.js  WebGL light leaking along the tear
     ├── sfx.js        Web Audio engine: samples-first SFX, BGM, master bus
     ├── util.js       escapeHtml / escapeAttr / delegate
-    └── base.css      design tokens (night-match palette, tier colours)
+    └── base.css      design tokens (the awards-night palette, tier colours)
 ```
 
 ## Architecture notes
@@ -254,10 +283,11 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
 - **Pick, then tear.** The app opens on a kick-off gate. The tap unlocks audio,
   then the 3D wheel ([`select3d.js`](src/select3d.js), three.js vendored) flies
   in: ten foil pouches on a revolving ring, with the focused pack popped toward
-  the lens. The ring sits on a one-pass stadium shader with floodlights and
-  beams, camera flashes twinkling in the stands, and a mown pitch the packs
-  reflect in. Choosing a pack breaks it away toward the lens, then
-  cross-dissolves into the identical SVG tear-pack.
+  the lens. The ring sits on a one-pass stage shader with two warm spotlights
+  and their beams, camera flashes twinkling in the gallery, an amber pool behind
+  the front pack and a polished black floor the packs reflect in. Choosing a
+  pack breaks it away toward the lens, then cross-dissolves into the 3D
+  tear-pack, which settles into your hand.
 - **The tear** ([`src/pack3d`](src/pack3d)) is a procedural 3D foil pouch:
   a lofted envelope with real thickness, crimped seals, a rear fin seam and baked
   wrinkles, lit by a code-built reflection room, with the printed art mapped on.

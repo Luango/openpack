@@ -55,14 +55,14 @@ export function tierOf(x) {
 export const TIER_HEX = [
   "#d08a56", // 0 bronze
   "#c3ccd8", // 1 silver
-  "#e9c45f", // 2 gold
-  "#ffcf3d", // 3 rare gold
-  "#f3c652", // 4 team of the week (black + gold)
+  "#d9ad45", // 2 gold
+  "#f2c54b", // 3 rare gold
+  "#e4b64a", // 4 team of the week (black + gold)
   "#ff4f6a", // 5 player of the match (crimson)
   "#b46bff", // 6 future stars (violet)
   "#2fd9c4", // 7 team of the season (aqua)
   "#4f7dff", // 8 team of the year (royal blue)
-  "#ffe08a", // 9 legend (pale gold)
+  "#f7e4aa", // 9 legend (champagne gold)
 ];
 
 // The hex accent for any rarity (string or card).

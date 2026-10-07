@@ -62,8 +62,9 @@ const TEAR_CORNER_Y = 0.22; // corner strip depth — the taller "green" part (f
 const TEAR_MID_Y = 0.15; // middle strip depth — the shorter "red" part (fraction of the height); widened to forgive presses just inside the crimp
 const CROSS_MARGIN = 12; // how near the far edge counts as "crossed"
 const CROSS_MIN = 90; // …and a minimum tear length, so starting near an edge doesn't count
-// gold-pack foil flecks: the shreds a tear sprays are the pouch's own gold + silver
-const FOIL = ["#fff3c4", "#f2c54b", "#d9a92e", "#ffffff", "#c9ced8", "#b8862b"];
+// foil flecks: the shreds a tear sprays are the pouch's own black foil + its gold
+// (champagne → gold → bronze), with a little white-hot glint
+const FOIL = ["#fff3c4", "#d4a63a", "#b8862b", "#ffffff", "#2a2016", "#80521c"];
 const CORNERS = [
   { s: 0, x: 0, y: 0 },
   { s: 1, x: VB.w, y: 0 },
