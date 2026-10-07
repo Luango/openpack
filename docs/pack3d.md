@@ -4,6 +4,11 @@ How the sealed pack is built, lit and torn open in 3D — the implementation of 
 "Procedural 3D Card Pack" design plan, and the two rip methods it exposes.
 
 - **Source:** [`src/pack3d/`](../src/pack3d/) (vanilla ES modules + the vendored three.js r161)
+- **Everywhere:** the carousel ([`src/select3d.js`](../src/select3d.js)) shows the same pouch —
+  its ring, the queue-in fly-in and the hero that flies to the lens all use the shared asset
+  ([`asset.js`](../src/pack3d/asset.js): one envelope geometry at a showroom density, one
+  printed atlas, one set of surface maps, one reflection room), so the pack you spin, the
+  one that lands on the stage and the one you tear are one object.
 - **Bench:** [`tools/pack-lab.html`](../tools/pack-lab.html) — the pack alone, armed, with the
   developer panel (route, progress scrubber, yaw/pitch, auto open). `?quality=low|standard|high`.
 - **In the app:** `?packdebug` adds the same panel over the live flow; `?pack=svg` forces the
@@ -152,6 +157,17 @@ shortens the hold, damps the strip and skips the screen kick.
 - Deformer cost: 0.5–0.8 ms per frame at the standard tier on the dev machine; rAF holds
   60 fps. Not yet profiled on real phones — the tiers are starting points.
 - `?pack=svg` and the no-WebGL path load the flat SVG pack.
+
+## The printed art
+
+[`tools/art/packart.js`](../tools/art/packart.js) now paints a **gold satin foil pouch**:
+a champagne-to-gold ramp with soft tonal patches (no painted folds or highlights — the 3D
+material supplies those), the brand lockup in black at the top (the two-arrow mark + the
+lowercase wordmark; `BRAND` is the one place to re-brand), an embossed hammered golden ball
+at the centre, GOLD PACK · FOOTBALL COLLECTION in black at the foot, and ribbed crimped seals.
+The back carries the contents and odds, the fin seal with its ball emboss, the legal and the
+barcode, all in black on the same foil. The roughness/metalness masks derive from this art:
+the gold is metal, the black print is ink. Render with `node tools/render_art.mjs`.
 
 ## Not done / deferred
 

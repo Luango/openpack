@@ -17,8 +17,9 @@
 
 import * as THREE from "three";
 import { makeConfig, pickQuality } from "./config.js";
-import { buildPack, buildCardStack } from "./geometry.js";
-import { loadImage, paintAtlas, buildSurfaceMaps, makeEdgeTexture, makeGlowTexture, makeRaysTexture } from "./textures.js";
+import { buildCardStack } from "./geometry.js";
+import { makeEdgeTexture, makeGlowTexture, makeRaysTexture } from "./textures.js";
+import { getPackAsset } from "./asset.js";
 import { makeMaterials, makeCardMaterials } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
@@ -38,7 +39,7 @@ const hasToredBefore = () => { if (toredSession) return true; try { return local
 const markTored = () => { toredSession = true; try { localStorage.setItem(TORE_KEY, "1"); } catch { /* private mode */ } };
 
 export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = false }) {
-  const cfg = makeConfig({ quality: pickQuality(), ...config });
+  let cfg = makeConfig({ quality: pickQuality(), ...config }); // replaced by the shared asset's once loaded
   const T = cfg.tier;
   mountEl.innerHTML = `
     <div class="pack3d-wrap">
@@ -129,17 +130,14 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
 
   // ---- build --------------------------------------------------------------------
   const ready = (async () => {
-    const [front, back, cardBack] = await Promise.all([
-      loadImage(cfg.artFront).catch(() => null),
-      loadImage(cfg.artBack).catch(() => null),
-      loadImage(cfg.cardBack).catch(() => null),
-    ]);
+    // the shared pack asset: the carousel shows the same envelope, print and finish
+    const asset = await getPackAsset(config);
     if (disposed) return;
-    const aspect = front ? front.naturalHeight / front.naturalWidth : 1.657;
-    cfg.heightM = cfg.widthM * aspect;
-    pack = buildPack(cfg, aspect);
-    ({ texture: atlasTex } = paintAtlas(cfg, pack.layout, { front, back }));
-    surface = buildSurfaceMaps(cfg, pack.layout, atlasTex.image, pack.dims);
+    cfg = asset.cfg;
+    const cardBack = asset.cardBack;
+    pack = asset.buildTear();
+    atlasTex = asset.map;
+    surface = { normalMap: asset.normalMap, ormMap: asset.ormMap, whenReady: asset.surfaceReady };
     mats = makeMaterials({ map: atlasTex, normalMap: surface.normalMap, ormMap: surface.ormMap });
     surface.whenReady.then(() => { if (!disposed) { for (const m of mats.all) m.needsUpdate = true; requestRender(); } });
     wrapper = new THREE.Mesh(pack.geometry, [mats.bodyExt, mats.bodyInt, mats.headerExt, mats.headerInt]);
@@ -634,7 +632,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     mats?.all.forEach((m) => m.dispose());
     cardMats?.all.forEach((m) => m.dispose());
     deckMesh?.geometry.dispose(); topCard?.geometry.dispose();
-    atlasTex?.dispose(); surface?.normalMap.dispose(); surface?.ormMap.dispose(); faceTex?.dispose();
+    faceTex?.dispose(); // (the atlas + surface maps belong to the shared asset)
     bloom?.material.map.dispose(); bloom?.material.dispose(); rays?.material.map.dispose(); rays?.material.dispose();
     env.dispose();
     renderer.dispose();

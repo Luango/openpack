@@ -18,28 +18,25 @@
 //   sel.show();   // reveal the carousel, resume rendering
 //   sel.hide();   // park it (pauses the rAF loop — no battery at idle)
 //
-// Pack art: each entry can point at its own image (assets/pack-foo.webp); when it
-// reuses the shared art we can hue-rotate it on a canvas to differentiate variants.
+// Pack art: every pack on the wheel is the one procedural pouch from pack3d/asset.js
+// (same envelope, same printed atlas). `img`/`hue` are kept on the roster for the host's
+// own bookkeeping; the wheel no longer paints per-pack variants.
 
 import * as THREE from "three";
 import * as sfx from "./sfx.js";
 import { drawBall } from "./ball.js";
+import { getPackAsset } from "./pack3d/asset.js";
+import { buildEnvironment } from "./pack3d/lighting.js";
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Phones (coarse pointer) carry the whole "卡顿" complaint, so the carousel scales
 // itself down there: no MSAA, a lower pixel-ratio cap, and thinner ambient particle
 // fields. Desktop keeps the full-fat render. One flag drives every mobile dial below.
 const COARSE = matchMedia("(pointer: coarse)").matches;
-// On phones (COARSE) the carousel maps a SMALLER texture onto each pack — ~half the
-// bytes AND under half the pixels to decode + upload to the GPU, which is the single
-// biggest per-texture cost on a phone. Only the known shared art has a -720 variant;
-// any custom pack art falls through and loads at its own resolution. The index.html
-// <link rel=preload media="(pointer:coarse)"> mirrors this so the right file is fetched.
-const MOBILE_TEX = COARSE ? {
-  "assets/pack-hi.webp": "assets/pack-hi-720.webp",
-  "assets/pack-back-hi.webp": "assets/pack-back-hi-720.webp",
-} : {};
-const texSrc = (path) => MOBILE_TEX[path] || path;
+// The packs on the wheel ARE the procedural foil pouch of the tear stage: one shared
+// asset (pack3d/asset.js) supplies the envelope geometry, the printed atlas and the
+// surface maps to both renderers, so the pack you spin, the hero that flies to the
+// lens and the pouch you tear are one object. Phones get the -720 print there.
 // Seconds the canvas takes to cross-dissolve into the 2D tear-pack once the hero lands.
 // (Mirrors #select-stage's CSS opacity transition; set inline so it's self-contained.)
 const DISSOLVE = 0.4;
@@ -81,8 +78,8 @@ const POP_S     = 0.42;  // extra scale added to the focused pack
 // whatever pack the wheel turns to the front LIGHTS UP and the rest recede — the lift
 // is in the pack's own material, on top of the shared rig + front spot, so it reads
 // even on the side/back facings the spot can't reach.
-const FOCUS_EMI_DIM = 0.18, FOCUS_EMI_HOT = 0.82; // emissive self-light: side → front
-const FOCUS_ENV_DIM = 0.95, FOCUS_ENV_HOT = 2.10; // foil env sheen:      side → front
+const FOCUS_EMI_DIM = 0.08, FOCUS_EMI_HOT = 0.2; // emissive self-light: side → front
+const FOCUS_ENV_DIM = 0.9, FOCUS_ENV_HOT = 1.3; // foil env sheen:      side → front
 // How far each pack YAWS toward "radially outward". 1.0 = a true REVOLVER: the front
 // pack faces you, the side packs turn, and the back packs face AWAY from the screen.
 // (Even lighting across all those facings is handled by using only azimuth-uniform
@@ -125,6 +122,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   const renderer = new THREE.WebGLRenderer({ antialias: !COARSE, alpha: true, powerPreference: "high-performance" });
   renderer.setClearColor(0x000000, 0); // transparent — the page's nebula bg shows through
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // filmic tone mapping, like the tear stage: the metallic foil's hot reflections roll
+  // off instead of clipping to flat yellow (the custom stage/rim shaders are untouched)
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08; // close to the tear stage's 1.12, so the hero dissolves into it without a brightness step
   mountEl.appendChild(renderer.domElement);
   const canvas = renderer.domElement;
   // z-index 1 keeps the canvas BELOW the .select-ui overlay (z 2) so the OPEN
@@ -168,15 +169,16 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // intensity tripled (was 30) + decay eased (was 1.4) so the centred pack actually
   // POPS — the cone+decay still keep it pooled on the front dock, so side/back packs
   // stay on the cool base and don't get washed out.
-  const frontSpot = new THREE.SpotLight(0xffe6b0, 230, 14, 0.66, 0.65, 1.15);
+  const frontSpot = new THREE.SpotLight(0xffe6b0, 95, 14, 0.66, 0.65, 1.15); // (was 230 for the printed quad; real metal needs far less)
   frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
   frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
   scene.add(frontSpot);
   scene.add(frontSpot.target);
 
-  // A soft equirect "environment" built from a canvas gradient gives the foil a
-  // moving holographic sheen (metalness reflects it) as packs rotate — cheap, no HDR.
-  scene.environment = makeEnvTexture();
+  // the same code-built reflection room the tear stage uses (pack3d/lighting.js), so the
+  // gold foil reflects the same panels on the wheel, in flight and on the tear stage
+  const packEnv = buildEnvironment(renderer);
+  scene.environment = packEnv.texture;
 
   // --- shader backdrop: an awards-night stage ----------------------------------
   // The canvas is transparent, so the carousel used to sit on the page's near-black
@@ -274,27 +276,25 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   }
 
   // one MeshStandardMaterial per pack (per-mesh so opacity/flash can vary in the
-  // selection animation); the curved pillow + scene env give it the foil sheen.
-  function makePackMaterial(faceTex) {
+  // selection animation). The finish comes from the shared maps: the atlas as colour
+  // plus a little emissive self-light (so the print reads on the dim side packs), the
+  // procedural normal map for the crinkles, and the packed roughness/metalness — gold
+  // foil as real metal reflecting the room, black print as ink.
+  function makePackMaterial(asset) {
     return new THREE.MeshStandardMaterial({
-      map: faceTex,
-      roughness: 0.42,         // satin foil — a soft sheen that rolls off, not a hot blowout
-      metalness: 0.45,         // foil — reflects the (azimuth-uniform) env sheen on EVERY facing
+      map: asset.map,
+      normalMap: asset.normalMap,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughnessMap: asset.ormMap,
+      metalnessMap: asset.ormMap,
+      roughness: 1,
+      metalness: 1,
       envMapIntensity: 1.2,
       emissive: 0xffffff,
-      emissiveMap: faceTex,
-      emissiveIntensity: 0.5,  // self-light so the art reads vivid even in shadow (lifted for a brighter, punchier pack)
-      side: THREE.DoubleSide,  // closed pouch — keeps both sheets lit at any angle
-      alphaTest: 0.5,          // the art has a TRANSPARENT bg → cut those pixels away,
-                               // else they render as solid black (the dark edge fill)
+      emissiveMap: asset.map,
+      emissiveIntensity: 0.18,
+      side: THREE.FrontSide, // a closed procedural pouch — front faces only
     });
-  }
-  // identical-aspect packs share ONE pillow geometry (built once, on first texture)
-  const geoCache = new Map();
-  function packGeometry(aspect) {
-    const key = aspect.toFixed(3);
-    if (!geoCache.has(key)) geoCache.set(key, makePackGeometry(aspect));
-    return geoCache.get(key);
   }
 
   // RIM LIGHT + BORDER BEAM, per pack. A glowing outline ribbon, traced from the
@@ -305,21 +305,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // intro/selection), all ticked from the same clock so the beams move in sync.
   const rimMats = [];
   const rimGeoCache = new Map();
-  const wallGeoCache = new Map();
   function addRimBeam(mesh, img, aspect) {
     if (mesh.userData.rim) return; // already built (texture promise can resolve once)
     const outline = traceOutline(img);
     if (!outline) return;
     const key = aspect.toFixed(3);
-    // EDGE WALL — a solid silver-foil band standing along the silhouette, spanning the
-    // foil thickness (±EDGE_T in z). The two art sheets are an OPEN pillow, so edge-on
-    // you used to see straight through the slit between them (the "transparent" pack).
-    // This wall closes that slit: edge-on it reads as a solid silver foil edge (matching
-    // the design sheet's slim side view); head-on it's a thin silver rim under the glow.
-    if (!wallGeoCache.has(key)) wallGeoCache.set(key, makeEdgeWall(outline, EDGE_T));
-    const wall = new THREE.Mesh(wallGeoCache.get(key), makeEdgeMaterial());
-    mesh.add(wall);
-    mesh.userData.wall = wall;
     // a flat outline ribbon hugging the silhouette, floated just PROUD of its own front
     // sheet (z=RIM_Z). depthTest is ON (see makeRimMaterial), so the ribbon must clear its
     // own pack body or that body would bury it — but a pack physically IN FRONT on the
@@ -349,37 +339,31 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // turns the old mid-flight stalls (texture swap, lazy shader compile) into one warm-up
   // before the motion, which is the bulk of the mobile "卡顿" during the entrance.
   const assetsReady = [];
+  const packMats = [];
+  const assetReady = getPackAsset();
   packs.forEach((p) => {
     const placeholder = new THREE.MeshStandardMaterial({ color: 0x2a2016, roughness: 0.6, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.4), placeholder);
-    // flip: eased inspect-rotation. aspect: art height/width — the geometry's local
-    // height equals it, so the handoff can size the pack to the SVG pack's screen rect.
+    // flip: eased inspect-rotation. aspect: pack height/width — the geometry's local
+    // height equals it, so the handoff can size the pack to the tear-pack's screen rect.
     mesh.userData = { pack: p, flip: 0, flipTo: 0, aspect: 1.4 };
     group.add(mesh);
     meshes.push(mesh);
-    const pr = loadFaceTexture(p).then((tex) => {
-      const aspect = tex.image.height / tex.image.width; // true art aspect
-      mesh.userData.aspect = aspect;
-      mesh.geometry.dispose();              // drop the placeholder plane (shared geo is kept)
-      mesh.geometry = packGeometry(aspect);
-      // The FRONT face shows the printed art; the BACK face shows the pack's printed
-      // back (contents, legal, barcode) — different art per face, mapped to the two
-      // geometry groups. The flight rotates each pack 180° (its back faces the lens
-      // mid-arc), so the back material must be in place BEFORE the intro to avoid a
-      // swap stall — we resolve this pack's readiness only once both faces are set.
-      const frontMat = makePackMaterial(tex);
-      mesh.material = frontMat;
-      addRimBeam(mesh, tex.image, aspect); // rim light + border beam, hugging the art's silhouette
-      buildReflection(mesh, tex, aspect);  // glossy-floor reflection of the front art
-      return loadBackTexture()
-        .then((backTex) => {
-          mesh.material = [frontMat, makePackMaterial(backTex)];
-          if (mesh.userData.refl) mesh.userData.refl.material.uniforms.uBackMap.value = reflTex(backTex); // the floor reflects the back too
-        })
-        .catch(() => { /* no back art → keep the front on both faces (refl falls back to front) */ });
-    }).catch(() => { /* art failed to load → the intro timeout still fires it */ });
+    const pr = assetReady.then((asset) => {
+      mesh.userData.aspect = asset.aspect;
+      mesh.geometry.dispose();              // drop the placeholder plane (the envelope is shared)
+      mesh.geometry = asset.showGeometry;
+      const mat = makePackMaterial(asset);
+      mesh.material = mat;
+      packMats.push(mat);
+      if (asset.front) addRimBeam(mesh, asset.front, asset.aspect); // rim light + border beam, hugging the art's silhouette
+      if (asset.frontTex) buildReflection(mesh, asset.frontTex, asset.aspect); // glossy-floor reflection of the front art
+      if (mesh.userData.refl && asset.backTex) mesh.userData.refl.material.uniforms.uBackMap.value = reflTex(asset.backTex); // the floor reflects the back too
+    }).catch(() => { /* asset failed → the intro timeout still fires it */ });
     assetsReady.push(pr);
   });
+  // the surface maps finish in idle slices — recompile the pack materials once they land
+  assetReady.then((asset) => asset.surfaceReady.then(() => { packMats.forEach((m) => { m.needsUpdate = true; }); })).catch(() => {});
 
   // --- carousel state -------------------------------------------------------
   // `pos` is the continuous index at the FRONT of the wheel (can run past N — the
@@ -445,8 +429,6 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     mats.forEach((mm) => { mm.transparent = op < 1; mm.opacity = op; });
     const rim = mesh.userData.rim; // the rim/beam fades right along with its pack
     if (rim) rim.material.uniforms.uOpacity.value = op;
-    const wall = mesh.userData.wall; // the silver edge wall fades with it too
-    if (wall) { wall.material.transparent = op < 1; wall.material.opacity = op; }
   }
 
   // Gate a mesh's rim by its current facing, ON TOP of whatever opacity applyOpacity
@@ -524,7 +506,11 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     renderer.render(scene, camera);
   }
   function play() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
-  function pause() { if (raf) cancelAnimationFrame(raf); raf = null; }
+  function pause() {
+    if (window.__select3d) console.warn("[select3d] pause()", new Error().stack.split(String.fromCharCode(10)).slice(2, 5).join(" <- "));
+    if (raf) cancelAnimationFrame(raf);
+    raf = null;
+  }
 
   // --- sizing ---------------------------------------------------------------
   function resize() {
@@ -747,6 +733,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         meshes.forEach((m) => (Array.isArray(m.material) ? m.material : [m.material]).forEach((mm) => {
           if (mm?.map) texes.add(mm.map);
           if (mm?.emissiveMap) texes.add(mm.emissiveMap);
+          if (mm?.normalMap) texes.add(mm.normalMap);
+          if (mm?.roughnessMap) texes.add(mm.roughnessMap);
         }));
         texes.forEach((tx) => { try { renderer.initTexture(tx); } catch { /* ignore */ } });
         renderer.render(scene, camera); // packs are at opacity 0 → invisible, but textures upload
@@ -887,6 +875,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   }
 
   // ---- public API ----------------------------------------------------------
+  // (?packdebug exposes the wheel's internals for the headless/browser-pane tests)
+  if (new URLSearchParams(location.search).has("packdebug")) {
+    window.__select3d = { meshes, scene, renderer, camera, assetReady, play, pause, get raf() { return raf; }, get introing() { return introing; }, get introDone() { return introDone; }, get selecting() { return selecting; }, get dissolving() { return dissolving; } };
+  }
   return {
     el: mountEl,
     // show({ intro }) — reveal the carousel. The first show always plays the queue-in
@@ -922,17 +914,15 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     select: choose,
     dispose() {
       pause(); ro.disconnect();
-      geoCache.forEach((g) => g.dispose());     // the shared pillow geometries
       rimGeoCache.forEach((g) => g.dispose());  // the rim/beam ribbons
       rimMats.forEach((m) => m.dispose());
-      wallGeoCache.forEach((g) => g.dispose()); // the silver edge walls
-      meshes.forEach((m) => m.userData.wall?.material.dispose());
+      packMats.forEach((m) => m.dispose());     // (the envelope + maps belong to the shared asset)
       reflGeoCache.forEach((g) => g.dispose()); // the reflection quads
       meshes.forEach((m) => m.userData.refl?.material.dispose());
       reflTexes.forEach((t) => t.dispose());    // the downscaled mobile reflection textures
       backdrop.mesh.geometry.dispose(); backdrop.mesh.material.dispose();
       particles.points.geometry.dispose();
-      scene.environment?.dispose?.();
+      packEnv.dispose();
       renderer.dispose();
       canvas.remove();
     },
@@ -952,62 +942,6 @@ function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - 
 // applied both in the idle layout() and, crucially, through the intro entrance (stepIntro).
 function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 
-// Procedural foil-pack geometry — a "pillow": a front and back sheet that bulge
-// outward through the body and press FLAT into the crimped seal strips at top and
-// bottom (where a real booster is heat-sealed), tapering to a thin lip at every
-// edge. The curved surface is what sells the foil — the env/glint sheen slides
-// across the bulge as the wheel turns, which a flat plane can never do. UVs are a
-// straight 0..1 map so the printed art (incl. its crimp strip) lands correctly.
-function makePackGeometry(aspect) {
-  const W = 1, H = aspect;
-  const NX = 22, NY = 36;          // surface resolution (smooth bulge, cheap)
-  const PUFF = 0.034;              // half-thickness ADDED by the card bulge in the body. Kept
-                                   // SLIM: a fat bulge rose ABOVE the rim ribbon and made the
-                                   // 流光 read as floating on the pack face instead of hugging the
-                                   // edge. A flatter pillow keeps the foil sheen-slide but lets the
-                                   // rim sit right at the silhouette (see RIM_Z, tuned to match).
-  const LIP = 0.014;               // base foil half-thickness everywhere — gives the sealed
-                                   // edges/crimps a flat, thin foil EDGE instead of tapering
-                                   // to needle points (the old side-view "blade" artifact)
-  const TOP_SEAL = 0.07;           // flat crimp strip at the top (the serrated seal)
-  const BOT_SEAL = 0.10;           // a longer, more tapered seal at the bottom (per the side view)
-  // bulge profile: 0 at the L/R edges and within the seal strips, ~1 in the body
-  const hx = (u) => Math.pow(Math.sin(Math.PI * clamp01(u)), 0.6);
-  const hy = (v) => {
-    const lo = BOT_SEAL, hi = 1 - TOP_SEAL;  // v=0 is the bottom, v=1 the top
-    if (v <= lo || v >= hi) return 0;        // flat crimp seals
-    return Math.pow(Math.sin(Math.PI * (v - lo) / (hi - lo)), 0.55);
-  };
-  const pos = [], uv = [], idx = [];
-  const triPerSide = NX * NY * 6;            // index count for one sheet → geometry groups
-  for (const side of [1, -1]) {              // front (+z), then back (-z)
-    const base = pos.length / 3;
-    for (let j = 0; j <= NY; j++) {
-      for (let i = 0; i <= NX; i++) {
-        const u = i / NX, v = j / NY;
-        const z = side * (LIP + PUFF * hx(u) * hy(v));
-        pos.push((u - 0.5) * W, (v - 0.5) * H, z);
-        uv.push(side > 0 ? u : 1 - u, v);    // mirror the back so its art reads right
-      }
-    }
-    for (let j = 0; j < NY; j++) {
-      for (let i = 0; i < NX; i++) {
-        const a = base + j * (NX + 1) + i, b = a + 1, c = a + (NX + 1), d = c + 1;
-        if (side > 0) idx.push(a, c, b, b, c, d);
-        else idx.push(a, b, c, b, d, c);
-      }
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  // two groups so the FRONT sheet and BACK sheet can take different materials
-  g.addGroup(0, triPerSide, 0);              // front → material[0]
-  g.addGroup(triPerSide, triPerSide, 1);     // back  → material[1]
-  return g;
-}
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
 // ---- rim light + border beam ----------------------------------------------
@@ -1063,46 +997,11 @@ function traceOutline(img) {
   return out;
 }
 
-// Half-thickness of the sealed foil EDGE — matches the pillow's LIP so the wall meets
-// the front/back sheets right at the silhouette and closes the open slit between them.
-const EDGE_T = 0.014;
-
-// Forward float of the rim ribbon, in local z. With depthTest ON, the ribbon must sit
-// just PROUD of its own front sheet, or that sheet would occlude it head-on — but kept
-// as SHALLOW as possible so the 流光 hugs the true edge instead of hovering in front of
-// it. With the slim PUFF (0.034), the front sheet under the ribbon's footprint stays
-// ~0.024, so 0.026 clears it by a hair while sitting right at the silhouette; the body's
-// mid bulge (now ~0.048) is still interior, and a pack in front on the wheel occludes it.
-const RIM_Z = 0.026;
-
-// Build a solid EDGE WALL: a band standing along the closed outline, from z=+halfT to
-// z=−halfT, so the open pillow becomes a closed pouch. Edge-on it fills the see-through
-// slit with a solid silver foil edge; head-on it's a thin rim at the very silhouette.
-function makeEdgeWall(outline, halfT) {
-  const n = outline.length;
-  const pos = [], idx = [];
-  for (let i = 0; i < n; i++) {
-    const p = outline[i];
-    pos.push(p[0], p[1], halfT, p[0], p[1], -halfT); // a front-edge vert + a back-edge vert
-  }
-  for (let i = 0; i < n; i++) {
-    const a = i * 2, b = ((i + 1) % n) * 2;          // wrap the last segment back to the start
-    idx.push(a, a + 1, b, a + 1, b + 1, b);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
-}
-// Polished-gold foil for the edge wall — metallic so it catches the env sheen as the
-// wheel turns, reading as a real gold foil edge rather than a flat band. One per pack
-// (so it can fade with its pack during the intro/breakaway).
-function makeEdgeMaterial() {
-  return new THREE.MeshStandardMaterial({
-    color: 0xd4a63a, metalness: 0.72, roughness: 0.36, envMapIntensity: 1.1, side: THREE.DoubleSide,
-  });
-}
+// Forward float of the rim ribbon, in local z (the pack is 1 unit wide). With depthTest
+// ON, the ribbon must sit just PROUD of the envelope's front sheet (+0.040 at the body,
+// +0.045 with the crown) or that sheet would occlude it head-on — but as shallow as
+// possible so the 流光 hugs the true edge instead of hovering in front of it.
+const RIM_Z = 0.052;
 
 // Build a flat ribbon (triangle strip) that follows the closed outline, `halfW` wide
 // to each side of the edge, at local depth `z`. Centred at z=0 it sits at the middle
@@ -1246,32 +1145,6 @@ function rdp(pts, eps) {
 function setFaceFlash(mesh, v) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const m of mats) if (m.emissiveMap) m.emissiveIntensity = 0.12 + v;
-}
-
-// A soft equirectangular environment from a vertical canvas gradient — a dim-bright-
-// dim band that the foil's metalness reflects, so a holographic sheen sweeps across
-// each pack as the wheel turns. Far cheaper than loading an HDR.
-function makeEnvTexture() {
-  const c = document.createElement("canvas");
-  c.width = 16; c.height = 256;
-  const ctx = c.getContext("2d");
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  // a WIDE bright band (azimuth-independent) so every pack on the wheel — at any
-  // rotation — reflects a foil sheen, not only the front one
-  // warm — bronze shadow → champagne → the white glint — so the sheen the foil
-  // reflects is gold light, not a cool studio flash
-  g.addColorStop(0.0, "#1a1208");
-  g.addColorStop(0.30, "#a88a52");
-  g.addColorStop(0.46, "#ffe9b8");
-  g.addColorStop(0.5, "#ffffff");  // bright core → the glint
-  g.addColorStop(0.54, "#ffe9b8");
-  g.addColorStop(0.70, "#a88a52");
-  g.addColorStop(1.0, "#0d0a06");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.mapping = THREE.EquirectangularReflectionMapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 // ---- shader backdrop -------------------------------------------------------
@@ -1505,60 +1378,4 @@ function makeParticles() {
       geo.attributes.position.needsUpdate = true;
     },
   };
-}
-
-// Build a face texture for a pack: load its art, optionally hue-rotating it on a
-// canvas so a variant reads as a different pack. Identical (img,hue) packs share
-// one GPU texture — a wheel of 16 costs one upload.
-const _imgCache = new Map();
-function loadImg(src) {
-  if (_imgCache.has(src)) return _imgCache.get(src);
-  const pr = new Promise((res, rej) => {
-    const im = new Image();
-    im.crossOrigin = "anonymous";
-    im.onload = () => res(im);
-    im.onerror = rej;
-    im.src = src;
-  });
-  _imgCache.set(src, pr);
-  return pr;
-}
-const _texCache = new Map();
-function loadFaceTexture(p) {
-  const key = `${p.img}|${p.hue || 0}`;
-  if (_texCache.has(key)) return _texCache.get(key);
-  const pr = loadImg(texSrc(p.img)).then((im) => {
-    let source = im;
-    if (p.hue) {
-      const c = document.createElement("canvas");
-      c.width = im.naturalWidth; c.height = im.naturalHeight;
-      const ctx = c.getContext("2d");
-      ctx.filter = `hue-rotate(${p.hue}deg) saturate(1.08)`;
-      ctx.drawImage(im, 0, 0);
-      source = c;
-    }
-    const tex = new THREE.Texture(source);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 16;
-    tex.needsUpdate = true;
-    return tex;
-  });
-  _texCache.set(key, pr);
-  return pr;
-}
-
-// The pack BACK — the printed reverse of the pouch (contents, legal, barcode; see
-// tools/art/pack-back.html). One shared texture across the whole rack.
-const BACK_IMG = "assets/pack-back-hi.webp";
-let _backArtTex = null;
-function loadBackTexture() {
-  if (_backArtTex) return _backArtTex;
-  _backArtTex = loadImg(texSrc(BACK_IMG)).then((im) => {
-    const tex = new THREE.Texture(im);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 16;
-    tex.needsUpdate = true;
-    return tex;
-  });
-  return _backArtTex;
 }

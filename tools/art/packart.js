@@ -1,20 +1,25 @@
-// packart.js — the PRINTED art of OpenPack FC: the pack's front and back and the
-// card back, composed on canvas with the app's own drawing modules (the card
-// renderer, the golden ball, the palette, the edition looks) so the packaging and
+// packart.js — the PRINTED art of the pack: the pouch's front and back and the card
+// back, composed on canvas with the app's own drawing modules so the packaging and
 // the cards inside it are one design system.
 //
-// The look is an awards night: a warm black foil pouch, polished gold crimps with a
-// hammered texture, engraved gold lettering (Cinzel) and ONE golden object in a
-// pool of amber light — the mystery card on the front, the golden ball on the back
-// and on the card back — with a little gold dust around it.
+// The pouch is a GOLD satin foil pack, photographed-product style: a smooth
+// champagne-to-gold foil, the brand mark and wordmark in black at the top, ONE
+// embossed golden ball — hammered, polished, standing off the foil — at the centre,
+// and GOLD PACK · FOOTBALL COLLECTION in black at the foot, between two ribbed
+// crimped seals. The back carries the contents and odds, the fin seal and the legal.
 //
-// These are build-time sources: tools/render_art.mjs renders them in headless
-// Chrome and writes the shipped files (assets/pack*.webp, assets/card-back.jpg).
-// Preview them live at /tools/art/ while tuning.
+// These are FLAT base-colour maps: the 3D pack (src/pack3d) adds the real folds,
+// the moving reflections and the crinkle normal map, so the art carries only a mild
+// satin ramp and the ball's own embossed shading — no painted-on highlights or
+// photographed folds that would double up under the lighting.
+//
+// Build-time sources: tools/render_art.mjs renders them in headless Chrome and
+// writes the shipped files (assets/pack*.webp, assets/card-back.jpg). Preview them
+// live at /tools/art/ while tuning.
 
 import { P, lin, rad, rgba, shade, rng, font, serif, spacedText, grainTile, starPath, poly, roundRect } from "../../src/paint.js";
-import { paintCard, ensureFonts, SHIELD_D, ART_W, ART_H } from "../../src/cardart.js";
-import { drawBall } from "../../src/ball.js";
+import { ensureFonts, SHIELD_D, ART_W, ART_H } from "../../src/cardart.js";
+import { drawBall, BALL_PANELS, BALL_CENTER } from "../../src/ball.js";
 import { HIT_ODDS, RARE_GOLD_ODDS } from "../../src/booster.js";
 import { TIERS } from "../../src/rarity.js";
 import { POOL } from "../../src/pool.js";
@@ -22,12 +27,28 @@ import { POOL } from "../../src/pool.js";
 export const PACK_W = 1083, PACK_H = 1794; // the pouch art box the carousel + tear-pack were tuned on
 export const CARD_BACK_W = 660, CARD_BACK_H = 921;
 
-const SEAL = 168; // crimped seal depth, top and bottom (~9.4% — under pack.js's 10% tear line)
+const SEAL = 168; // crimped seal depth, top and bottom (~9.4% — under the 3D pack's 9% tear line)
 // the gold material as three stops: champagne highlight / rich gold / bronze shadow
 const GOLD = ["#f7e4aa", "#d4a63a", "#80521c"];
-const INK = "#0d0b08";   // warm black
-const IVORY = "#fff6e3"; // warm ivory — the everyday text
-const AMBER = "#ffb547"; // the glow behind the main object
+const INK = "#0d0b08";   // warm black — the print on the foil
+const IVORY = "#fff6e3"; // warm ivory
+const AMBER = "#ffb547"; // the glow behind the main object (card back)
+
+// the brand on the pouch: the mark (two arrows) + the lowercase wordmark. One place
+// to change if the pack is re-branded.
+export const BRAND = { word: "betfair", name: "GOLD PACK", sub: "FOOTBALL COLLECTION" };
+
+// the display faces the pouch adds on top of the card faces (see tools/art/index.html)
+const WORD_FONT = `"Nunito", "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+const DISPLAY_FONT = `"Montserrat", "Gotham", "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+let _pouchFonts = null;
+function pouchFonts() {
+  if (_pouchFonts) return _pouchFonts;
+  const faces = [["900", "Nunito"], ["800", "Nunito"], ["800", "Montserrat"], ["700", "Montserrat"], ["500", "Montserrat"]]
+    .map(([w, f]) => (document.fonts?.load(`${w} 100px "${f}"`, "abgp0") || Promise.resolve()).catch(() => null));
+  _pouchFonts = Promise.race([Promise.all([ensureFonts(), ...faces]), new Promise((r) => setTimeout(r, 4000))]);
+  return _pouchFonts;
+}
 
 // ---- the pouch ----------------------------------------------------------------
 
@@ -94,21 +115,28 @@ function crimp(ctx, y0, y1, metal, W = PACK_W) {
   ctx.restore();
 }
 
-// the body's finishing: pillow shading toward the edges, foil sheen, print grain
-function foilFinish(ctx, W, H, strength = 1) {
-  ctx.fillStyle = lin(ctx, 0, 0, W, 0, [[0, `rgba(0,0,0,${0.42 * strength})`], [0.1, "rgba(0,0,0,0)"], [0.9, "rgba(0,0,0,0)"], [1, `rgba(0,0,0,${0.5 * strength})`]]);
+// The satin gold foil of the pouch body: a soft vertical ramp (lighter above the
+// middle, where a studio key would land), a few broad, very soft tonal patches so it
+// isn't a dead flat fill, and a faint brushed grain. No folds, no hot highlights —
+// the 3D pack lights it.
+function goldFoil(ctx, W, H, seed = 77) {
+  ctx.fillStyle = lin(ctx, 0, 0, 0, H, [[0, "#dcb24c"], [0.22, "#efd072"], [0.42, "#f3d67d"], [0.62, "#e6bf55"], [0.82, "#d6ab42"], [1, "#c59a38"]]);
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = lin(ctx, 0, SEAL, 0, H - SEAL, [[0, "rgba(0,0,0,0.38)"], [0.06, "rgba(0,0,0,0)"], [0.94, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0.42)"]]);
-  ctx.fillRect(0, 0, W, H);
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  for (const [o, w, a] of [[0.2, 0.07, 0.14], [0.46, 0.03, 0.1], [0.7, 0.09, 0.09]]) {
-    ctx.fillStyle = lin(ctx, 0, 0, W, H * 0.62, [[Math.max(0, o - w), "rgba(255,255,255,0)"], [o, `rgba(255,240,210,${a * strength})`], [Math.min(1, o + w), "rgba(255,255,255,0)"]]);
+  const r = rng(seed);
+  for (let i = 0; i < 10; i++) {
+    const x = r.range(0, W), y = r.range(SEAL, H - SEAL), rr = r.range(220, 560);
+    const light = r.chance(0.5);
+    ctx.fillStyle = rad(ctx, x, y, rr, [[0, light ? "rgba(255,246,214,0.2)" : "rgba(110,72,18,0.16)"], [1, "rgba(0,0,0,0)"]]);
     ctx.fillRect(0, 0, W, H);
   }
+  // a gentle sheen band across the upper body — the satin's long soft reflection
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = lin(ctx, 0, 0, W, H * 0.7, [[0.18, "rgba(255,255,255,0)"], [0.36, "rgba(255,245,215,0.1)"], [0.52, "rgba(255,255,255,0)"]]);
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
   ctx.save();
-  ctx.globalAlpha = 0.06;
+  ctx.globalAlpha = 0.05;
   ctx.globalCompositeOperation = "overlay";
   ctx.fillStyle = ctx.createPattern(grainTile(), "repeat");
   ctx.fillRect(0, 0, W, H);
@@ -117,39 +145,13 @@ function foilFinish(ctx, W, H, strength = 1) {
 
 function sealEdges(ctx, W, H) {
   // the body tucks under each seal: a soft shadow below the top crimp, above the bottom
-  ctx.fillStyle = lin(ctx, 0, SEAL, 0, SEAL + 34, [[0, "rgba(0,0,0,0.55)"], [1, "rgba(0,0,0,0)"]]);
-  ctx.fillRect(0, SEAL, W, 34);
-  ctx.fillStyle = lin(ctx, 0, H - SEAL - 34, 0, H - SEAL, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0.55)"]]);
-  ctx.fillRect(0, H - SEAL - 34, W, 34);
-  ctx.fillStyle = rgba(GOLD[0], 0.6);
+  ctx.fillStyle = lin(ctx, 0, SEAL, 0, SEAL + 30, [[0, "rgba(60,38,8,0.32)"], [1, "rgba(60,38,8,0)"]]);
+  ctx.fillRect(0, SEAL, W, 30);
+  ctx.fillStyle = lin(ctx, 0, H - SEAL - 30, 0, H - SEAL, [[0, "rgba(60,38,8,0)"], [1, "rgba(60,38,8,0.32)"]]);
+  ctx.fillRect(0, H - SEAL - 30, W, 30);
+  ctx.fillStyle = rgba(GOLD[0], 0.7);
   ctx.fillRect(0, SEAL - 2, W, 2);
   ctx.fillRect(0, H - SEAL, W, 2);
-}
-
-// a faint engraved weave across the black foil: two sets of fine diagonal lines
-function guilloche(ctx, W, H) {
-  ctx.save();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(GOLD[1], 0.045);
-  for (let i = -H; i < W + H; i += 14) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + H, H); ctx.stroke(); }
-  ctx.strokeStyle = rgba(GOLD[1], 0.025);
-  for (let i = -H; i < W + H; i += 14) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(i + H, 0); ctx.stroke(); }
-  ctx.restore();
-}
-
-// A thin engraved gold frame — a rule with a dark groove under it and a finer inner
-// rule, so it reads as a line cut into the foil rather than printed on it.
-function engravedFrame(ctx, x, y, w, h, rx) {
-  ctx.save();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(0,0,0,0.55)";
-  ctx.stroke(roundRect(x, y + 2, w, h, rx));
-  ctx.strokeStyle = lin(ctx, x, y, x + w, y + h, [[0, rgba(GOLD[0], 0.6)], [0.5, rgba(GOLD[1], 0.38)], [1, rgba(GOLD[0], 0.55)]]);
-  ctx.stroke(roundRect(x, y, w, h, rx));
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = rgba(GOLD[1], 0.22);
-  ctx.stroke(roundRect(x + 9, y + 9, w - 18, h - 18, Math.max(4, rx - 6)));
-  ctx.restore();
 }
 
 // text with an outline that never bites into its neighbours: stroke ALL, then fill
@@ -166,179 +168,134 @@ function outlined(ctx, text, x, y, spacing, fill, stroke, lw) {
 }
 
 // the polished face of gold lettering: a champagne top, a dark reflective horizon
-// through the middle, gold again below it
+// through the middle, gold again below it (the card back's engraved capitals)
 const goldText = (ctx, y0, y1) => lin(ctx, 0, y0, 0, y1, [[0, "#fff6d8"], [0.42, "#f3cf5e"], [0.52, "#b9851d"], [0.7, "#e8bb45"], [1, "#fff1bf"]]);
-
-// Engraved gold capitals (Cinzel): a bronze underside dropped a few px, a champagne
-// bevel peeking over the top edge and the polished face on top, all on a dark
-// outline — so the letters read as cast metal standing off the foil.
 function goldLetters(ctx, text, cx, y, size, spacing, { lw = 10, outline = "#1b1204", weight = 800 } = {}) {
   ctx.save();
   ctx.font = serif(weight, size);
   ctx.lineJoin = "round";
   ctx.strokeStyle = outline;
-  ctx.lineWidth = lw + 6; // wide enough to wrap the offset copies below too
+  ctx.lineWidth = lw + 6;
   ctx.fillStyle = "rgba(0,0,0,0)";
   spacedText(ctx, text, cx, y + 1, spacing, "center", true);
-  ctx.fillStyle = "#5a3808";                                         // the bronze underside
+  ctx.fillStyle = "#5a3808";
   spacedText(ctx, text, cx, y + 5, spacing, "center");
-  ctx.fillStyle = "#fff4cf";                                         // the champagne bevel
+  ctx.fillStyle = "#fff4cf";
   spacedText(ctx, text, cx, y - 2, spacing, "center");
-  ctx.fillStyle = goldText(ctx, y - size * 0.76, y + size * 0.06);   // the polished face
+  ctx.fillStyle = goldText(ctx, y - size * 0.76, y + size * 0.06);
   spacedText(ctx, text, cx, y, spacing, "center");
   ctx.restore();
 }
 
-function sparkle(ctx, x, y, r, col = "#fff6d8") {
-  ctx.fillStyle = col;
-  ctx.fill(starPath(x, y, r, 4, 0.22, -Math.PI / 2));
-  ctx.fillStyle = rad(ctx, x, y, r * 1.6, [[0, rgba(col, 0.6)], [1, rgba(col, 0)]]);
-  ctx.beginPath(); ctx.arc(x, y, r * 1.6, 0, Math.PI * 2); ctx.fill();
-}
+// ---- the brand lockup ------------------------------------------------------------
 
-// Gold dust: tiny warm motes, thickest around the hero and thinning with distance,
-// with a few four-point sparkles among the brightest.
-function goldDust(ctx, r, W, H, cx, cy, count = 190, reach = 560) {
-  let placed = 0, tries = 0;
-  while (placed < count && tries++ < count * 25) {
-    const x = r.range(30, W - 30), y = r.range(SEAL + 50, H - SEAL - 50);
-    const d = Math.hypot(x - cx, (y - cy) * 0.85) / reach;
-    if (r() > Math.exp(-d * d * 1.5) + 0.08) continue;
-    placed++;
-    const s = r.range(0.7, 2.6);
-    const col = r() < 0.3 ? "#fff6dc" : r() < 0.6 ? GOLD[0] : GOLD[1];
-    ctx.fillStyle = rgba(col, r.range(0.25, 0.9));
-    ctx.beginPath(); ctx.arc(x, y, s, 0, Math.PI * 2); ctx.fill();
-    if (s > 2.2 && r() < 0.5) sparkle(ctx, x, y, s * 3.4, "#fff3cf");
-  }
-}
-
-// the brand lockup: OPENPACK over FOOTBALL CLUB, gold rules either side
-function brand(ctx, cx, y, scale = 1) {
+// The mark: two arrows — one rising on the left, one falling on the right, their
+// stems overlapping — drawn in a 100-unit box centred on (0,0).
+function brandMark(ctx, cx, cy, size, color = INK) {
   ctx.save();
-  ctx.translate(cx, y);
-  ctx.scale(scale, scale);
-  ctx.shadowColor = "rgba(0,0,0,0.6)";
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 8;
-  goldLetters(ctx, "OPENPACK", 0, 0, 122, 10);
-  ctx.shadowColor = "transparent";
-  ctx.fillStyle = IVORY;
-  ctx.font = serif(600, 36);
-  spacedText(ctx, "FOOTBALL  CLUB", 0, 66, 12, "center");
-  ctx.strokeStyle = rgba(GOLD[1], 0.85);
-  ctx.lineWidth = 3;
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); ctx.moveTo(s * 330, 54); ctx.lineTo(s * 450, 54); ctx.stroke();
-  }
+  ctx.translate(cx, cy);
+  ctx.scale(size / 100, size / 100);
+  ctx.fillStyle = color;
+  // rising arrow (left): head apex top-left, stem down to the baseline
+  ctx.fill(poly([[-24, -50], [-54, -14], [-37, -14], [-37, 34], [-11, 34], [-11, -14], [6, -14]]));
+  // falling arrow (right): the mirror, apex bottom-right
+  ctx.fill(poly([[24, 50], [54, 14], [37, 14], [37, -34], [11, -34], [11, 14], [-6, 14]]));
   ctx.restore();
 }
 
-// ---- a mystery player card (the hero on the pack front) ---------------------------
-
-async function mysteryCard() {
-  const c = document.createElement("canvas");
-  c.width = ART_W; c.height = ART_H;
-  await paintCard(c.getContext("2d"), {
-    id: "mystery", playerId: "mystery", edition: "raregold", mystery: true,
-    ovr: "??", pos: "??", display: "??????", stats: ["??", "??", "??", "??", "??", "??"],
-    seed: 21,
-  });
-  return c;
+// the lockup: mark + lowercase wordmark, centred as one unit on (cx, y)
+function brand(ctx, cx, y, scale = 1, color = INK) {
+  ctx.save();
+  ctx.translate(cx, y);
+  ctx.scale(scale, scale);
+  ctx.font = `900 150px ${WORD_FONT}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const tracking = -3;
+  const tw = ctx.measureText(BRAND.word).width + tracking * (BRAND.word.length - 1);
+  const mark = 118, gap = 26;
+  const total = mark + gap + tw;
+  const x0 = -total / 2;
+  brandMark(ctx, x0 + mark / 2, -44, mark, color);
+  ctx.fillStyle = color;
+  let x = x0 + mark + gap;
+  for (const ch of BRAND.word) { ctx.fillText(ch, x, 0); x += ctx.measureText(ch).width + tracking; }
+  ctx.restore();
 }
 
-// an edition's frame image, for the printed swatches (assets/frames — tools/frames)
-const frameImage = (key) => new Promise((res) => {
-  const im = new Image();
-  im.onload = () => res(im);
-  im.onerror = () => res(null);
-  im.src = new URL(`../../assets/frames/${key}.webp`, import.meta.url).href;
-});
+// ---- the golden ball, embossed ------------------------------------------------------
 
-// the warm black foil of the pouch body
-function blackFoil(ctx, W, H) {
-  ctx.fillStyle = lin(ctx, 0, SEAL, 0, H - SEAL, [[0, "#1c160e"], [0.45, "#110d08"], [1, "#0a0806"]]);
-  ctx.fillRect(0, 0, W, H);
-  guilloche(ctx, W, H);
+// The ball stands off the foil: a soft bronze shadow beneath and to the right, the
+// polished hammered body (drawBall gold + a hammered pass), a crisp rim and a
+// champagne glint on the lit shoulder.
+function embossedBall(ctx, cx, cy, radius, seed = 41) {
+  const d = radius * 2;
+  const tmp = document.createElement("canvas");
+  tmp.width = tmp.height = Math.ceil(d) + 8;
+  const t = tmp.getContext("2d");
+  t.translate(4, 4);
+  t.scale(d / 100, d / 100);
+  drawBall(t, { gold: true });
+  // an all-gold ball: the pentagons go a deeper gold (not black), seams stay dark
+  t.save();
+  t.fillStyle = lin(t, 0, 0, 100, 100, [[0, "rgba(214,166,58,0.86)"], [1, "rgba(150,104,30,0.86)"]]);
+  t.fill(new Path2D(BALL_PANELS));
+  t.fill(new Path2D(BALL_CENTER));
+  t.restore();
+  // a fine hammered skin, within the ball
+  t.save();
+  t.beginPath(); t.arc(50, 50, 46, 0, Math.PI * 2); t.clip();
+  t.setTransform(1, 0, 0, 1, 4, 4);
+  hammered(t, 0, 0, d, d, seed, { r0: d * 0.007, r1: d * 0.016, alpha: 0.17 });
+  t.restore();
+  // a crisp polished rim
+  t.strokeStyle = lin(t, 0, 0, 100, 100, [[0, "#fff1c2"], [0.5, "#b8862b"], [1, "#4a2d08"]]);
+  t.lineWidth = 2.2;
+  t.beginPath(); t.arc(50, 50, 46, 0, Math.PI * 2); t.stroke();
+  // the emboss: shadow under + right, then the ball
+  ctx.save();
+  ctx.shadowColor = "rgba(70,44,8,0.6)";
+  ctx.shadowBlur = radius * 0.3;
+  ctx.shadowOffsetX = radius * 0.06;
+  ctx.shadowOffsetY = radius * 0.14;
+  ctx.drawImage(tmp, cx - radius - 4, cy - radius - 4);
+  ctx.restore();
+  // a faint foil pucker around the emboss (the sheet pulled over the relief)
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = rad(ctx, cx, cy, radius * 1.22, [[0.78, "rgba(255,255,255,1)"], [0.9, "rgba(210,180,110,1)"], [1, "rgba(255,255,255,1)"]]);
+  ctx.fillRect(cx - radius * 1.3, cy - radius * 1.3, radius * 2.6, radius * 2.6);
+  ctx.restore();
 }
 
 // ---- PACK FRONT ----------------------------------------------------------------------
 
 export async function drawPackFront(ctx) {
-  await ensureFonts();
+  await pouchFonts();
   const W = PACK_W, H = PACK_H, cx = W / 2;
   const body = pouchPath();
-  const r = rng(2026);
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.clip(body);
 
-  blackFoil(ctx, W, H);
-
-  // the amber pool behind the hero, and two warm spotlights raking down from the top
-  // corners — the stage light the whole app shares
-  const CY = 880;
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = rad(ctx, cx, CY, 660, [[0, rgba(AMBER, 0.5)], [0.45, rgba(AMBER, 0.16)], [1, rgba(AMBER, 0)]]);
-  ctx.fillRect(0, 0, W, H);
-  for (const lx of [150, W - 150]) {
-    const LY = SEAL - 40;
-    const ang = Math.atan2(CY - LY, cx - lx), len = 1500, spread = 0.14;
-    ctx.fillStyle = lin(ctx, lx, LY, lx + Math.cos(ang) * len, LY + Math.sin(ang) * len, [[0, "rgba(255,214,140,0.16)"], [0.5, "rgba(255,214,140,0.05)"], [1, "rgba(255,214,140,0)"]]);
-    ctx.fill(poly([[lx, LY], [lx + Math.cos(ang - spread) * len, LY + Math.sin(ang - spread) * len], [lx + Math.cos(ang + spread) * len, LY + Math.sin(ang + spread) * len]]));
-    ctx.fillStyle = rad(ctx, lx, LY, 300, [[0, "rgba(255,230,180,0.5)"], [0.3, "rgba(255,200,120,0.12)"], [1, "rgba(255,200,120,0)"]]);
-    ctx.fillRect(0, 0, W, H);
-  }
-  ctx.restore();
-
-  // the engraved frame that holds the hero — generous space around one golden object
-  engravedFrame(ctx, 64, 482, W - 128, 806, 22);
-
-  goldDust(ctx, r, W, H, cx, CY);
-
-  // the hero: a mystery player card, tilted, haloed in amber. The card art is
-  // SHAPED (transparent round the frame), so the halo + shadow take its outline.
-  const card = await mysteryCard();
-  const cg = card.getContext("2d");
-  cg.globalCompositeOperation = "source-atop"; // a glint sweeping the card, on the card only
-  cg.fillStyle = lin(cg, 0, 0, ART_W, ART_H, [[0.3, "rgba(255,255,255,0)"], [0.4, "rgba(255,255,255,0.4)"], [0.47, "rgba(255,255,255,0)"]]);
-  cg.fillRect(0, 0, ART_W, ART_H);
-  ctx.save();
-  ctx.translate(cx, CY);
-  ctx.rotate(-0.075);
-  const s = 0.66;
-  ctx.scale(s, s);
-  ctx.shadowColor = "rgba(255,176,70,0.85)";
-  ctx.shadowBlur = 90;
-  ctx.drawImage(card, -ART_W / 2, -ART_H / 2);
-  ctx.shadowColor = "rgba(0,0,0,0.65)";
-  ctx.shadowBlur = 50;
-  ctx.shadowOffsetY = 30;
-  ctx.drawImage(card, -ART_W / 2, -ART_H / 2);
-  ctx.restore();
-
-  // a few placed sparkles around the card
-  for (const [x, y, rr] of [[250, 560, 22], [842, 640, 30], [210, 1110, 18], [880, 1180, 22], [790, 520, 12], [150, 860, 14]]) sparkle(ctx, x, y, rr);
+  goldFoil(ctx, W, H);
 
   // the brand, top
-  brand(ctx, cx, 360);
+  brand(ctx, cx, 408, 1);
 
-  // the pack name, bottom
+  // the hero: the embossed golden ball, dead centre
+  embossedBall(ctx, cx, 870, 300);
+
+  // the pack name, foot
   ctx.save();
-  ctx.fillStyle = IVORY;
-  ctx.font = serif(600, 44);
-  ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 16;
-  spacedText(ctx, "PREMIUM", cx, 1352, 22, "center");
-  ctx.shadowOffsetY = 8; ctx.shadowBlur = 26;
-  goldLetters(ctx, "GOLD PACK", cx, 1496, 124, 8);
-  ctx.shadowColor = "transparent";
-  ctx.fillStyle = rgba(IVORY, 0.9);
-  ctx.font = font(700, 36);
-  spacedText(ctx, "5 PLAYERS · 1 PROMO GUARANTEED", cx, 1572, 5, "center");
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.font = `800 150px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.name, cx, 1452, 7, "center");
+  ctx.font = `500 46px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.sub, cx, 1526, 15, "center");
   ctx.restore();
 
-  foilFinish(ctx, W, H);
   ctx.restore(); // body clip
 
   // the crimped seals, top and bottom
@@ -347,17 +304,16 @@ export async function drawPackFront(ctx) {
   crimp(ctx, 0, SEAL, GOLD);
   crimp(ctx, H - SEAL, H, GOLD);
   sealEdges(ctx, W, H);
-  // small print on the seals, engraved into the gold
-  ctx.fillStyle = rgba("#3a2206", 0.78);
+  ctx.fillStyle = rgba("#3a2206", 0.72);
   ctx.font = font(700, 26);
   spacedText(ctx, "TEAR HERE", cx, 104, 10, "center");
-  spacedText(ctx, "OPENPACK FC  ·  ULTIMATE XI  ·  SEASON 26/27", cx, H - 70, 6, "center");
+  spacedText(ctx, `${BRAND.name}  ·  ${BRAND.sub}  ·  SEASON 26/27`, cx, H - 70, 6, "center");
   ctx.restore();
 
   // a bright gold rim along the silhouette
   ctx.save();
   ctx.clip(body);
-  ctx.strokeStyle = rgba(GOLD[0], 0.5);
+  ctx.strokeStyle = rgba(GOLD[0], 0.55);
   ctx.lineWidth = 5;
   ctx.stroke(body);
   ctx.restore();
@@ -381,92 +337,84 @@ function barcode(ctx, x, y, w, h, seed) {
   ctx.fillText("4 260417 202617", x + w / 2, y + h + 34);
 }
 
+// an edition's frame image, for the printed swatches (assets/frames — tools/frames)
+const frameImage = (key) => new Promise((res) => {
+  const im = new Image();
+  im.onload = () => res(im);
+  im.onerror = () => res(null);
+  im.src = new URL(`../../assets/frames/${key}.webp`, import.meta.url).href;
+});
+
 export async function drawPackBack(ctx) {
-  await ensureFonts();
+  await pouchFonts();
   const W = PACK_W, H = PACK_H, cx = W / 2;
   const body = pouchPath();
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.clip(body);
-  blackFoil(ctx, W, H);
+  goldFoil(ctx, W, H, 91);
 
+  const DARK = "#2a1c08"; // the secondary print: a deep bronze-black
   // ---- left column: contents + the edition ladder with each slot's odds ----
   const LX = 66;
   ctx.textAlign = "left";
-  ctx.fillStyle = GOLD[1];
-  ctx.font = serif(700, 34);
+  ctx.fillStyle = INK;
+  ctx.font = `800 34px ${DISPLAY_FONT}`;
   spacedText(ctx, "CONTENTS", LX, 256, 8, "left");
-  ctx.fillStyle = IVORY;
   ctx.font = font(800, 52);
   spacedText(ctx, "5 PLAYER CARDS", LX, 322, 1, "left");
-  ctx.fillStyle = rgba(IVORY, 0.72);
+  ctx.fillStyle = DARK;
   ctx.font = font(600, 28);
   spacedText(ctx, "3 BRONZE / SILVER", LX, 372, 1.5, "left");
   spacedText(ctx, "1 GOLD  ·  1 PROMO", LX, 406, 1.5, "left");
 
-  ctx.fillStyle = GOLD[1];
-  ctx.font = serif(700, 28);
+  ctx.fillStyle = INK;
+  ctx.font = `800 28px ${DISPLAY_FONT}`;
   spacedText(ctx, "EDITIONS", LX, 478, 8, "left");
   const gold = Math.round(RARE_GOLD_ODDS * 100);
   const odds = (t) => (t >= 4 ? `${HIT_ODDS[t]}% OF THE PROMO SLOT` : t === 3 ? `${gold}% OF THE GOLD SLOT` : t === 2 ? `${100 - gold}% OF THE GOLD SLOT` : "FILLS THE FIRST THREE SLOTS");
   const frames = await Promise.all(TIERS.map((t) => frameImage(t.key)));
   TIERS.forEach((t, i) => {
     const y = 506 + i * 86;
-    // a mini card: the edition's own frame
     if (frames[i]) ctx.drawImage(frames[i], LX - 2, y - 2, 50, 70);
-    ctx.fillStyle = IVORY;
+    ctx.fillStyle = INK;
     ctx.font = font(700, 32);
     spacedText(ctx, t.label.toUpperCase(), LX + 64, y + 30, 1.2, "left");
-    ctx.fillStyle = t.id >= 4 ? GOLD[1] : rgba(IVORY, 0.6);
+    ctx.fillStyle = DARK;
     ctx.font = font(600, 22);
     spacedText(ctx, odds(t.id), LX + 64, y + 58, 1.6, "left");
   });
 
-  // the set count, straight from the pool
   const players = new Set(POOL.map((c) => c.playerId)).size;
-  ctx.fillStyle = GOLD[1];
-  ctx.font = serif(700, 22);
+  ctx.fillStyle = INK;
+  ctx.font = `800 22px ${DISPLAY_FONT}`;
   spacedText(ctx, "COLLECT THE SQUAD", LX, 1452, 4, "left");
-  ctx.fillStyle = rgba(IVORY, 0.72);
+  ctx.fillStyle = DARK;
   ctx.font = font(600, 26);
   spacedText(ctx, `${players} PLAYERS  ·  ${POOL.length} CARDS`, LX, 1492, 2, "left");
 
   // ---- the fin seal down the middle ----
   const FX = cx - 66, FW = 132;
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 26;
-  ctx.fillStyle = "#000";
+  ctx.shadowColor = "rgba(60,38,8,0.45)"; ctx.shadowBlur = 26;
+  ctx.fillStyle = "#8a6420";
   ctx.fillRect(FX, 0, FW, H);
   ctx.restore();
   crimpVertical(ctx, FX, FW, H);
   // the embossed golden ball seal at its centre
-  ctx.save();
-  ctx.translate(cx, H / 2);
-  ctx.fillStyle = lin(ctx, -70, -70, 70, 70, [[0, GOLD[0]], [0.5, GOLD[1]], [1, "#6b4612"]]);
-  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
-  ctx.fill(roundRect(-74, -74, 148, 148, 22));
-  ctx.shadowColor = "transparent";
-  hammered(ctx, -74, -74, 148, 148, 41, { r0: 5, r1: 11, alpha: 0.16 });
-  ctx.translate(-54, -54);
-  ctx.scale(1.08, 1.08);
-  drawBall(ctx, { gold: true });
-  ctx.restore();
+  embossedBall(ctx, cx, H / 2, 64, 43);
 
-  // ---- right column: the brand, the golden ball, the small print, the barcode ----
+  // ---- right column: the brand, the pack name, the small print, the barcode ----
   const RX = cx + 66 + (W - (cx + 66)) / 2;
-  brand(ctx, RX, 330, 0.48);
-  ctx.save();
-  ctx.translate(RX - 110, 430);
-  ctx.scale(2.2, 2.2);
-  ctx.shadowColor = rgba(AMBER, 0.65); ctx.shadowBlur = 40;
-  drawBall(ctx, { gold: true });
-  ctx.restore();
-  ctx.fillStyle = GOLD[1];
-  ctx.font = serif(800, 48);
-  spacedText(ctx, "ULTIMATE XI", RX, 760, 4, "center");
-  ctx.fillStyle = rgba(IVORY, 0.85);
-  ctx.font = serif(700, 26);
-  spacedText(ctx, "SEASON 26/27", RX, 806, 8, "center");
+  brand(ctx, RX, 300, 0.5);
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.font = `800 60px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.name, RX, 420, 3, "center");
+  ctx.fillStyle = DARK;
+  ctx.font = `500 24px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.sub, RX, 462, 7, "center");
+  embossedBall(ctx, RX, 640, 120, 47);
 
   const small = [
     "A FAN-MADE PACK-OPENING",
@@ -478,18 +426,16 @@ export async function drawPackBack(ctx) {
     "AFFILIATED WITH ANY PLAYER,",
     "CLUB, LEAGUE OR PUBLISHER.",
   ];
-  ctx.fillStyle = rgba(IVORY, 0.7);
+  ctx.fillStyle = DARK;
   ctx.font = font(600, 27);
-  small.forEach((line, i) => spacedText(ctx, line, RX, 900 + i * 38, 1.2, "center"));
-  ctx.fillStyle = rgba(GOLD[1], 0.95);
-  ctx.font = serif(600, 19);
-  spacedText(ctx, "TEAR ALONG THE TOP SEAL", RX, 1250, 3, "center");
-  barcode(ctx, RX - 150, 1310, 300, 120, 417);
-  ctx.fillStyle = rgba(IVORY, 0.6);
+  small.forEach((line, i) => spacedText(ctx, line, RX, 880 + i * 38, 1.2, "center"));
+  ctx.fillStyle = INK;
+  ctx.font = `700 19px ${DISPLAY_FONT}`;
+  spacedText(ctx, "TEAR ALONG THE TOP SEAL", RX, 1232, 3, "center");
+  barcode(ctx, RX - 150, 1300, 300, 120, 417);
+  ctx.fillStyle = DARK;
   ctx.font = font(600, 24);
-  spacedText(ctx, "LOT OPFC-26-GLD-0417", RX, 1540, 3, "center");
-
-  foilFinish(ctx, W, H, 0.8);
+  spacedText(ctx, "LOT GLD-26-FC-0417", RX, 1530, 3, "center");
   ctx.restore();
 
   ctx.save();
@@ -499,7 +445,7 @@ export async function drawPackBack(ctx) {
   crimpVertical(ctx, FX, FW, SEAL, 0.0);
   crimpVertical(ctx, FX, FW, SEAL, H - SEAL);
   sealEdges(ctx, W, H);
-  ctx.strokeStyle = rgba(GOLD[0], 0.45);
+  ctx.strokeStyle = rgba(GOLD[0], 0.5);
   ctx.lineWidth = 5;
   ctx.stroke(body);
   ctx.restore();
@@ -524,6 +470,13 @@ function crimpVertical(ctx, x, w, h, y0 = 0) {
 }
 
 // ---- CARD BACK ---------------------------------------------------------------------------
+
+function sparkle(ctx, x, y, r, col = "#fff6d8") {
+  ctx.fillStyle = col;
+  ctx.fill(starPath(x, y, r, 4, 0.22, -Math.PI / 2));
+  ctx.fillStyle = rad(ctx, x, y, r * 1.6, [[0, rgba(col, 0.6)], [1, rgba(col, 0)]]);
+  ctx.beginPath(); ctx.arc(x, y, r * 1.6, 0, Math.PI * 2); ctx.fill();
+}
 
 export async function drawCardBack(ctx) {
   await ensureFonts();
@@ -620,4 +573,4 @@ export const PIECES = {
   "card-back": { w: CARD_BACK_W, h: CARD_BACK_H, draw: drawCardBack },
 };
 
-export { INK, shade };
+export { INK, shade, outlined, sparkle };
