@@ -204,10 +204,13 @@ player turns the cards over by hand: tap the deck and the TOP card flips over in
 and lands with the usual entrance + stamp-in (a rare holds face down a beat first — the
 tell, or the walkout); tap it again and it's flung, the deck steps up and the next
 face-down card waits for its tap (`pick` / `flipOpen` / `advance` in reveal.js). The card
-back itself is the FRONT's gold frame dimmed — the same shaped silhouette, with the
-brand lockup alone on it (`drawCardBack` in tools/art/packart.js →
-`assets/card-back.webp`, alpha; the 3D back material cuts it out with `alphaTest` and
-carries some of its own light so it matches the DOM back at the hand-off).
+back itself IS the front's gold frame — the same shaped silhouette at the same
+brightness, with the brand lockup alone on it in the frame's dark ink (`drawCardBack` in
+tools/art/packart.js → `assets/card-back.webp`, alpha; the 3D back material cuts it out
+with `alphaTest` and carries some of its own light so it matches the DOM back at the
+hand-off). From the pop the SPENT wrapper sinks into the dark behind the cards
+(`light.spent` in `stepLight`: its reflections, print-light, inner glow and the foil's
+own gold all come down over ~0.5 s), so the bright backs are the thing on the stage.
 
 ## Feedback ([`view.js`](../src/pack3d/view.js))
 

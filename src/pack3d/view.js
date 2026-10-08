@@ -27,7 +27,7 @@ import { makeConfig, pickQuality } from "./config.js";
 import { buildCardStack, buildBurstCard } from "./geometry.js";
 import { makeEdgeTexture, makeCoreTexture } from "./textures.js";
 import { getPackAsset } from "./asset.js";
-import { makeMaterials, makeCardMaterials, EXT_ENV, EXT_EMI } from "./materials.js";
+import { makeMaterials, makeCardMaterials, EXT_ENV, EXT_EMI, INT_GOLD } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
 import { createController, P_NOTCH, PULL_LIMIT } from "./controller.js";
@@ -157,7 +157,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   //   room  — how dark the surroundings have gone (the pack's own reflections and
   //           key light dim with it, so its lower half sinks into shadow)
   //   impulse — the one spike at the instant the seal breaks (the flash)
-  const light = { seam: 0, seamT: 0, inner: 0, innerT: 0, room: 0, roomT: 0, impulse: 0, strain: 0, phase: "idle", t: 0, hold: 0, flicker: 1 };
+  // `spent`: the wrapper after the back pop — a blown-open sheet behind the cards, no
+  // longer the thing to look at — sinks into the dark (stepLight), so the cards carry
+  const light = { seam: 0, seamT: 0, inner: 0, innerT: 0, room: 0, roomT: 0, impulse: 0, strain: 0, phase: "idle", t: 0, hold: 0, flicker: 1, spent: 0, spentT: 0 };
   const tipTint = new THREE.Color(0xffd98a);
 
   // the DOM card's CSS width — the 3D card inside the pack projects to exactly this
@@ -580,6 +582,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       shake.until = 0;
       startBurst(power); // the cards blow out of the open back and scatter, backs to the lens
       release(power, 0.04);
+      // the flash reads first, then the spent sheet sinks into the dark behind the cards
+      beatTimers.push(setTimeout(() => { if (!disposed) { light.spentT = 1; requestRender(); } }, 260));
     }
     // exit: the spent body drops away (px, so iOS animates it)
     const reach = Math.max(window.innerWidth, window.innerHeight) * 1.3;
@@ -664,6 +668,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     light.seam += (light.seamT - light.seam) * k;
     light.inner += (light.innerT - light.inner) * k;
     light.room += (light.roomT - light.room) * kr;
+    light.spent += (light.spentT - light.spent) * (1 - Math.exp(-dt / 0.45));
     light.impulse *= Math.exp(-dt / 0.09);
     // a live flame while the hand is on it; steady when paused or open
     const live = light.phase === "antic" || light.phase === "tear";
@@ -684,15 +689,23 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     // (The base rig is brighter than it was, so the dim bites a little deeper to land
     // the open at the same darkness it was tuned for.)
     const dimK = 1 - 0.58 * light.room;
-    mats.bodyExt.envMapIntensity = mats.headerExt.envMapIntensity = EXT_ENV * dimK;
-    mats.bodyExt.emissiveIntensity = mats.headerExt.emissiveIntensity = EXT_EMI * dimK;
+    // …and the SPENT wrapper (the back pop's blown-open sheet) goes darker still: its
+    // reflections, print-light and the inside's glow sink, the foil's own gold darkens
+    // (the cards in front of it are lit by their own print, not this)
+    const spentK = 1 - 0.62 * light.spent, spentIn = 1 - 0.72 * light.spent;
+    mats.bodyExt.envMapIntensity = mats.headerExt.envMapIntensity = EXT_ENV * dimK * spentK;
+    mats.bodyExt.emissiveIntensity = mats.headerExt.emissiveIntensity = EXT_EMI * dimK * spentK;
+    mats.bodyExt.color.setScalar(1 - 0.4 * light.spent);
+    mats.bodyInt.envMapIntensity = mats.headerInt.envMapIntensity = EXT_ENV * spentIn;
+    mats.bodyInt.color.setHex(INT_GOLD).multiplyScalar(1 - 0.45 * light.spent);
+    mats.headerInt.color.copy(mats.bodyInt.color);
     lights.key.intensity = KEY_I * (1 - 0.5 * light.room);
     lights.fill.intensity = FILL_I * (1 - 0.65 * light.room);
     lights.hemi.intensity = HEMI_I * dimK;
     // the inside catches the light
-    mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = 0.55 * inner + 1.2 * imp;
+    mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = (0.55 * inner + 1.2 * imp) * spentIn;
     // the point light at the tear tip, inside the foil
-    innerLight.intensity = INNER_MAX * (inner + 3.2 * imp);
+    innerLight.intensity = INNER_MAX * (inner + 3.2 * imp) * (1 - 0.5 * light.spent);
     if (front) innerLight.position.set(detached ? 0 : tipX - 0.004, yT0 - 0.005, 0.0004);
     else innerLight.position.set(0, detached ? 0.01 : tipY + 0.004, -b0 + 0.0025);
     // the core: just inside the surface, so the foil still in place hides it
@@ -710,7 +723,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   }
   // (a paused tear keeps its light but needs no frames: the levels are static until the hand returns)
   const lightMoving = () => light.phase === "open" || light.impulse > 0.004
-    || Math.abs(light.seam - light.seamT) > 0.004 || Math.abs(light.inner - light.innerT) > 0.004 || Math.abs(light.room - light.roomT) > 0.004;
+    || Math.abs(light.seam - light.seamT) > 0.004 || Math.abs(light.inner - light.innerT) > 0.004 || Math.abs(light.room - light.roomT) > 0.004
+    || Math.abs(light.spent - light.spentT) > 0.004;
 
   function stepFly(dt) {
     if (!fly) return;
@@ -1063,6 +1077,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     beatTimers.length = 0;
     light.phase = "idle";
     light.seam = light.seamT = light.inner = light.innerT = light.room = light.roomT = light.impulse = light.strain = 0;
+    light.spent = light.spentT = 0;
     light.flicker = 1;
     room.reset();
     sfx.foilStretch(false);
