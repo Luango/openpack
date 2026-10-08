@@ -442,10 +442,14 @@ export function createReveal({ mountEl, onAgain }) {
     // higher, overshoots deeper, and pops larger. Timing is fixed (see the CSS) so
     // the contact dip stays locked to the impact cues. punch: 0 below Team of the Week → 1 at Legend.
     const punch = Math.max(0, Math.min(1, (rarityToTier(entry.card) - 3) / 6));
-    el.style.setProperty("--enter-rise", (34 + punch * 26).toFixed(0) + "px");
+    // A common starts EXACTLY where it already sat as the card behind (the depth-1
+    // resting pose: 5px down, 1% smaller — see the CSS stack step) so the swap reads
+    // as the front card being lifted off a real deck, with nothing jumping or
+    // fading underneath. A rare (uncovered after the hold) still rises from deeper.
+    el.style.setProperty("--enter-rise", (5 + punch * 40).toFixed(0) + "px");
     el.style.setProperty("--enter-dip", (-(6 + punch * 12)).toFixed(0) + "px");
     el.style.setProperty("--enter-pop", (1.015 + punch * 0.05).toFixed(3));
-    el.style.setProperty("--enter-from", (0.9 - punch * 0.06).toFixed(3));
+    el.style.setProperty("--enter-from", (0.99 - punch * 0.12).toFixed(3));
     el.classList.remove("entering", "gleaming");
     void el.offsetWidth; // restart the keyframe if it was mid-play
     el.classList.add("entering");
@@ -924,7 +928,10 @@ export function createReveal({ mountEl, onAgain }) {
       s.slot.classList.toggle("front", d === 0);
       s.slot.classList.toggle("flung", d < 0);
       s.slot.style.setProperty("--d", String(Math.max(0, d)));
-      s.slot.style.zIndex = String(d < 0 ? 1 : 100 - d);
+      // flung cards stay ABOVE the deck (later flings on top of earlier) so the
+      // leaving card covers the cards behind it all the way off — a real swap-off,
+      // not a card sinking through the stack as it goes
+      s.slot.style.zIndex = String(d < 0 ? 200 + i : 100 - d);
       s.slot.style.pointerEvents = d === 0 && !peeking ? "auto" : "none";
     });
   }

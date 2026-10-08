@@ -956,9 +956,13 @@
       }
       .reveal__slot.flung {
         /* flicked away to the next — direction + spin come from reveal.js so each
-           flick throws a little differently (left/right), with weight */
-        transform: translateY(-135%) translateX(var(--fling-x, 0px)) rotate(var(--fling-rot, -6deg)) scale(1.02);
-        opacity: 0;
+           flick throws a little differently (left/right), with weight. The card stays
+           FULLY OPAQUE and above the deck the whole way (z from reveal.js): it's a
+           real card swapped off the top, physically uncovering the one behind — never
+           a dissolve. -180% clears the top of the screen before it parks. */
+        transform: translateY(-180%) translateX(var(--fling-x, 0px)) rotate(var(--fling-rot, -6deg)) scale(1.02);
+        opacity: 1;
+        transition: transform 0.5s cubic-bezier(0.4, 0.1, 0.5, 1);
       }
       /* while you drag the deck into a fanned hand (reveal.js), the spring writes
          each slot's transform every frame — kill the CSS easing so it tracks 1:1 */
@@ -1307,8 +1311,12 @@
          set in reveal.js enter()): a common sets down gently; a chase drops harder
          and overshoots more. The end is always rest (0 / scale 1) → no jump. */
       .reveal__slot.front.entering { animation: card-enter 0.46s cubic-bezier(0.22, 1.16, 0.32, 1) both; }
+      /* The next card is already THERE in the deck (it was the card behind) — so
+         it never fades in: it starts opaque at its resting depth-1 pose and comes
+         forward into the hand as the card in front is swapped off. Rares still
+         rise from deeper + pop larger (the amplitude vars from reveal.js). */
       @keyframes card-enter {
-        0%   { transform: translateY(var(--enter-rise, 34px)) scale(var(--enter-from, 0.9)); opacity: 0; }
+        0%   { transform: translateY(var(--enter-rise, 5px)) scale(var(--enter-from, 0.99)); opacity: 1; }
         55%  { transform: translateY(var(--enter-dip, -6px))  scale(var(--enter-pop, 1.015)); opacity: 1; } /* contact dip, past rest */
         78%  { transform: translateY(2px) scale(0.997); opacity: 1; }
         100% { transform: translateY(0)   scale(1);     opacity: 1; }
