@@ -112,8 +112,11 @@ ticks and swapped in when ready.
 ## Materials and lighting ([`materials.js`](../src/pack3d/materials.js), [`lighting.js`](../src/pack3d/lighting.js))
 
 `MeshStandardMaterial` throughout. The wrapper is one deforming surface rendered twice:
-the exterior on front-facing polygons, the **inner foil** (bare silver, metalness 1,
-roughness 0.46) on back-facing ones — opposite culling, never two coplanar meshes. The
+the exterior on front-facing polygons, the **inner foil** (the same gold laminate,
+unprinted: a bare gold base, metalness 0.9, roughness 0.4, the crinkle-only normal map —
+`textures.js` builds a second normal map from the height field before the print's raised
+ink is laid on, so the brand never reads as a mirrored emboss inside) on back-facing ones —
+opposite culling, never two coplanar meshes. The
 header has its own material clones so it can fade while flying clear. Torn-edge ribbons
 (unlit bright silver) are built only along released boundary samples.
 
@@ -153,10 +156,17 @@ narrows 3 %, and the seam **gapes** in a lens just below the top crimp (a hinge 
 ~4° about the side folds, late in the pull — squared in the strain). The rigid part of the
 feel is the view's: the pack is hauled ~20 % of the way toward the hand on an underdamped
 spring (it boings back on release, recoils on the pop), leans with the pull, and trembles
-with an amplitude that rises with strain<sup>2.4</sup>. At the pop both back halves hinge
-open together about their side folds (`flapOpen`, a fast overshooting spring, tapered to
-zero into the crimps so they stay put — the almond opening), the fin's free edge lifts and
-rides the right flap, and the torn-edge ribbons appear along the whole seam at once.
+with an amplitude that rises with strain<sup>2.4</sup>. At the pop the wrapper is BLOWN
+OPEN flat: both back halves — body, shoulders and the crimps' back layer alike, the seal
+having let go end to end — swing about their side folds to ~172° (`flapOpen`, a fast
+spring that carries them a little past flat and back; the side columns take a fading share
+of the swing so the fold unrolls, and the hinge follows the flared outline per vertex). The
+sheet curls like foil rather than swinging like a door: the free edge lags the hinge by the
+spring's speed and keeps a slight cup once settled. Nothing is left standing toward the
+lens, so no half looms in perspective or runs off the frame; where the laid-out sheet
+(twice the pack's width) would still overrun a narrow viewport the pack draws back from the
+lens as it opens (`recedeZ`, view.js). The fin's free edge lifts and rides the right half,
+and the torn-edge ribbons appear along the whole seam at once.
 
 ## Feedback ([`view.js`](../src/pack3d/view.js))
 
@@ -202,8 +212,8 @@ the camera impact.
 
 - Both routes inspected at 0 / 30 / 50 / 62 / 90 / 100 % in the lab (front: strip lifts,
   curls, travels, cap flies; back: the strain builds — hauled, bulged, pleated, stretched,
-  the seam sliver opens — then the pop: doors overshoot to the almond, fin rides the right
-  flap, the stack leaps out through the released light and lands face-up).
+  the seam sliver opens — then the pop: the wrapper blows open flat, fin rides the right
+  half, the stack leaps out through the released light and lands face-up).
 - Full app flow on desktop (`?noframe`) and a 375 × 812 phone viewport: gate → carousel →
   hand-off (face-on landing, then settle) → front tear by pointer drag → light beat →
   reveal; and flip → back pull by pointer drag (an early release slackens back) → pop →

@@ -216,6 +216,16 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims, printCanvas = n
   normalMap.minFilter = THREE.LinearMipmapLinearFilter;
   normalMap.anisotropy = 4;
   normalMap.needsUpdate = true;
+  // the inside of the sheet: the same foil relief WITHOUT the print's raised ink (the
+  // inner face is unprinted, so the brand must not read as a mirrored emboss there)
+  const normalInData = new Uint8Array(normalData);
+  const normalMapIn = new THREE.DataTexture(normalInData, N, N, THREE.RGBAFormat);
+  normalMapIn.colorSpace = THREE.NoColorSpace;
+  normalMapIn.wrapS = normalMapIn.wrapT = THREE.ClampToEdgeWrapping;
+  normalMapIn.generateMipmaps = true;
+  normalMapIn.minFilter = THREE.LinearMipmapLinearFilter;
+  normalMapIn.anisotropy = 4;
+  normalMapIn.needsUpdate = true;
 
   const ormData = new Uint8Array(R * R * 4);
   for (let i = 0; i < R * R; i++) { ormData[i * 4] = 255; ormData[i * 4 + 1] = 110; ormData[i * 4 + 2] = 230; ormData[i * 4 + 3] = 255; }
@@ -303,6 +313,7 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims, printCanvas = n
     const ps = printCanvas ? maskFloats(printCanvas, N) : null;
     if (ps) await yield_();
     const pb = ps ? await boxBlur(ps, N, Math.max(1, Math.round(PRINT_BEVEL_M / texM / 2)), yield_) : null;
+    const hIn = ps ? new Float32Array(N * N) : h; // the bare foil, before the print is laid on
     // per-face crinkle curves (fine, curved, short)
     const curves = {};
     for (const it of islands) {
@@ -386,6 +397,7 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims, printCanvas = n
         }
         // fine directional scratches (streaky along x)
         z += 0.000006 * (hash(i, j >> 2) - 0.5) + 0.000004 * (hash(i >> 1, j) - 0.5);
+        if (ps) hIn[j * N + i] = z;
         // the print sits ON the foil: its own smooth, raised surface
         if (ps && it.face) {
           const m = ps[j * N + i];
@@ -395,28 +407,34 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims, printCanvas = n
       }
       if ((j & 31) === 31) await yield_();
     }
-    for (let j = 0; j < N; j++) {
-      const jm = Math.max(0, j - 1), jp = Math.min(N - 1, j + 1);
-      for (let i = 0; i < N; i++) {
-        const im = Math.max(0, i - 1), ip = Math.min(N - 1, i + 1);
-        const dhdx = (h[j * N + ip] - h[j * N + im]) / (2 * texM);
-        const dhdy = (h[jp * N + i] - h[jm * N + i]) / (2 * texM);
-        let nx = -dhdx, ny = -dhdy, nz = 1;
-        const L = Math.hypot(nx, ny, nz);
-        nx /= L; ny /= L; nz /= L;
-        const o = (j * N + i) * 4;
-        normalData[o] = Math.round((nx * 0.5 + 0.5) * 255);
-        normalData[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-        normalData[o + 2] = Math.round((nz * 0.5 + 0.5) * 255);
-        normalData[o + 3] = 255;
+    const toNormals = async (hf, out) => {
+      for (let j = 0; j < N; j++) {
+        const jm = Math.max(0, j - 1), jp = Math.min(N - 1, j + 1);
+        for (let i = 0; i < N; i++) {
+          const im = Math.max(0, i - 1), ip = Math.min(N - 1, i + 1);
+          const dhdx = (hf[j * N + ip] - hf[j * N + im]) / (2 * texM);
+          const dhdy = (hf[jp * N + i] - hf[jm * N + i]) / (2 * texM);
+          let nx = -dhdx, ny = -dhdy, nz = 1;
+          const L = Math.hypot(nx, ny, nz);
+          nx /= L; ny /= L; nz /= L;
+          const o = (j * N + i) * 4;
+          out[o] = Math.round((nx * 0.5 + 0.5) * 255);
+          out[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+          out[o + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+          out[o + 3] = 255;
+        }
+        if ((j & 63) === 63) await yield_();
       }
-      if ((j & 63) === 63) await yield_();
-    }
+    };
+    await toNormals(h, normalData);
     normalMap.needsUpdate = true;
+    if (hIn !== h) await toNormals(hIn, normalInData);
+    else normalInData.set(normalData);
+    normalMapIn.needsUpdate = true;
   }
 
   const whenReady = (async () => { await buildORM(); await buildNormal(); })();
-  return { normalMap, ormMap, whenReady };
+  return { normalMap, normalMapIn, ormMap, whenReady };
 }
 
 // a tiny tiling strip for the deck's rim: thin light lines = the card edges
