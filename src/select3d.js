@@ -130,7 +130,7 @@ const INTRO_C1 = { x: -5,  y: 3.5, z: 4 };     // start tangent — eases down a
 const INTRO_C2 = { x: -3,  y: 0,   z: -RING_R };// end tangent — arrives level, flattening to +x (shorter = gentler merge speed)
 const INTRO_DIR = -1;     // wheel carry direction: -1 = counter-clockwise (flip to +1 for CW)
 
-export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, onLand, onIntroEnd, onIntroStart }) {
+export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onChange, getHandoffRect, getHandoffPose, onLand, onIntroEnd, onIntroStart }) {
   // --- renderer / scene / camera -------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: !COARSE, alpha: true, powerPreference: "high-performance" });
   renderer.setClearColor(0x000000, 0); // transparent — the page's nebula bg shows through
@@ -681,14 +681,25 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     heroTarget = handoffPose();         // measured AFTER onSelect, so the rect is current
   }
 
-  // Solve the hero's landing pose so its on-screen rectangle coincides with the SVG
-  // tear-pack's: BILLBOARD it to face the lens (no tilt/roll → an undistorted rect),
-  // sit it dead-centre on the view axis (where the SVG pack is centred), and scale it
-  // so its projected HEIGHT equals the SVG pack's pixel height. Same art, same place,
-  // same size → the cross-dissolve to the SVG pack is seamless.
-  const _fwd = new THREE.Vector3();
+  // Solve the hero's landing pose so it coincides on screen with the stage pack it will
+  // dissolve into: BILLBOARD it to the lens, sit it dead-centre on the view axis (where
+  // the stage pack is centred), and scale it so its face-on projected HEIGHT equals the
+  // stage pack's pixel height. Then turn it, in the lens's frame, into the stage pack's
+  // REST pose (getHandoffPose — the 3D pouch idles in a slight three-quarter view, the
+  // flat SVG fallback reports none and stays face-on). Both renderers use the same 36°
+  // lens and the same envelope, and equal pixel height at equal fov means equal angular
+  // size, so the perspective matches too: same art, same place, same size, same angle
+  // → the cross-dissolve joins two identical stills, and nothing has to turn after
+  // landing (the old face-on landing left the pack to twitch round to its rest view
+  // once the canvas was gone — a visible second beat at the end of the transition).
+  const _fwd = new THREE.Vector3(), _restE = new THREE.Euler(), _restQ = new THREE.Quaternion();
   function handoffPose() {
     const quat = camera.quaternion.clone(); // billboard: parallel to the image plane
+    const hp = getHandoffPose?.();
+    // the stage sets packGroup.rotation.set(pitch, yaw, 0) — Euler XYZ — in a frame whose
+    // camera has identity rotation; applied here as a LOCAL turn after the billboard
+    // (multiply = local axes) it is the same rotation relative to this lens
+    if (hp && (hp.yaw || hp.pitch)) quat.multiply(_restQ.setFromEuler(_restE.set(hp.pitch || 0, hp.yaw || 0, 0, "XYZ")));
     const zc = 3.0;                          // view-space depth in front of the lens at landing
     const aspect = heroMesh.userData.aspect || 1.4;
     const h = mountEl.clientHeight || window.innerHeight || 1;
@@ -714,8 +725,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // On the way it SPINS a full 360° about its own upright axis — a showy pirouette rather
   // than a plain slide to the lens. The spin is driven by the same eased progress as the
   // flight (fast through the middle, settling at the end) and totals exactly one turn, so
-  // at selT=1 the pack is back to the billboard pose and the cross-dissolve rect is
-  // untouched. The flight is longer than the old 0.66s slide so the turn can be read.
+  // at selT=1 the pack is exactly in the solved landing pose (handoffPose) and the
+  // cross-dissolve match is untouched. The flight is longer than the old 0.66s slide so
+  // the turn can be read.
   const SELECT_SEC = 1.05;
   const SELECT_TURNS = 1;
   const _spinQ = new THREE.Quaternion(), _upAxis = new THREE.Vector3(0, 1, 0);

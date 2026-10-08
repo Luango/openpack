@@ -19,6 +19,9 @@
       .pack3d-wrap { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; }
       .pack3d-wrap.ready { opacity: 1; }
       .pack3d-body { position: absolute; inset: 0; }
+      .pack3d-glide { position: absolute; inset: 0; } /* the float's counter-transform layer (view.js startFloat) */
+      .pack3d-wrap.settled .pack3d-body { animation: float 5s ease-in-out infinite; }
+      @keyframes float { 0%, 100% { transform: translateY(-6px) rotate(-0.4deg); } 50% { transform: translateY(6px) rotate(0.4deg); } }
       .pack3d-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
       .pack-glow { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: -1;
         opacity: calc(var(--idle-heat, 0) * 0.6); background: radial-gradient(closest-side, color-mix(in srgb, var(--tell, #ffd49e) 80%, #fff) 0%, var(--tell, #ffb877) 34%, transparent 72%); filter: blur(16px); mix-blend-mode: screen; }

@@ -4,7 +4,7 @@
 // (view.js) and falls back to the flat SVG tear-pack (../pack.js) when WebGL is
 // unavailable or the page asks for it (?pack=svg). Both expose the same host
 // contract: reset, setArmed, setTell, and (3D only) setCards / getHandoffRect /
-// present — the host guards the extras with optional chaining.
+// getHandoffPose / present — the host guards the extras with optional chaining.
 
 import { createPack3D } from "./view.js";
 
