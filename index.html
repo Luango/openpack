@@ -1025,6 +1025,36 @@
         opacity: 0;
         pointer-events: none;
       }
+      /* the light swelling in the empty frame before the player comes out of it —
+         white at the heart, the edition's colour round it */
+      .card__print .print-charge {
+        position: absolute;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(
+          closest-side,
+          rgba(255, 255, 255, 0.95),
+          color-mix(in srgb, var(--tier-color) 55%, transparent) 42%,
+          transparent
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* the player rising out of that light as a pure white silhouette (its own
+         mask, card.playerMask) before it melts away to the photo */
+      .card__print .print-ghost {
+        position: absolute;
+        inset: 0;
+        background: #ffffff;
+        -webkit-mask: var(--ghost-mask) center / 100% 100% no-repeat;
+        mask: var(--ghost-mask) center / 100% 100% no-repeat;
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* the player's gloss layer lights the player's silhouette — keep it off while
+         the card is still bare, and fade it in once the player is there */
+      .reveal__slot .card__player { transition: opacity 0.45s ease; }
+      .reveal__slot .card.unprinted .card__player { opacity: 0; }
       /* a rare pull adds a tier-colored glow on top of the card's own shadow */
       .reveal__slot.front.rare .card--detail {
         box-shadow:
