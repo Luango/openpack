@@ -20,6 +20,12 @@ export function nearLight(m) {
   return m;
 }
 
+// The exterior's base exposure: how much of the reflection room the foil shows, and
+// a little self-light from its own print (the carousel's packs carry the same, see
+// select3d.js makePackMaterial) so the gold reads whatever the backdrop behind it —
+// the stage's room dims both with `light.room` during the open (view.js stepLight).
+export const EXT_ENV = 0.85;
+export const EXT_EMI = 0.1;
 export function makeMaterials({ map, normalMap, ormMap }) {
   const ext = () => nearLight(new THREE.MeshStandardMaterial({
     map,
@@ -29,7 +35,10 @@ export function makeMaterials({ map, normalMap, ormMap }) {
     metalnessMap: ormMap,
     roughness: 1,
     metalness: 1,
-    envMapIntensity: 1.15,
+    envMapIntensity: EXT_ENV,
+    emissive: 0xffffff,
+    emissiveMap: map,
+    emissiveIntensity: EXT_EMI,
     side: THREE.FrontSide,
   }));
   // the inner foil: bare silver, softer than the print side. Not a pure metal, so
