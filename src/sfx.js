@@ -316,6 +316,7 @@ export function audioStatus() {
     gestureSeen, outputUnlocked, ctx: ctx ? ctx.state : "(none)", muted,
     vol: +userVol.toFixed(2), scene: currentScene, musicStarted, lastPlay: _lastPlay,
     watching: !!bedWatchTimer,
+    rip: ripStatus(),
     beds: [...beds].map(([k, b]) => ({
       k, paused: b.el ? b.el.paused : null,
       t: b.el ? +b.el.currentTime.toFixed(2) : null,
@@ -1025,6 +1026,76 @@ export function foilStretch(on, amount = 0.5) {
   if (stretch.sample) stretch.src.playbackRate.setTargetAtTime(0.42 + a * 0.32, t, 0.06);
 }
 
+// THE TOP RIP, SCRUBBED — with a `tear_rip` recording loaded (one long wrapper
+// crinkle, not a loop), the front rip doesn't loop a texture: the recording is
+// SCRUBBED by the tear. Its timeline is pinned to the tear's progress — 0 is the
+// notch, 1 is the far edge — and as the hand hauls, short overlapping GRAINS of the
+// recording play from wherever the tear has reached, each at its natural pitch. So the
+// sound only exists while the foil is actually opening (nothing moves, nothing plays),
+// a slow creep crackles slowly, a fast haul skips through the file fast and dense, a
+// paused tear resumes from exactly the point it stopped, and the recording's end lands
+// on the rip's end.
+const RIP_IN = 1.15, RIP_OUT = 6.2; // the stretch of the recording that carries the rip (head + tail are room tone)
+const RIP_GRAIN = 0.12; // s: one grain of the recording per step of the tear
+const RIP_HOP = 0.035; // s of recording the tear must advance to earn the next grain
+const RIP_GAP = 0.014; // s real time between grains at most: a fast haul samples the file sparsely
+let ripGrains = 0; // (diagnostics) grains played this rip
+
+function ripStart(c, tier) {
+  const buf = pickBuffer("tear_rip");
+  if (!buf) return false;
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 240; // a real recording: only scrub the handling rumble
+  const g = c.createGain();
+  g.gain.value = 1;
+  hp.connect(g).connect(master);
+  send(g, 0.1);
+  const out = Math.min(RIP_OUT, buf.duration - 0.05), inn = Math.min(RIP_IN, out - 0.5);
+  ripGrains = 0;
+  tear = { c, rip: true, buf, hp, g, in: inn, out, lastPos: null, lastT: -1, tier, step: -1 };
+  return true;
+}
+function ripMove(progress, i) {
+  const r = tear, c = r.c, now = c.currentTime;
+  // the recording's position for this much tear (no progress given: creep forward a hop)
+  const pos = progress != null ? r.in + Math.max(0, Math.min(1, progress)) * (r.out - r.in) : (r.lastPos ?? r.in) + RIP_HOP;
+  if (r.lastPos != null && pos - r.lastPos < RIP_HOP) return; // not far enough for a new grain
+  if (now - r.lastT < RIP_GAP) return; // too soon: a fast haul skips ahead instead of piling up
+  // grains that overlap (a fast haul) share the level, so density doesn't blow up the loudness
+  const overlap = Math.max(1, Math.min(8, RIP_GRAIN / Math.max(RIP_GAP, now - r.lastT)));
+  const level = (0.55 + i * 0.35) / Math.sqrt(overlap);
+  const src = c.createBufferSource();
+  src.buffer = r.buf;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.linearRampToValueAtTime(level, now + 0.012);
+  g.gain.setValueAtTime(level, now + RIP_GRAIN - 0.035);
+  g.gain.linearRampToValueAtTime(0.0001, now + RIP_GRAIN);
+  src.connect(g).connect(r.hp);
+  src.start(now, pos, RIP_GRAIN + 0.01);
+  src.stop(now + RIP_GRAIN + 0.01);
+  r.lastPos = pos;
+  r.lastT = now;
+  ripGrains++;
+}
+function ripEnd(commit, i) {
+  const r = tear;
+  const now = r.c.currentTime;
+  // the grains in flight end on their own (≤ RIP_GRAIN); the bus just closes behind them
+  r.g.gain.setValueAtTime(1, now);
+  r.g.gain.linearRampToValueAtTime(0.0001, now + (commit ? 0.16 : 0.08));
+  // a recorded snap on commit; if none, the synth fibres still fray
+  if (commit && !playSample("tear_snap", { gain: 0.6 + i * 0.5, send: 0.18 })) shred(r.c, i, r.tier);
+  tear = null;
+}
+// (drives the ?audiodebug HUD / headless tests: where in the recording the rip is)
+export function ripStatus() {
+  const r = tear;
+  if (!r || !r.rip) return null;
+  return { pos: r.lastPos == null ? null : +r.lastPos.toFixed(3), in: r.in, out: r.out, grains: ripGrains, sinceGrain: +(r.c.currentTime - r.lastT).toFixed(3) };
+}
+
 export function tearStart(tier = 0) {
   let c;
   try {
@@ -1033,6 +1104,7 @@ export function tearStart(tier = 0) {
     return;
   }
   stopTear();
+  if (ripStart(c, tier)) return; // the recorded rip, scrubbed by the tear's progress (ripMove)
   const loop = startLoopSample("tear_loop");
   if (loop) { tear = { ...loop, sample: true, tier, step: -1 }; return; } // recorded rip — modulated in tearMove
   const tg = Math.max(0, Math.min(1, (tier - 3) / 6)); // 0 below Rare Gold → 1 at Legend
@@ -1068,6 +1140,7 @@ export function tearMove(intensity = 0.5, progress = null) {
   if (!tear) return;
   const i = Math.max(0, Math.min(1, intensity));
   if (progress != null) tearChimeUp(progress); // the rising chime-up, over either rip
+  if (tear.rip) { ripMove(progress, i); return; }
   if (tear.sample) {
     const ts = tear.c.currentTime;
     tear.g.gain.setTargetAtTime(0.1 + i * 0.5, ts, 0.03); // louder with pull speed
@@ -1086,6 +1159,7 @@ export function tearMove(intensity = 0.5, progress = null) {
 
 export function tearEnd(commit = false, intensity = 0.6) {
   if (!tear) return;
+  if (tear.rip) { ripEnd(commit, Math.max(0, Math.min(1, intensity))); return; }
   if (tear.sample) {
     const { c, src, g, tier } = tear;
     const t = c.currentTime;
@@ -1210,7 +1284,7 @@ export function tearRelease() {
 function stopTear() {
   if (!tear) return;
   try {
-    tear.src.stop();
+    tear.src?.stop(); // (a scrubbed rip has no running source: its grains end on their own)
   } catch {
     /* already stopped */
   }
