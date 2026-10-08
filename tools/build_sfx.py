@@ -200,9 +200,9 @@ emit("open_release", "open-release.wav", one_shot("interface/**/confirmation_001
 emit("conclude", "conclude.wav", one_shot("interface/**/confirmation_004.ogg", -8))
 # pip — tiny UI tick per count pip
 emit("pip", "pip.wav", one_shot("interface/**/pluck_001.ogg", -12))
-# gulp — juicy round blip for sucking a card into the binder (engine pitches up per card)
-emit("gulp", "gulp-1.wav", one_shot("interface/**/drop_001.ogg", -8))
-emit("gulp", "gulp-2.wav", one_shot("interface/**/drop_002.ogg", -8))
+# gulp — a card is sucked into the binder (engine pitches up per card). NOT built here:
+# collect.mp3 is a hand-placed recorded UI sound already in assets/sfx/ — keep it listed.
+out["gulp"] = ["collect.mp3"]
 # reject — dull "nope"
 emit("reject", "reject.wav", one_shot("interface/**/error_003.ogg", -8))
 # hover — soft tick (desktop gallery)

@@ -48,6 +48,7 @@ changes needed.
 | `setdown` | the hand lands on arrival | a soft **glossy card set-down** (a "pap" + contact click) | round-robin + jitter |
 | `cardtap` | deeper cards riffle in / a pack docks onto the ring | a quiet **card-on-card riffle tap** | quieter the deeper the card; round-robin |
 | `pack_in` | a pack flies into the carousel ring (queue-in entrance) | an airy **pack whoosh** with a little weight (heavier than a thin card flick) | pitched up per pack so the queue ascends; round-robin + jitter (give it 2–3 variants) |
+| `gulp` | a card is sucked into the binder ("Collect") | a short satisfying **absorb / pop** UI sound | pitched up per card (ascending); a touch of makeup gain |
 | `pip` | the count pips fade in | a tiny **UI tick / blip** | pitched up per card (ascending) |
 | `spark` | idle edge glints on the sealed pack | a soft **high glint / shimmer** | round-robin + jitter (fires every few seconds) |
 | `reject` | a tear is voided (hooks back) | a dull descending **"nope" / blocked** stab | one-shot |
@@ -99,7 +100,9 @@ needed. Provenance:
 - **Kenney** (https://kenney.nl) — CC0 — *Casino Audio* (card slide/place/fan, pack
   take-out & rip → `flick`, `setdown`, `cardtap`, `grab`, `tear_snap`), *Impact Sounds*
   (punch body for `open_burst`/`reveal_impact`), *Interface Sounds* (`scratch`, `spark`,
-  `pip`, `gulp`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
+  `pip`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
+- **`collect.mp3`** (`gulp`) — a recorded UI sound supplied by the project owner
+  (2026-10-08); hand-placed, not rebuilt by `tools/build_sfx.py`.
 - **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`/`tear_snap`.
 - **"100 CC0 SFX"**, OpenGameArt — CC0 — gong/explosion/glass for `reveal_impact` &
   `riser`, the bell for `chime`, metal/glass for the `tear_snap` crackle.
