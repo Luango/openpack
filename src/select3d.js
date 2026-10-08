@@ -24,7 +24,6 @@
 
 import * as THREE from "three";
 import * as sfx from "./sfx.js";
-import { drawBall } from "./ball.js";
 import { getPackAsset } from "./pack3d/asset.js";
 import { buildEnvironment } from "./pack3d/lighting.js";
 
@@ -183,21 +182,22 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // --- shader backdrop: an awards-night stage ----------------------------------
   // The canvas is transparent, so the carousel used to sit on the page's near-black
   // bg → "太黑太暗". This fills the frame FIRST with the stage: two warm spotlights
-  // at the top corners with soft beams, the gallery twinkling with camera flashes,
-  // an amber pool behind the front pack and a polished black floor the packs reflect
-  // in. It's ONE fullscreen quad drawn in clip space (camera-independent, no fog/
+  // at the top corners sweeping slow beams across it, an overhead shaft onto the front
+  // pack, the gallery twinkling with camera flashes, an amber pool behind the front pack
+  // and a polished black floor the packs (and that light) reflect in. It's ONE fullscreen quad drawn in clip space (camera-independent, no fog/
   // projection) with a loop-free fragment shader — the whole lit stage at almost no
   // GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
   const backdrop = makeBackground();
   scene.add(backdrop.mesh);
 
-  // --- ambiance: drifting glow particles -----------------------------------
-  const particles = makeParticles();
+  // --- ambiance: light + gold dust (no objects — the packs are the only things) ---
+  // twinkling gold dust drifting up through the whole stage
+  const particles = makeParticles(renderer);
   scene.add(particles.points);
-  // slowly-rising golden balls BEHIND the wheel — they drift up through the haze,
-  // so the scene has motes of depth rather than a flat backdrop.
-  const rising = makeRisingCards();
-  scene.add(rising.group);
+  // soft out-of-focus gold BOKEH BEHIND the wheel — points of light rising through the
+  // haze, so the scene has depth rather than a flat backdrop
+  const bokeh = makeBokeh();
+  scene.add(bokeh.group);
 
   // --- build a pack mesh per roster entry ----------------------------------
   const group = new THREE.Group();
@@ -244,6 +244,25 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     r.visible = false;       // placeReflection turns it on once positioned
     reflGroup.add(r);
     mesh.userData.refl = r;
+    // The floor mirrors the pack's rim BEAM too, not just its art: a second ribbon on the
+    // same outline, parented to the reflection quad so it inherits the mirrored transform
+    // (the quad and the pack share one local frame). It shares the live rim's clock,
+    // phase, speed and focus uniforms, so the reflected comet runs in lockstep with the
+    // real one — it only differs in its own opacity and the floor fade (uRefl).
+    const rim = mesh.userData.rim;
+    if (rim) {
+      const ru = rim.material.uniforms;
+      const rmat = makeRimMaterial();
+      Object.assign(rmat.uniforms, { uTime: ru.uTime, uPhase: ru.uPhase, uSpeed: ru.uSpeed, uFocus: ru.uFocus, uHalfH: ru.uHalfH });
+      rmat.uniforms.uRefl.value = 1;
+      rmat.uniforms.uOpacity.value = 0;
+      const rr = new THREE.Mesh(rim.geometry, rmat);
+      rr.frustumCulled = false;
+      rr.renderOrder = 998; // after every pack + reflection quad; additive, so order is cosmetic
+      r.add(rr);
+      mesh.userData.reflRim = rr;
+      rimMats.push(rmat); // (for dispose)
+    }
   }
   // Mirror a pack's CURRENT transform about its own base into its reflection quad, and
   // set the reflection's opacity from the pack's opacity × how square-on it is. The quad
@@ -269,6 +288,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const facing = smoothstep(0.06, 0.4, Math.abs(c));          // front OR back on; fade through the edge-on side
     const op = packOp * facing;
     r.material.uniforms.uOpacity.value = op;
+    // the reflected beam follows the live rim's own opacity (pack fade × facing fade —
+    // set just before this in layout/stepIntro), dimmed like the art's reflection
+    const rr = mesh.userData.reflRim;
+    if (rr) rr.material.uniforms.uOpacity.value = mesh.userData.rim.material.uniforms.uOpacity.value * REFL_RIM;
     // Phones: only the FRONT-most packs cast a reflection — the side/back ones are small,
     // dim and barely seen, so culling them slashes transparent overdraw (the carousel's
     // biggest mobile cost) while the prominent hero reflection stays.
@@ -317,6 +340,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // under the body's mid bulge) so head-on it still reads as the outline glow.
     if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.046, RIM_Z));
     const mat = makeRimMaterial();
+    mat.uniforms.uHalfH.value = aspect / 2; // the pack's base (local y = −aspect/2) is the floor contact line
     // Randomise each pack's comet so they DON'T flow in sync: a random start position
     // around the loop, plus a small speed jitter so they keep drifting apart instead of
     // holding a fixed offset.
@@ -422,6 +446,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       if (mm.emissiveMap) mm.emissiveIntensity = emi;
       mm.envMapIntensity = env;
     }
+    // The rim beam (流光) follows the same focus, on the sharper pop curve: the centred
+    // pack's beam burns bright, wide and long-tailed; its neighbours' shrink to a thin,
+    // dim, short trace. `front` is continuous in the wheel angle, so a pack's beam swells
+    // and recedes smoothly as it turns through the front (the reflection shares uFocus).
+    const rim = mesh.userData.rim;
+    if (rim) rim.material.uniforms.uFocus.value = Math.pow(front, 5);
   }
 
   function applyOpacity(mesh, op) {
@@ -483,7 +513,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     }
 
     particles.update(dt);
-    rising.update(dt);
+    bokeh.update(dt, camera.aspect);
     backdrop.update(t);                                   // the stadium lives: camera flashes, beam shimmer
     for (const m of rimMats) m.uniforms.uTime.value = t; // one clock; each beam's own phase/speed offsets it
     // While dissolving we hold the hero frozen on its landed frame — running layout()
@@ -943,6 +973,9 @@ function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - 
 function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+// The ambient fields (dust, bokeh) are laid out for a landscape view; a portrait phone
+// sees a far narrower slice of the stage, so squeeze their width to it (1 = as laid out).
+function viewSpread(aspect) { return Math.max(0.32, Math.min(1, (aspect || 1) / 1.4)); }
 
 // ---- rim light + border beam ----------------------------------------------
 // Trace the pack art's OUTER silhouette from its alpha, returned as a closed loop
@@ -1050,20 +1083,41 @@ function makeRimGeometry(outline, halfW, z) {
   return g;
 }
 
+// How bright the floor's mirror of a rim beam is, relative to the live beam (the art's
+// own reflection sits at 0.40 — the light reads a touch stronger on the polished floor).
+const REFL_RIM = 0.5;
+
 // The beam shader: a weak warm rim everywhere + a bright comet (tight head, trailing
 // tail) racing around the loop. Additive, so it reads as LIGHT against the dark scene.
+// uFocus (0 side → 1 centred, from focusLight) scales it per pack: the front pack's beam
+// is brighter, wider and longer-tailed; the others' a thin, dim, short trace. The same
+// shader draws the floor reflection (uRefl = 1), which fades out with distance from the
+// pack's base exactly like the reflected art.
 const RIM_VERT = `
   attribute float aArc; attribute float aSide;
-  varying float vU; varying float vV;
-  void main() { vU = aArc; vV = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  uniform float uRefl;   // 1 on the floor-reflection copy
+  uniform float uHalfH;  // half the pack's local height — local y = −uHalfH is its base
+  varying float vU; varying float vV; varying float vFade;
+  void main() {
+    vU = aArc; vV = aSide;
+    float h = clamp((position.y + uHalfH) / (2.0 * uHalfH), 0.0, 1.0); // 0 at the base → 1 at the top
+    vFade = mix(1.0, pow(1.0 - h, 1.4), uRefl); // the mirror: bright at the contact line, gone below
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }`;
 const RIM_FRAG = `
   precision mediump float;
-  varying float vU; varying float vV;
+  varying float vU; varying float vV; varying float vFade;
   uniform float uTime; uniform float uOpacity;
   uniform float uPhase; uniform float uSpeed;
+  uniform float uFocus;
   uniform vec3 uWarm; uniform vec3 uHot;
   void main() {
-    float edge = max(0.0, 1.0 - abs(vV));
+    float width = mix(0.42, 1.0, uFocus);              // side packs: a thin line; front: the full ribbon
+    float rimG  = mix(0.6, 1.1, uFocus);               // the always-on rim lifts only a little…
+    float gain  = mix(0.5, 2.1, uFocus);               // …the flowing comet is where the front burns
+    float tailL = mix(0.09, 0.24, uFocus);             // and its comet trails further
+    float headW = mix(0.0009, 0.0022, uFocus);         // with a broader head
+    float edge = max(0.0, 1.0 - abs(vV) / width);
     float body = pow(edge, 1.1);                       // broad soft glow across the ribbon
     float hot  = pow(edge, 4.0);                       // a hotter thin core inside it
     // per-pack phase + speed (set in addRimBeam) so each comet sits at a DIFFERENT spot
@@ -1072,11 +1126,11 @@ const RIM_FRAG = `
     float ahead = fract(vU - head);
     float behind = fract(head - vU);
     float ring = min(ahead, behind);                   // circular distance to the head
-    float comet = exp(-ring * ring / 0.0016);          // bright head
-    float tail  = exp(-behind / 0.20) * 0.7;           // exponential tail trailing the head
+    float comet = exp(-ring * ring / headW);           // bright head
+    float tail  = exp(-behind / tailL) * 0.7;          // exponential tail trailing the head
     float beam = max(comet, tail);
-    // weak always-on rim (0.22) + the sweeping comet (dialled back); hot core sharpens it
-    float i = (body * (0.22 + 1.7 * beam) + hot * beam * 0.7) * uOpacity;
+    // weak always-on rim (0.22) + the sweeping comet; hot core sharpens it
+    float i = (body * (0.22 * rimG + 1.7 * beam * gain) + hot * beam * 0.7 * gain) * uOpacity * vFade;
     vec3 col = mix(uWarm, uHot, clamp(beam, 0.0, 1.0)); // gold rim → white-hot comet
     gl_FragColor = vec4(col * i * 1.12, i);            // mild overdrive → a soft bloom, not a blowout
   }`;
@@ -1087,6 +1141,9 @@ function makeRimMaterial() {
       uOpacity: { value: 1 },
       uPhase: { value: 0 },   // per-pack offset around the loop (set in addRimBeam)
       uSpeed: { value: 0.22 }, // per-pack sweep speed (jittered in addRimBeam)
+      uFocus: { value: 0 },   // 0 side → 1 centred (set per frame in focusLight)
+      uRefl: { value: 0 },    // 1 on the floor-reflection copy (buildReflection)
+      uHalfH: { value: 0.7 }, // half the pack's local height (set in addRimBeam)
       uWarm: { value: new THREE.Color(0xffc24a) },
       uHot: { value: new THREE.Color(0xfffdf2) },
     },
@@ -1151,9 +1208,10 @@ function setFaceFlash(mesh, v) {
 // A fullscreen quad painted in CLIP SPACE (the vertex shader writes gl_Position
 // directly from a 2×2 plane's xy, so it ignores the camera, fog and projection and
 // always fills the frame). The fragment shader is loop-free — a vertical palette,
-// two warm spotlights with soft beams, the gallery (a darker band salted with camera
-// flashes), an amber pool behind the front pack, a polished black floor with a gold
-// horizon and a soft vignette — so the whole lit stage costs one cheap fullscreen pass. The
+// two warm spotlights with slowly sweeping beams, an overhead shaft onto the hero, the
+// gallery (a darker band salted with camera flashes), an amber pool behind the front
+// pack, a polished black floor with a gold horizon and the hero's light streaked across
+// it, and a soft vignette — so the whole lit stage costs one cheap fullscreen pass. The
 // quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every
 // pack and reflection lands on top of it. uMobile calms it on phones.
 const BG_VERT = `
@@ -1165,6 +1223,7 @@ const BG_FRAG = `
   uniform float uTime;
   uniform float uAspect;  // viewport w/h → keeps the radial glows round
   uniform float uMobile;  // 1 on phones → calmer stands
+  uniform float uSweep;   // 1 → the corner spotlights sweep; 0 (reduced motion) → held still
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   void main() {
     vec2 uv = vUv;
@@ -1189,26 +1248,38 @@ const BG_FRAG = `
     float live = step(0.9 + 0.05 * uMobile, h);
     col += vec3(1.0, 0.95, 0.84) * dotm * blink * live * stands * 0.95;
 
-    // two warm spotlights at the top corners + their soft beams onto the stage
+    // two warm spotlights at the top corners whose soft beams SWEEP slowly across the
+    // stage, out of phase, so now and then they cross behind the wheel — the awards-night
+    // light sweep. (uSweep = 0 under reduced motion holds them still, aimed at centre.)
     vec2 L1 = vec2(0.08 * uAspect, 1.02), L2 = vec2(0.92 * uAspect, 1.02);
     vec3 lamp = vec3(1.0, 0.86, 0.58);
     col += lamp * (exp(-length(p - L1) * 6.5) + exp(-length(p - L2) * 6.5)) * 0.55;
-    vec2 aim = vec2(0.5 * uAspect, 0.32);
-    float b1 = smoothstep(0.955, 1.0, dot(normalize(p - L1), normalize(aim - L1)));
-    float b2 = smoothstep(0.955, 1.0, dot(normalize(p - L2), normalize(aim - L2)));
+    vec2 aim1 = vec2((0.5 + 0.30 * sin(uTime * 0.11) * uSweep) * uAspect, 0.30);
+    vec2 aim2 = vec2((0.5 - 0.30 * sin(uTime * 0.11 + 1.7) * uSweep) * uAspect, 0.30);
+    float b1 = smoothstep(0.962, 1.0, dot(normalize(p - L1), normalize(aim1 - L1)));
+    float b2 = smoothstep(0.962, 1.0, dot(normalize(p - L2), normalize(aim2 - L2)));
     float shimmer = 0.88 + 0.12 * sin(uTime * 0.6 + uv.y * 6.0);
-    col += lamp * (b1 + b2) * smoothstep(0.1, 0.95, uv.y) * 0.07 * shimmer;
+    col += lamp * (b1 + b2) * smoothstep(0.1, 0.95, uv.y) * 0.085 * shimmer;
+
+    // an overhead key SHAFT falling straight down onto the front pack: a narrow cone
+    // from above the frame, strongest up high and dissolving before it reaches the floor
+    vec2 S = vec2(0.5 * uAspect, 1.15);
+    float shaft = smoothstep(0.972, 0.998, dot(normalize(p - S), vec2(0.0, -1.0)));
+    col += vec3(1.0, 0.88, 0.62) * shaft * smoothstep(0.30, 0.92, uv.y) * 0.075 * (0.92 + 0.08 * sin(uTime * 0.5));
 
     // the amber pool behind the focused pack — the glow behind the main object
     vec2 d = (uv - vec2(0.5, 0.58)) * vec2(uAspect, 1.0);
     col += vec3(1.0, 0.70, 0.32) * smoothstep(0.62, 0.0, length(d)) * 0.26;
 
     // the floor is a polished black stage: a faint warm sheen rising toward the
-    // horizon, and a thin gold edge where the floor meets the backdrop
+    // horizon, a thin gold edge where the floor meets the backdrop, and the shaft +
+    // pool mirrored in it as a soft vertical streak of light under the hero
     float floorM = 1.0 - smoothstep(0.28, 0.44, uv.y);
     float horizon = exp(-abs(uv.y - 0.43) * 38.0);
     col += vec3(0.060, 0.042, 0.022) * floorM * smoothstep(0.0, 0.44, uv.y);
     col += vec3(0.95, 0.72, 0.36) * horizon * 0.10;
+    float fx = (uv.x - 0.5) * uAspect;
+    col += vec3(1.0, 0.78, 0.42) * exp(-fx * fx / 0.006) * floorM * smoothstep(0.02, 0.42, uv.y) * 0.07;
 
     // gentle vignette — settle the corners without crushing them to near-black
     col *= 1.0 - smoothstep(0.52, 1.18, length(uv - vec2(0.5))) * 0.30;
@@ -1220,6 +1291,7 @@ function makeBackground() {
       uTime: { value: 0 },
       uAspect: { value: 1 },
       uMobile: { value: COARSE ? 1 : 0 },
+      uSweep: { value: REDUCED ? 0 : 1 },
     },
     vertexShader: BG_VERT,
     fragmentShader: BG_FRAG,
@@ -1279,103 +1351,163 @@ function makeReflectionMaterial(faceTex) {
   });
 }
 
-// A few golden balls that drift slowly UPWARD behind the wheel, so the carousel has a
-// sense of motes rising through the haze. Placed in the 3D scene (not a flat CSS
-// layer), they depth-sort with the packs. Round icons (the ball is drawn into a
-// circular clip so the plane's corners are cut away), tinted down so they recede.
-function makeRisingCards() {
-  const tex = footballTexture();
-  const COUNT = COARSE ? 5 : 9;
+// Soft gold BOKEH drifting slowly UPWARD behind the wheel: out-of-focus points of light
+// rising through the haze, so the stage has depth without any objects in it (the packs
+// stay the only things in frame). Additive glows in the 3D scene, so they depth-sort
+// with the packs; each breathes on its own phase and fades in/out at the wrap.
+function makeBokeh() {
+  const tex = glowTexture();
+  const COUNT = COARSE ? 8 : 16;
   const group = new THREE.Group();
-  const geo = new THREE.PlaneGeometry(1, 1); // square — the ball icon is round
-  const cards = [];
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const orbs = [];
   const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 0..1, seeded by index
+  const tints = [0xffe2a0, 0xf7c766, 0xffd98a, 0xe8b04a]; // champagne → rich gold
   for (let i = 0; i < COUNT; i++) {
-    // golden balls, dimmed into the haze (a warm multiply + low opacity) so they
-    // recede behind the packs as ambiance and never upstage the wheel.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xcfa456, transparent: true, opacity: 0.36, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, color: tints[i % tints.length], transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
     const m = new THREE.Mesh(geo, mat);
     const u = {
-      x: (rand(i, 1) - 0.5) * 9,          // spread across the wheel's width
+      x: (rand(i, 1) - 0.5) * 11,         // spread across (and a little past) the wheel
       z: -3.4 - rand(i, 2) * 5,           // ALWAYS behind the ring (−3.4 … −8.4) so they never cross a pack
-      speed: 0.18 + rand(i, 3) * 0.32,    // rise speed (units/sec) — slow, gentle drift
-      scale: 0.45 + rand(i, 4) * 1.2,     // small → large ↔ size variety
-      rot: (rand(i, 5) - 0.5) * 0.5,
-      spin: (rand(i, 6) - 0.5) * 0.6,     // a lazy roll as it rises
+      speed: 0.10 + rand(i, 3) * 0.22,    // rise speed (units/sec) — a slow, weightless drift
+      scale: 0.35 + rand(i, 4) * 1.1,     // pinpoint → broad soft disc
+      peak: 0.22 + rand(i, 5) * 0.26,     // its brightest — soft enough never to upstage the wheel
+      phase: rand(i, 6) * Math.PI * 2,
+      rate: 0.25 + rand(i, 7) * 0.45,     // breathing speed
+      sway: 0.15 + rand(i, 8) * 0.35,     // lateral drift amplitude
       y: -8 + i * (16 / COUNT),           // staggered start heights
     };
     m.userData = u;
     m.position.set(u.x, u.y, u.z);
-    m.rotation.z = u.rot;
     m.scale.setScalar(u.scale);
-    m.renderOrder = -1; // draw behind the packs; depth test still occludes
-    group.add(m); cards.push(m);
+    m.renderOrder = -1; // behind the packs; depth test still occludes
+    group.add(m); orbs.push(m);
   }
+  let t = 0;
   return {
     group,
-    update(dt) {
-      for (const m of cards) {
+    update(dt, aspect) {
+      t += dt;
+      const spread = viewSpread(aspect);
+      for (const m of orbs) {
         const u = m.userData;
         u.y += u.speed * dt;
-        if (u.y > 8) u.y -= 16;   // wrap back to the bottom; they slide on/off at the screen edges
-        m.position.y = u.y;
-        m.rotation.z += u.spin * dt;
+        if (u.y > 8) u.y -= 16; // wrap back to the bottom
+        m.position.set(u.x * spread + Math.sin(t * 0.17 + u.phase) * u.sway, u.y, u.z);
+        const edge = smoothstep(-8, -6, u.y) * (1 - smoothstep(6, 8, u.y)); // fade at the wrap
+        m.material.opacity = u.peak * (0.55 + 0.45 * Math.sin(t * u.rate + u.phase)) * edge;
       }
     },
   };
 }
 
-// The golden ball drawn on a canvas (transparent outside the ball circle, so the
-// plane's corners cut away to a round icon). Shared by every rising ball.
-let _ballTex = null;
-function footballTexture() {
-  if (_ballTex) return _ballTex;
-  const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
+// A soft round light — a bright core easing out to nothing, with a faint lift toward
+// the rim like a lens's bokeh disc. Shared by every bokeh orb.
+let _glowTex = null;
+function glowTexture() {
+  if (_glowTex) return _glowTex;
+  const S = 128, c = document.createElement("canvas"); c.width = c.height = S;
   const x = c.getContext("2d");
-  x.scale(S / 100, S / 100);
-  drawBall(x, { gold: true });
-  // soften the whole icon — it's only a background mote, it must NOT grab the eye:
-  // blur a copy and use THAT, so the details AND the edge read slightly out of focus
-  const soft = document.createElement("canvas"); soft.width = soft.height = S;
-  const sx = soft.getContext("2d");
-  sx.filter = "blur(3px)";
-  sx.drawImage(c, 0, 0);
-  const tex = new THREE.CanvasTexture(soft);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  _ballTex = tex;
+  const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.35, "rgba(255,255,255,0.62)");
+  g.addColorStop(0.62, "rgba(255,255,255,0.42)");
+  g.addColorStop(0.78, "rgba(255,255,255,0.16)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, S, S);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _glowTex = tex;
   return tex;
 }
 
-// A field of slow-drifting gold dust for the stage backdrop.
-function makeParticles() {
-  // each frame this re-uploads the whole position buffer to the GPU, so the count is
-  // a direct per-frame CPU+upload cost — keep the field much thinner on a phone
-  const COUNT = COARSE ? 90 : 240;
+// A field of slow-drifting, TWINKLING gold dust through the whole stage. All the motion
+// runs in the vertex shader from one clock — rise + wrap, a lazy sideways sway, and a
+// per-mote twinkle that's mostly soft with the odd bright glint — so nothing is
+// re-uploaded per frame (the old CPU loop rewrote the whole position buffer every frame).
+// Each mote is a round soft point with a hot centre, sized by depth like real dust.
+const DUST_VERT = `
+  attribute float aSpeed; attribute float aSeed; attribute float aSize;
+  uniform float uTime;
+  uniform float uScale;   // drawing-buffer height / 2 → world size → pixels at depth
+  uniform float uSpread;  // squeezes the field's width to the view (portrait sees far less)
+  varying float vA;
+  void main() {
+    vec3 p = position;
+    p.x *= uSpread;
+    p.y = mod(p.y + 8.0 + aSpeed * uTime * 0.4, 16.0) - 8.0;               // rise + wrap
+    p.x += sin(uTime * (0.22 + 0.25 * aSeed) + aSeed * 6.2832) * 0.2;      // lazy sway
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = aSize * uScale / -mv.z;
+    float tw = 0.5 + 0.5 * sin(uTime * (0.7 + 1.8 * aSeed) + aSeed * 40.0);
+    vA = (0.45 + 1.1 * pow(tw, 5.0))                                        // soft, with glints
+       * smoothstep(-8.0, -6.5, p.y) * (1.0 - smoothstep(6.5, 8.0, p.y))     // fade at the wrap
+       * mix(1.0, 0.45, smoothstep(14.0, 26.0, -mv.z));                      // far dust recedes
+  }`;
+const DUST_FRAG = `
+  precision mediump float;
+  uniform vec3 uColor; uniform float uOpacity;
+  varying float vA;
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    float a = pow(1.0 - d, 2.0);                                  // soft round mote
+    vec3 col = mix(uColor, vec3(1.0, 0.97, 0.88), pow(1.0 - d, 4.0)); // white-hot centre
+    gl_FragColor = vec4(col, a * vA * uOpacity);
+  }`;
+function makeParticles(renderer) {
+  // GPU-animated, so the count only costs fill-rate — still thinner on a phone
+  const COUNT = COARSE ? 140 : 320;
   const pos = new Float32Array(COUNT * 3);
-  const spd = new Float32Array(COUNT);
+  const spd = new Float32Array(COUNT), seed = new Float32Array(COUNT), size = new Float32Array(COUNT);
+  const r = (i, k) => { const v = Math.sin(i * k) * 43758.5453; return v - Math.floor(v); };
   for (let i = 0; i < COUNT; i++) {
-    pos[i * 3 + 0] = (Math.sin(i * 12.9898) * 43758.5453 % 1) * 22 - 11;
-    pos[i * 3 + 1] = (Math.sin(i * 78.233) * 43758.5453 % 1) * 14 - 6;
-    pos[i * 3 + 2] = (Math.sin(i * 37.719) * 43758.5453 % 1) * 16 - 12;
-    spd[i] = 0.2 + (Math.sin(i * 4.1) * 0.5 + 0.5) * 0.5;
+    pos[i * 3 + 0] = r(i, 12.9898) * 22 - 11;
+    pos[i * 3 + 1] = r(i, 78.233) * 16 - 8;
+    pos[i * 3 + 2] = r(i, 37.719) * 16 - 12;
+    spd[i] = 0.2 + r(i, 4.1) * 0.5;
+    seed[i] = r(i, 91.37);
+    size[i] = 0.06 + Math.pow(r(i, 53.11), 3) * 0.22; // mostly fine dust, a few big soft motes
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const mat = new THREE.PointsMaterial({
-    color: 0xffd37a, size: 0.07, transparent: true, opacity: 0.6,
-    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  geo.setAttribute("aSpeed", new THREE.BufferAttribute(spd, 1));
+  geo.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
+  geo.setAttribute("aSize", new THREE.BufferAttribute(size, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uScale: { value: 400 },
+      uSpread: { value: 1 },
+      uColor: { value: new THREE.Color(0xffd37a) },
+      uOpacity: { value: 0.6 },
+    },
+    vertexShader: DUST_VERT,
+    fragmentShader: DUST_FRAG,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
+  mat.opacity = 0.6; // the host fades the field via material.opacity (see stepSelect/show)
   const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false; // the shader moves every mote; the CPU bounds don't know
   points.renderOrder = -1;
+  const _buf = new THREE.Vector2();
+  let t = 0;
   return {
     points,
     update(dt) {
-      const a = geo.attributes.position.array;
-      for (let i = 0; i < COUNT; i++) {
-        a[i * 3 + 1] += spd[i] * dt * 0.4; // drift gently upward
-        if (a[i * 3 + 1] > 8) a[i * 3 + 1] = -8;
-      }
-      geo.attributes.position.needsUpdate = true;
+      t += dt;
+      mat.uniforms.uTime.value = REDUCED ? 0 : t;
+      mat.uniforms.uOpacity.value = mat.opacity;
+      renderer.getDrawingBufferSize(_buf);
+      mat.uniforms.uScale.value = _buf.y * 0.5;
+      mat.uniforms.uSpread.value = viewSpread(_buf.x / (_buf.y || 1));
     },
   };
 }

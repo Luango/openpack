@@ -438,7 +438,7 @@
       .scene-fx.paused .float-card,
       .scene-fx.paused .float-dust { animation-play-state: paused; visibility: hidden; }
       /* once the pack opens, the reveal stage covers the backdrop — freeze the 6
-         blurred drifting balls so the compositor isn't recompositing them behind it
+         blurred drifting lights so the compositor isn't recompositing them behind it
          every frame during the (already busy) reveal. They resume on "Open another". */
       body.revealing .scene-fx .float-card,
       body.revealing .scene-fx .float-dust { animation-play-state: paused; visibility: hidden; }
@@ -670,17 +670,19 @@
          to match — a gentle dark→bright ramp on the way back, not a 0.4s pop. */
       body.picking #scene-bg { opacity: 1; transition: opacity 0.8s ease-in-out; }
 
-      /* Floating golden balls — the trophy motif, drifting up through the dark at
-         different depths and angles behind the pack and the reveal, with a few motes of
-         gold dust between them. Ambient backdrop; matches the balls rising through the
+      /* Floating gold bokeh — soft out-of-focus points of light drifting up through the
+         dark at different depths behind the pack and the reveal, with a few motes of
+         gold dust between them. Ambient backdrop; matches the bokeh rising behind the
          3D carousel. Kept dim so the pack stays the one bright object. */
       .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
       .float-card {
         position: absolute; bottom: -32%;
-        width: 132px; aspect-ratio: 1; /* square → the round ball icon */
-        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3CradialGradient id='b' cx='0.34' cy='0.28' r='0.84'%3E%3Cstop offset='0' stop-color='%23fff8dc'/%3E%3Cstop offset='0.26' stop-color='%23f4d57f'/%3E%3Cstop offset='0.6' stop-color='%23cc9830'/%3E%3Cstop offset='0.86' stop-color='%237b4f14'/%3E%3Cstop offset='1' stop-color='%233a2206'/%3E%3C/radialGradient%3E%3ClinearGradient id='p' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236a4512'/%3E%3Cstop offset='1' stop-color='%231f1305'/%3E%3C/linearGradient%3E%3CradialGradient id='s' cx='0.36' cy='0.3' r='0.78'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0.4'/%3E%3Cstop offset='0.42' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='0.5'/%3E%3C/radialGradient%3E%3CclipPath id='c'%3E%3Ccircle cx='50' cy='50' r='46'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='50' cy='50' r='46' fill='url(%23b)'/%3E%3Cpath d='M50.00 36.50 L50.00 25.50 M62.84 45.83 L73.30 42.43 M57.94 60.92 L64.40 69.82 M42.06 60.92 L35.60 69.82 M37.16 45.83 L26.70 42.43 M61.89 16.86 L77.84 28.45 M85.19 51.07 L79.10 69.82 M59.86 83.80 L40.14 83.80 M20.90 69.82 L14.81 51.07 M22.16 28.45 L38.11 16.86 M42.65 2.89 L42.30 0.60 M57.35 2.89 L57.70 0.60 M92.54 28.45 L94.60 27.41 M97.08 42.43 L99.37 42.06 M83.64 83.80 L85.27 85.44 M71.75 92.43 L72.81 94.50 M28.25 92.43 L27.19 94.50 M16.36 83.80 L14.73 85.44 M2.92 42.43 L0.63 42.06 M7.46 28.45 L5.40 27.41' stroke='%237e5a1e' stroke-width='1.6' fill='none' stroke-opacity='0.8'/%3E%3Cpath d='M50.00 25.50 L38.11 16.86 L42.65 2.89 L57.35 2.89 L61.89 16.86 Z M73.30 42.43 L77.84 28.45 L92.54 28.45 L97.08 42.43 L85.19 51.07 Z M64.40 69.82 L79.10 69.82 L83.64 83.80 L71.75 92.43 L59.86 83.80 Z M35.60 69.82 L40.14 83.80 L28.25 92.43 L16.36 83.80 L20.90 69.82 Z M26.70 42.43 L14.81 51.07 L2.92 42.43 L7.46 28.45 L22.16 28.45 Z' fill='url(%23p)'/%3E%3Cpath d='M50.00 36.50 L62.84 45.83 L57.94 60.92 L42.06 60.92 L37.16 45.83 Z' fill='url(%23p)'/%3E%3Ccircle cx='50' cy='50' r='46' fill='url(%23s)'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%233a2206' stroke-width='2.4' stroke-opacity='0.6'/%3E%3C/svg%3E") center / contain no-repeat;
+        width: 132px; aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 246, 220, 0.95) 0%, rgba(247, 228, 170, 0.55) 30%,
+                    rgba(212, 166, 58, 0.22) 55%, rgba(212, 166, 58, 0) 72%);
         opacity: 0;
-        filter: blur(var(--b, 0px)); /* far balls = blurrier (depth of field) */
+        filter: blur(var(--b, 0px)); /* far lights = blurrier (depth of field) */
         will-change: transform, opacity;
         animation: floatcard linear infinite;
       }
@@ -860,8 +862,8 @@
          cross-dissolve, so the tear-pack is there to fade into). */
       body.picking #pack-stage { visibility: hidden; }
       body.picking .hint { opacity: 0; } /* pre-arming sets the tear hint — keep it hidden behind the picker */
-      /* in the carousel, the rising card-backs live INSIDE the 3D wheel (select3d.js,
-         at mid-wheel depth) — hide the flat CSS backdrop ones so they don't double up */
+      /* in the carousel, the bokeh + gold dust live INSIDE the 3D scene (select3d.js,
+         behind the wheel) — hide the flat CSS backdrop ones so they don't double up */
       body.picking .scene-fx { visibility: hidden; }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
