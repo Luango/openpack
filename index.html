@@ -1844,8 +1844,7 @@
       const stageEl = document.getElementById("pack-stage");
 
       function reflectPack(p) {
-        chosenPack = p;
-        sfx.hover?.(); // soft ratchet tick as each pack clicks to the front
+        chosenPack = p; // (silent: the per-pack settle tick was cut — it read as unsatisfying)
       }
 
       selector = createSelector({
