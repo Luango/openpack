@@ -2154,12 +2154,14 @@ export function chime(tier = 5) {
   }
 }
 
-// A gentle resolving descent when the last card is seen — "that's the pack". A
-// two-note fall settling onto a soft low pad, so the haul closes on a cadence
-// instead of silence.
+// The "conclude" cue: the whole haul is on screen — "that's the pack". The shipped
+// sample (assets/sfx/conclude.mp3, a recorded UI sound) peaks ~7 dB under the rest
+// of the set, so it gets makeup gain; it already carries its own ~1 s tail, so it
+// gets only a light reverb send. Synth fallback: a two-note fall settling onto a
+// soft low pad, so the haul closes on a cadence instead of silence.
 export function concludeChime() {
   duck(0.4, 1000, 1300); // gentle, longer release — the haul settles, bed swells back
-  if (playSample("conclude", { send: 0.3 })) return;
+  if (playSample("conclude", { gain: 2.0, send: 0.12 })) return;
   const c = live();
   if (!c) return;
   const t = c.currentTime;
