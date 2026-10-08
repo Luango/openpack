@@ -295,7 +295,15 @@ export function buildPack(cfg, artAspect = 1.657) {
   const sRoute = new Float32Array(nVerts); // front rip: left → right
   const hTear = new Float32Array(nVerts); // height above the (jagged) tear line
   const flap = new Int8Array(nVerts); // back rip: −1 left flap, +1 right flap, 0 fixed
-  const taper = new Float32Array(nVerts); // back rip: 1 in the body → 0 at the seals
+  // the pop's hinge, per vertex: which side fold a vertex swings about (−1/+1, 0 for the
+  // front), how much of the full swing it takes (1 across the back half, easing to 0
+  // through the side fold so the fold UNROLLS instead of kinking at one quad), the
+  // hinge's x at this height (just inside the fold — the crimps flare, so it follows
+  // the outline), and the distance out from the hinge (0) to the free edge (1) for the curl
+  const hingeS = new Int8Array(nVerts);
+  const hingeW = new Float32Array(nVerts);
+  const hingeX = new Float32Array(nVerts);
+  const hingeU = new Float32Array(nVerts);
   const routeB = new Float32Array(nVerts); // back rip: top seal → bottom seal
   const finK = new Int8Array(nVerts); // fin column (0 base … 2 free edge), −1 otherwise
 
@@ -325,10 +333,19 @@ export function buildPack(cfg, artAspect = 1.657) {
     sRoute[i] = clamp01((x + aT) / (2 * aT));
     hTear[i] = y - (yT0 + jag(x, sh_));
     flap[i] = flapOf(c);
-    // back rip: the flaps hinge most at the middle of the back and ease out toward
-    // both seals (an almond-shaped opening), so the crimps stay put and the foil
-    // between crumples instead of stretching into a band
-    taper[i] = 1 - smoothstep(0.012, ySeal - 0.002, Math.abs(y));
+    // the pop: the WHOLE back half swings — body, shoulders and the crimps' back layer
+    // alike (the seal has let go end to end), so the wrapper lays out flat as one sheet:
+    // the front in the middle, a back half out to each side. The side columns take a
+    // fading share of the swing so the fold unrolls through the arc.
+    {
+      const role = c < 0 ? 0 : colRole[c];
+      const side = role === 0 || role === 1 ? 1 : role === 4 || role === 3 ? -1 : 0;
+      const hw = halfWidth(y) - 0.0011;
+      hingeS[i] = side;
+      hingeW[i] = side === 0 ? 0 : role === 1 || role === 3 ? 1 - smoothstep(0, 1, colT[c]) : 1;
+      hingeX[i] = side * hw + xShift(y);
+      hingeU[i] = side === 0 ? 0 : clamp01(1 - Math.abs(x - xShift(y)) / hw);
+    }
     routeB[i] = clamp01((ySeal - y) / (2 * ySeal));
     finK[i] = -1;
   }
@@ -431,7 +448,7 @@ export function buildPack(cfg, artAspect = 1.657) {
     geometry,
     rest: pos,
     count: nVerts,
-    meta: { mx, my, mz, nx, nz, sheet, owner, col, sRoute, hTear, flap, taper, routeB, finK },
+    meta: { mx, my, mz, nx, nz, sheet, owner, col, sRoute, hTear, flap, hingeS, hingeW, hingeX, hingeU, routeB, finK },
     seams: { tear: tearPairs, fin: finPairs },
     patches,
     cols,

@@ -31,13 +31,12 @@ const TW_FRONT = 0.05; // release transition (fraction of the route) behind the 
 
 export function createDeformer(pack, cfg, { reduced = false } = {}) {
   const { geometry, rest, count, meta, seams, dims, cols, patches, idx } = pack;
-  const { mx, my, mz, nx, nz, owner, sRoute, hTear, flap, taper, routeB, finK, sheet, col } = meta;
+  const { mx, my, mz, nx, nz, owner, sRoute, hTear, flap, hingeS, hingeW, hingeX, hingeU, routeB, finK, sheet, col } = meta;
   const posAttr = geometry.attributes.position;
   const P = posAttr.array;
   const chain = createChain(cfg.tier.stations);
   const { a0, aT, b0, yT0, ySeal } = dims;
   const WT = 2 * aT; // the header's width at the tear line (the crimp flares past the body)
-  const R_HINGE = a0 - 0.0011;
 
   // wrinkle offsets (rest − raw), carried into the swept frame
   const wox = new Float32Array(count);
@@ -275,24 +274,34 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     }
   }
 
-  // the back PULL: the strain field, then the hinge (a sliver before the pop,
-  // the doors after it). `s` may ring negative after the pop (the recoil).
-  const THETA_OPEN = 1.5; // the flaps' open angle at flapOpen = 1 (~86°; the spring overshoots past it)
+  // the back PULL: the strain field, then the hinge (a sliver before the pop, the
+  // blow-open after it). `s` may ring negative after the pop (the recoil).
+  //
+  // The pop lays the wrapper OUT: both back halves — crimps included, the seal has
+  // let go end to end — swing about their side folds to all but flat (THETA_OPEN),
+  // the spring carrying them a little past flat and back. Nothing is left standing
+  // toward the lens to loom in perspective or run off the frame; the inside of the
+  // whole sheet faces the camera with the cards leaping out in front of it. The
+  // sheet is foil, not a door: the free edge lags the hinge on the fast swing (a whip
+  // from the spring's speed) and keeps a slight cup once it settles.
+  const THETA_OPEN = 3.0; // the halves' open angle at flapOpen = 1 (~172°; the spring overshoots past flat)
+  const CUP = 0.07; // the settled curl: the free edge stops this fraction short of the hinge's angle
   const GAPE = 0.075; // hinge angle of the pre-pop sliver at full strain (~4 mm at the seam)
   function evalBack(state) {
     const detached = state.phase === "detached" || state.phase === "revealed";
     const s = Math.max(-1, Math.min(1, state.strain));
     const sa = Math.abs(s);
     const ss = s * sa; // signed square: inflates on the outward swing, sucks in on the inward one
-    const g = detached ? Math.max(0, s) : sa; // the sliver fades through the pop (the doors take over)
+    const g = detached ? Math.max(0, s) : sa; // the sliver fades through the pop (the blow-open takes over)
     const g2 = g * g;
     const open = Math.max(0, state.flapOpen);
+    // the edge's lag: behind the hinge while the swing is fast, flat again as it settles
+    const curl = -CUP + Math.max(-0.3, Math.min(0.12, -0.022 * (state.flapVel || 0)));
     const stretch = 1 + 0.08 * s; // lengthwise, along the seam
     const narrow = 1 - 0.03 * s; // across (the foil gives in the pull's direction)
     const puff = 0.0032 * ss; // inflation along the rest normal
     const crease = 1.0 * sa; // the baked wrinkles deepen under tension
     const pleatAmp = 0.0007 * sa * sa; // the stress pleats arrive late in the pull
-    const hinge = R_HINGE * narrow;
     for (let i = 0; i < count; i++) {
       // 1) material strain
       const bw = bodyW[i];
@@ -303,14 +312,14 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
       // 2) the pouch stretches toward the hand and narrows
       px *= narrow;
       py *= stretch;
-      // 3) the hinge: the sliver (pre-pop) + the doors (post-pop), about the side fold
-      const side = flap[i];
+      // 3) the hinge: the sliver (pre-pop) + the blow-open (post-pop), about the side fold
+      const side = hingeS[i];
       if (side) {
-        const theta = GAPE * g2 * gapeW[i] + open * THETA_OPEN * taper[i];
+        const theta = GAPE * g2 * gapeW[i] + open * THETA_OPEN * hingeW[i] * (1 + curl * hingeU[i]);
         if (theta > 1e-5) {
           // the fin's free edge unglues from the flap before hinging with it
           if (finK[i] > 0) pz -= Math.min(1, open * 1.6 + g2 * gapeW[i]) * 0.0022 * (finK[i] / 2);
-          const hx = side * hinge;
+          const hx = hingeX[i] * narrow;
           const dx = px - hx, dz = pz;
           const cs = Math.cos(theta), sn = Math.sin(theta);
           px = hx + dx * cs - side * dz * sn;
