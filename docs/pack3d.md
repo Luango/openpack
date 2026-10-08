@@ -28,15 +28,20 @@ implementation departs from it.
 | Route | Where you grab | Gesture | What happens |
 |---|---|---|---|
 | **Front** (top strip) | the notch at the pack's upper-left corner (front facing you) | drag **right** across the top | the sealed header tears off around the whole pack — front, both side folds and back together — and lifts away in your fingers; at the last connection the cap flies clear, the mouth gapes, the opening light pours out, and the body drops away to uncover the cards |
-| **Back** (fin seam) | the top of the rear fin seam (flip the pack first: tap it, or drag to turn it) | drag **down** the back | the seam splits from the top crimp downward; the two halves of the back peel open about the side folds into an almond-shaped opening; the card stack comes out of the back toward you and turns face-up before the body drops away |
+| **Back** (fin seam) | the rear fin seam near its top (flip the pack first: tap it, or drag to turn it) | **pull** — drag away in any direction, the further the harder | nothing tears: the pack **strains** with the pull — it's hauled a little toward your hand, bulges, its creases deepen, stress pleats gather toward the seam, it stretches lengthwise, trembles harder and harder, and the seam gapes in a sliver below the crimp — until, at the limit, the seal lets go all at once: **"pong"** — both halves of the back blow open about the side folds (overshooting), the pack recoils, and the card stack leaps out of the back toward you and lands face-up. Let go early and the seam simply slackens back |
 
 Both run on one state machine ([`controller.js`](../src/pack3d/controller.js)):
-`Ready → Gripping → Tearing ⇄ Paused → Detached → Revealed`. Progress is monotonic
-(reversing the hand slackens the strip, never closes the tear), based on displacement in
-pack-local metres, and every re-grip saves progress and resets the drag origin so resuming
-never jumps. Pointer capture holds the gesture when the finger leaves the notch;
-`pointercancel`, lost capture and tab hiding pause rather than reset. Inspection rotation
-(drag anywhere else on the pack; tap to flip) is frozen while a tear is under way.
+`Ready → Gripping → Tearing ⇄ Paused → Detached → Revealed`. On the front route progress
+is monotonic (reversing the hand slackens the strip, never closes the tear), based on
+displacement in pack-local metres, and every re-grip saves progress and resets the drag
+origin so resuming never jumps. On the back route the machine is a **strain gauge**
+instead: the hand's distance from where it gripped (over `PULL_LIMIT`, 56 mm) is the
+power, eased with a lag so the pack visibly resists; releasing before the limit relaxes
+it fully (elastic, no memory), and reaching the limit fires `complete` with the strain
+then **ringing** down through zero (the recoil: it sucks in, puffs out, settles). Pointer
+capture holds the gesture when the finger leaves the notch; `pointercancel`, lost capture
+and tab hiding pause (front) or slacken (back) rather than reset. Inspection rotation
+(drag anywhere else on the pack; tap to flip) is frozen while a tear or pull is under way.
 
 The route is chosen by **which face is toward the lens** when the grip starts: the front
 notch when the front faces you, the seam top when the back does. An **Open pack** button
@@ -139,21 +144,39 @@ its weight. The body gets a press dent at the tip and a mouth that gapes behind 
 completion the cap is captured and thrown rigidly from the chain's end velocity, fading as it
 goes.
 
-**Back.** Each back-sheet vertex releases by a weight along the seam (top → bottom) and
-hinges about its side fold; the angle tapers from the middle of the back toward both seals
-(an almond opening, ~60° at the widest, a little more when the hand pulls sideways) so the
-crimps stay put and the foil between crumples instead of stretching. The fin's free edge lifts
-as the seam unglues.
+**Back.** A strain field driven by `state.strain` (0–1 while pulling; it rings negative
+after the pop), baked per vertex once: the body **inflates** along its rest normal (the
+pulled back most, the front and sides less — pressure inside), the baked wrinkle field is
+**amplified** (creases deepen under tension), **stress pleats** fan out from the gripped
+seam top and fade down the back, the pouch **stretches** lengthwise by up to 7 % and
+narrows 3 %, and the seam **gapes** in a lens just below the top crimp (a hinge of up to
+~4° about the side folds, late in the pull — squared in the strain). The rigid part of the
+feel is the view's: the pack is hauled ~20 % of the way toward the hand on an underdamped
+spring (it boings back on release, recoils on the pop), leans with the pull, and trembles
+with an amplitude that rises with strain<sup>2.4</sup>. At the pop both back halves hinge
+open together about their side folds (`flapOpen`, a fast overshooting spring, tapered to
+zero into the crimps so they stay put — the almond opening), the fin's free edge lifts and
+rides the right flap, and the torn-edge ribbons appear along the whole seam at once.
 
 ## Feedback ([`view.js`](../src/pack3d/view.js))
 
-The existing sound engine's cues are reused: `grab` on grip, a new `foilStretch` creak
-(the recorded rip loop slowed and darkened) while the foil strains before the first break,
-`tearStart` at the break, `tearMove` driven by pull velocity and progress, `tearEnd(false)`
-on pause, and at completion `tearEnd(true)` (the sharp rip) + `burst` (the bass impact) +
-`tearRelease` + the open theme resuming, with a sparse `sparkleDust` shimmer a beat later.
-Haptics ratchet by tear distance (one tick per ~2.8 mm); foil flecks spray at the projected
-tip.
+The existing sound engine's cues are reused on the front route: `grab` on grip, a
+`foilStretch` creak (the recorded rip loop slowed and darkened) while the foil strains
+before the first break, `tearStart` at the break, `tearMove` driven by pull velocity and
+progress, `tearEnd(false)` on pause, and at completion `tearEnd(true)` (the sharp rip) +
+`burst` (the bass impact) + `tearRelease` + the open theme resuming, with a sparse
+`sparkleDust` shimmer a beat later. Haptics ratchet by tear distance (one tick per ~2.8 mm);
+foil flecks spray at the projected tip.
+
+The back route has its own cues (sample-first, keys `strain_loop` and `pop` in the manifest;
+synth fallbacks): `strainStart` once the slack is taken up, `strain(level)` every move — a
+creak that thickens and brightens with the pull, a low tense body tone whose pitch and
+tremolo climb with it, and the same chime-up ladder the tear uses, climbing with the power
+— `strainEnd(false)` on an early release (it slackens), and at the limit `strainEnd(true)`
++ `pop` (the snap) + `burst` + `tearRelease`. Haptics ratchet by strain (a stronger tick
+every 8 %), and the pop's camera impact is a touch harder. The light below is shared: on
+the back route the thin seam brightens and the light inside builds with the pull (it sits
+at the sliver that is about to give), and the pop is the release.
 
 ### The light
 
@@ -163,7 +186,7 @@ half stays in shadow throughout.
 
 | Beat | Inside the pack (`view.js`, `glow.js`) | Outside it (`src/openlight.js`) |
 |---|---|---|
-| **Gripped** (anticipation) | a hair-thin gold seam appears along the prepared tear line and brightens as the foil strains (the controller's `strain` event); the pack bends a touch toward the hand; the pack's own reflections and key light dim with the room | the surroundings go almost black (a dim layer under the pack and the cards); a faint gold pool is reflected beneath the pack |
+| **Gripped** (anticipation) | a hair-thin gold seam appears along the prepared tear line and brightens as the foil strains (the controller's `strain` event on the front; the `pull` level on the back); the pack bends a touch toward the hand; the pack's own reflections and key light dim with the room | the surroundings go almost black (a dim layer under the pack and the cards); a faint gold pool is reflected beneath the pack |
 | **Tearing** | a point light at the tear tip (1/d², so bright at the mouth and dark by the lower half — `materials.js` lifts three's 10 cm falloff floor), a near-white core sprite just inside the foil (depth-tested: only the gap shows it), a slab of light along the lip behind the tip, hot vertex colours on the torn-edge ribbons, the inner foil glowing warm | sparse lit motes escape at the tip; the pool brightens with progress |
 | **Release** (the seal breaks) | the light spikes (`impulse`), the whole mouth burns | one brief warm-white flash centred on the mouth, a small camera impact (a push-in, not a shake), a tight burst of dust |
 | **Hold** 760 ms + 70 ms per tier | the inner light settles and breathes twice | 3–5 broad soft beams (3 for a common, 5 for a chase) escape upward from the mouth, each a different width and angle, fading before the screen edges; a slow drift of dust |
@@ -178,11 +201,15 @@ the camera impact.
 ## Verification done
 
 - Both routes inspected at 0 / 30 / 50 / 62 / 90 / 100 % in the lab (front: strip lifts,
-  curls, travels, cap flies; back: wedge → almond, fin rides the right flap, card back
-  visible through the opening).
+  curls, travels, cap flies; back: the strain builds — hauled, bulged, pleated, stretched,
+  the seam sliver opens — then the pop: doors overshoot to the almond, fin rides the right
+  flap, the stack leaps out through the released light and lands face-up).
 - Full app flow on desktop (`?noframe`) and a 375 × 812 phone viewport: gate → carousel →
   hand-off (face-on landing, then settle) → front tear by pointer drag → light beat →
-  reveal; and flip → back peel → stack emerges face-up → reveal.
+  reveal; and flip → back pull by pointer drag (an early release slackens back) → pop →
+  stack leaps out face-up → reveal. Headless timed captures of the back pull via
+  `tools/cdp.mjs` (scripted and dragged) confirm the state sequence
+  `tearing → detached (flapOpen overshoots ~1.13, strain rings) → revealed`.
 - Deformer cost: 0.5–0.8 ms per frame at the standard tier on the dev machine; rAF holds
   60 fps. Not yet profiled on real phones — the tiers are starting points.
 - `?pack=svg` and the no-WebGL path load the flat SVG pack.

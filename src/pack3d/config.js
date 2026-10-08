@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG = {
   stackDepthM: 0.003,     // leaves ~1.5 mm of foil clearance each side
   sealHeightM: 0.008,     // flattened crimped band at each end
   shoulderM: 0.007,       // taper from the body to the seal
+  sealFlareM: 0.0026,     // the crimp stands proud of the body by this much each side (the "ears")
   tearBelowTopM: 0.011,   // the front rip removes the whole sealed header
   finWidthM: 0.0055,      // the rear fin seam — a folded ribbon lying on the back
   wrinkleSeed: 7,
