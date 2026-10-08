@@ -690,7 +690,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const handOff = () => {
       if (handedOff) return;
       handedOff = true;
-      room.settle(); // the beams linger while the card rises; the dark lifts
+      room.settle(); // the beams snuff out ahead of the drop; the dark lifts
       onOpen?.(); // drop the pack body + spring the cards up
     };
     const dropAfter = (ms) => {

@@ -21,7 +21,7 @@
 //   light.flash(power);                   // the seal breaks
 //   light.release({ x, y, width, tier }); // beams + a tight burst of dust
 //   light.setSource(x, y);                // the mouth moved (the pack straightening)
-//   light.settle();                       // hand-off: beams/dim fade, the card takes over
+//   light.settle();                       // hand-off: beams snuff ahead of the drop, dim lifts
 //   light.reset();                        // next pack
 
 const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -139,7 +139,7 @@ function createOpenLight() {
 
   // ---- state ----------------------------------------------------------------------
   const src = { x: vw / 2, y: vh * 0.3, w: 200 }; // the mouth, in viewport px
-  let beams = null; // { list, t, settleAt, fade }
+  let beams = null; // { list, t, settleAt, fade }  (settleAt: wall-clock ms, see settle)
   let glow = 0; // the source haze
   let motes = [];
   let emitAcc = 0;
@@ -167,12 +167,12 @@ function createOpenLight() {
     if (!flashEl.animate) return;
     flashEl.style.setProperty("--fx", `${x.toFixed(0)}px`);
     flashEl.style.setProperty("--fy", `${y.toFixed(0)}px`);
-    const peak = REDUCED ? 0.4 : 0.9 + 0.1 * clamp01(power);
+    const peak = REDUCED ? 0.4 : 0.92 + 0.08 * clamp01(power);
     flashAnim?.cancel();
     // the one brightest instant: snaps up, holds a beat, then falls away slowly enough to be seen
     flashAnim = flashEl.animate(
-      [{ opacity: 0 }, { opacity: peak, offset: 0.12 }, { opacity: peak * 0.9, offset: 0.3 }, { opacity: peak * 0.45, offset: 0.55 }, { opacity: 0 }],
-      { duration: REDUCED ? 180 : 420, easing: "ease-out", fill: "none" }
+      [{ opacity: 0 }, { opacity: peak, offset: 0.1 }, { opacity: peak * 0.96, offset: 0.34 }, { opacity: peak * 0.5, offset: 0.6 }, { opacity: 0 }],
+      { duration: REDUCED ? 180 : 500, easing: "ease-out", fill: "none" }
     );
   }
 
@@ -222,12 +222,12 @@ function createOpenLight() {
     start();
   }
   function setSource(x, y) { src.x = x; src.y = y; }
-  // the envelope of the released light: a quick peak as the flash settles, easing to a
-  // sustained glow that breathes; then, on settle, out
+  // the envelope of the released light: a quick peak as the flash settles, easing only a
+  // little to a sustained glow that breathes (the hold stays LOUD); then, on settle, out
   function envelope(t) {
-    const rise = t < 0.12 ? 1 - Math.pow(1 - t / 0.12, 2) : 1;
-    const ease = t < 0.3 ? 1 : lerp(1, 0.8, smooth(clamp01((t - 0.3) / 0.5)));
-    const breathe = t > 0.8 ? 1 + 0.1 * Math.sin((t - 0.8) * 4.4) : 1;
+    const rise = t < 0.1 ? 1 - Math.pow(1 - t / 0.1, 2) : 1;
+    const ease = t < 0.3 ? 1 : lerp(1, 0.9, smooth(clamp01((t - 0.3) / 0.5)));
+    const breathe = t > 0.8 ? 1 + 0.12 * Math.sin((t - 0.8) * 4.4) : 1;
     return rise * ease * breathe;
   }
 
@@ -260,8 +260,17 @@ function createOpenLight() {
   }
 
   // ---- the hand-off -------------------------------------------------------------------
+  // The beams are anchored to the pack's mouth, and the pack body is what hides their
+  // lower half. The moment the body starts dropping they must already be going — a
+  // ray that outlives the pack hangs in the air with no bottom, and the trick shows.
+  // So the beams and the haze snuff out well inside the body's exit slide (0.7 s
+  // transform / 0.6 s opacity, index.html); only the room's dark and the dust linger.
+  // The fade runs on WALL-CLOCK time, like that CSS slide, not on accumulated frame
+  // time: the hand-off frame is the heaviest of the open (the reveal mounts), and a
+  // fade counted in frames would lag the body on exactly that stall.
+  const BEAM_OUT = 0.3, HAZE_OUT = 0.18; // seconds past settle
   function settle() {
-    if (beams && beams.settleAt < 0) beams.settleAt = beams.t;
+    if (beams && beams.settleAt < 0) beams.settleAt = performance.now();
     drift = null;
     dimEl.style.transition = "opacity 1400ms ease-in-out 250ms";
     dimEl.style.opacity = "0";
@@ -290,23 +299,25 @@ function createOpenLight() {
     let lit = false;
     if (beams) {
       beams.t += dt;
-      // on settle the beams linger while the card rises; the haze at the mouth goes
-      // quickly, so no bright disc hangs over the card
+      // on settle the beams go out AHEAD of the dropping body (see settle); the haze at
+      // the mouth goes first, so no bright disc hangs over the card
       let hazeFade = 1;
       if (beams.settleAt >= 0) {
-        beams.fade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 1.5));
-        hazeFade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 0.5));
+        const since = (now - beams.settleAt) / 1000;
+        beams.fade = 1 - smooth(clamp01(since / BEAM_OUT));
+        hazeFade = 1 - smooth(clamp01(since / HAZE_OUT));
       }
       const E = envelope(beams.t) * beams.fade;
       if (E > 0.004) {
         lit = true;
         // the haze at the mouth — most of it hides behind the pack, the rest hangs above the opening
         const H = envelope(beams.t) * hazeFade;
-        const R = src.w * 0.8;
+        const R = src.w * 0.95;
         const rg = ctx.createRadialGradient(src.x, src.y, 0, src.x, src.y, R);
-        rg.addColorStop(0, `rgba(255,240,200,${(0.85 * H).toFixed(3)})`);
-        rg.addColorStop(0.3, `rgba(255,210,120,${(0.32 * H).toFixed(3)})`);
-        rg.addColorStop(0.65, `rgba(255,180,70,${(0.08 * H).toFixed(3)})`);
+        rg.addColorStop(0, `rgba(255,246,218,${(1.0 * H).toFixed(3)})`);
+        rg.addColorStop(0.16, `rgba(255,232,170,${(0.7 * H).toFixed(3)})`);
+        rg.addColorStop(0.36, `rgba(255,210,120,${(0.36 * H).toFixed(3)})`);
+        rg.addColorStop(0.68, `rgba(255,180,70,${(0.1 * H).toFixed(3)})`);
         rg.addColorStop(1, "rgba(255,170,60,0)");
         ctx.fillStyle = rg;
         ctx.fillRect(src.x - R, src.y - R, R * 2, R * 2);
@@ -317,14 +328,17 @@ function createOpenLight() {
           ctx.save();
           ctx.translate(src.x, src.y);
           ctx.rotate(b.ang + sway - Math.PI / 2);
-          // a broad dim halo, the gold body, then a hot core — three layers add up to a ray
-          // that reads from across the room rather than a faint smear
-          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.3);
+          // a broad dim halo, the gold body, a hot core, then a white-hot filament — four
+          // additive layers add up to a ray that reads from across the room rather than
+          // a faint smear (the filament is what makes it BURN, not just glow)
+          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.36);
           ctx.drawImage(GOLD, -W * 0.8, 0, W * 1.6, L * 0.9);
           ctx.globalAlpha = Math.min(1, E * b.alpha);
           ctx.drawImage(GOLD, -W / 2, 0, W, L);
-          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.9);
-          ctx.drawImage(CORE, -W * 0.22, 0, W * 0.44, L * 0.88);
+          ctx.globalAlpha = Math.min(1, E * b.alpha);
+          ctx.drawImage(CORE, -W * 0.24, 0, W * 0.48, L * 0.9);
+          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.75);
+          ctx.drawImage(CORE, -W * 0.11, 0, W * 0.22, L * 0.72);
           ctx.restore();
         }
       } else if (beams.settleAt >= 0) beams = null;
