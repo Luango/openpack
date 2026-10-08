@@ -314,10 +314,14 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // set just before this in layout/stepIntro), dimmed like the art's reflection
     const rr = mesh.userData.reflRim;
     if (rr) rr.material.uniforms.uOpacity.value = mesh.userData.rim.material.uniforms.uOpacity.value * REFL_RIM;
-    // Phones: only the FRONT-most packs cast a reflection — the side/back ones are small,
-    // dim and barely seen, so culling them slashes transparent overdraw (the carousel's
-    // biggest mobile cost) while the prominent hero reflection stays.
-    r.visible = op > 0.01 && (!COARSE || mesh.position.z > RING_R * 0.45);
+    // Phones: only the packs near the FRONT or the BACK of the ring cast a reflection —
+    // the SIDE ones are edge-on (the facing fade already takes them near zero), so culling
+    // them slashes transparent overdraw (the carousel's biggest mobile cost). The back
+    // packs stay: mid-spin the far pack sits square in the centre of the stage with its
+    // back to the lens, and a pack standing on the polished floor with no reflection under
+    // it broke the mirror. (Settled, the hero hides them anyway — depth-tested, so the
+    // cost is one small, distant quad.)
+    r.visible = op > 0.01 && (!COARSE || Math.abs(mesh.position.z) > RING_R * 0.45);
   }
 
   // one MeshStandardMaterial per pack (per-mesh so opacity/flash can vary in the
