@@ -60,10 +60,10 @@ changes needed.
 > **`chime`**, **`riser`**, **`open_burst`/`reveal_impact`**, and **`tear_loop`**.
 > Replacing those four moves the needle most.
 
-> The tear also has a built-in **musical layer** the engine always plays: a rising
-> "chime-up" pentatonic bell ladder that climbs with how far you've torn, resolving
-> into the `open_release` pop. It layers *over* whatever `tear_loop` you provide, so
-> your tear foley supplies the texture while the chime-up supplies the satisfaction.
+> The tear has **no musical layer**: the old synth "chime-up" bell ladder (and the
+> synth release flourish) were cut as cartoonish. The front rip is carried by the
+> recorded wrapper crinkle (`tear_rip`, scrubbed by the tear) and the recorded snap.
+> `open_release` only plays if you wire a recording — the bundled Kenney blip is unwired.
 
 ## Example
 

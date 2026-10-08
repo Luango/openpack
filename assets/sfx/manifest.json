@@ -59,9 +59,7 @@
   "spark": [
     "spark.wav"
   ],
-  "open_release": [
-    "open-release.wav"
-  ],
+  "open_release": [],
   "conclude": [
     "conclude.mp3"
   ],

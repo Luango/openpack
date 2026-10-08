@@ -620,7 +620,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const eased = Math.pow(progress, 1.4);
     spring.set({ w: eased * GAP_TEAR * (1 + inten * 0.7) });
 
-    sfx.tearMove(inten, progress); // intensity drives the rip; progress climbs the chime-up
+    sfx.tearMove(inten, progress); // intensity drives the rip; progress scrubs the crinkle recording
     // spray flecks at the finger CLAMPED onto the pack (p is already clamped in
     // pack space) — a tear may start just outside the edge, and emitting at the
     // raw client point would scatter foil into the empty margin
@@ -657,7 +657,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
     sfx.resumeOpenTheme?.(); // FULLY OPEN — release the held intro so the rest of the theme pours in on the burst
-    sfx.tearRelease(); // the small joyful "pop" — a bright resolve the chime-up built toward
+    sfx.tearRelease(); // (a recorded release, if one is wired — no synth flourish)
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
     kick(power); // a short screen-kick — the foil giving way lands with weight
