@@ -1627,6 +1627,41 @@ export function cardTap(depth = 0) {
   src.stop(t + dur);
 }
 
+// A piece of a revealed card's print STAMPED onto it (reveal.js stampIn) — the
+// set-down's "pap", pitched down and fuller the heavier the piece: weight 0 = a
+// face stat … 1 = the name landing last.
+export function stamp(weight = 0.5) {
+  const w = Math.max(0, Math.min(1, weight));
+  if (playSample("setdown", { gain: 0.45 + w * 0.6, rate: 1.18 - w * 0.32, jitterRate: 0.06, send: 0.08 + w * 0.14 })) return;
+  setDown();
+}
+
+// One click of the rating COUNTING UP onto its number — a short pip whose pitch
+// climbs with the count (progress 0→1), so as the count slows the clicks spread
+// out and rise, like a wheel winding down onto the number. Throttled so the fast
+// start reads as one ratchet instead of a smear.
+let lastCountTick = 0;
+export function countTick(progress = 0) {
+  const now = performance.now();
+  if (now - lastCountTick < 38) return;
+  lastCountTick = now;
+  const p = Math.max(0, Math.min(1, progress));
+  if (playSample("pip", { rate: 0.8 + p * 0.75, gain: 0.3 + p * 0.45 })) return;
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = "sine";
+  osc.frequency.value = 1500 + p * 1300;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.025 + p * 0.03, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  osc.connect(g).connect(master);
+  osc.start(t);
+  osc.stop(t + 0.06);
+}
+
 // A juicy "absorb / gulp" pop for sucking a card into the binder — a soft round body
 // blip that bends UP (the swallow) plus a little squish transient, its pitch RISING
 // with each card so collecting a pack reads as an escalating, satisfying munch — à la
