@@ -1,14 +1,16 @@
 // pack3d/glow.js — the light at the seam: trapped, then let out through the tear.
 //
 // A thin additive strip that rides the pack's own tear boundary every frame:
-//   • gripped, before the first break — a hair-thin gold seam along the whole
-//     prepared tear line, brightening as the foil strains (light leaking at the
-//     laminate's seam);
+//   • gripped, before the first break — a single pin of gold light leaking at the
+//     notch under the fingers, swelling as the foil strains. NOTHING along the rest
+//     of the route: the player feels the pack about to give, they are never shown
+//     where the tear will run (anticipation, not a trail);
 //   • tearing — behind the tip, where the header has lifted, the strip grows into
 //     a short slab of light in the mouth: a near-white core at the lip fading up
-//     through warm gold, hottest around the tip (the light follows the tear);
-//     ahead of the tip it stays the thin seam, so you see where the rip is going;
-//   • open — the whole mouth glows, breathing with the inner light.
+//     through warm gold, hottest around the tip (the light follows the tear).
+//     Ahead of the tip the foil is still sealed and stays DARK, except for the
+//     few millimetres right at the tip where it is giving way;
+//   • open — the whole mouth burns, breathing with the inner light.
 // It is depth-tested, so the foil still in place hides it: the light shows only
 // where the pack has actually been opened. Positions come from the deformed lip
 // vertices (the body's top row for the front rip; the duplicated back-centre
@@ -76,9 +78,9 @@ export function createSeamGlow(pack, deformer) {
     col[k * 4] = c[0]; col[k * 4 + 1] = c[1]; col[k * 4 + 2] = c[2]; col[k * 4 + 3] = Math.min(1, a);
   };
 
-  // light = { seam (0..1, the thin leak), inner (0..1, the open glow), tipX, tipY, mode, open (0/1 when detached) }
+  // light = { seam (0..1, the leak at the tip), inner (0..1, the open glow), strain (0..1), tipX, tipY, mode, open (0/1 when detached) }
   function update(light) {
-    const seam = light.seam, inner = light.inner;
+    const seam = light.seam, inner = light.inner, strain = Math.max(0, Math.min(1, light.strain || 0));
     if (seam < 0.004 && inner < 0.004) { mesh.visible = false; return; }
     let maxA = 0;
     if (light.mode === "front") {
@@ -93,10 +95,14 @@ export function createSeamGlow(pack, deformer) {
         const rel = light.open ? 1 : w[c]; // released behind the tip
         const dx = (colX0[c] - light.tipX) / 0.014;
         const tipHot = Math.exp(-dx * dx);
-        const aOpen = inner * (0.5 + 0.5 * tipHot);
-        const aSeam = seam * 0.72 * (1 + 0.4 * tipHot);
+        // the sealed foil ahead of the tip stays dark: the leak lives only in the
+        // few millimetres at the tip itself (a touch wider the harder the foil strains)
+        const da = Math.max(0, colX0[c] - light.tipX) / (0.005 + 0.004 * strain);
+        const atTip = Math.exp(-da * da);
+        const aOpen = light.open ? inner * (0.8 + 0.2 * tipHot) : inner * (0.5 + 0.5 * tipHot);
+        const aSeam = seam * atTip * (0.7 + 0.3 * tipHot);
         const a = rel * aOpen + (1 - rel) * aSeam;
-        const h = rel * (0.0025 + 0.0065 * inner) + (1 - rel) * 0.0014;
+        const h = light.open ? 0.004 + 0.011 * inner : rel * (0.0025 + 0.0065 * inner) + (1 - rel) * (0.0018 + 0.0012 * strain) * atTip;
         const ox = ex + nx * OUT, oy = ey + ny * OUT, oz = ez + nz * OUT;
         const k = c * ROWS;
         setV(k, ox - ux * 0.0006, oy - uy * 0.0006, oz - uz * 0.0006, lip(rel), a);
@@ -114,10 +120,14 @@ export function createSeamGlow(pack, deformer) {
         const rel = light.open ? 1 : (wRow.get(y) || 0);
         const dy = (y - light.tipY) / 0.014;
         const tipHot = Math.exp(-dy * dy);
-        const aOpen = inner * (0.5 + 0.5 * tipHot);
-        const aSeam = seam * 0.72 * (1 + 0.4 * tipHot);
+        // the pull: the leak sits at the sliver below the crimp that is about to give,
+        // spreading down the seam only as the strain climbs — never the whole fin
+        const ds = (y - light.tipY) / (0.006 + 0.012 * strain);
+        const atTip = Math.exp(-ds * ds);
+        const aOpen = light.open ? inner * (0.8 + 0.2 * tipHot) : inner * (0.5 + 0.5 * tipHot);
+        const aSeam = seam * atTip * (0.7 + 0.3 * tipHot);
         const a = rel * aOpen + (1 - rel) * aSeam;
-        const h = rel * (0.002 + 0.006 * inner) + (1 - rel) * 0.0014;
+        const h = light.open ? 0.0035 + 0.01 * inner : rel * (0.002 + 0.006 * inner) + (1 - rel) * (0.0018 + 0.0012 * strain) * atTip;
         // the ridge straddles the seam: ember → hot core → ember, just outside the back (−z)
         const oz = ez - OUT;
         const k = s * ROWS;
