@@ -433,19 +433,34 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   let targetPos = null; // when set (by tap/goto), ease to this exact pos instead of free-fling
   const modIndex = () => ((Math.round(pos) % N) + N) % N;
 
+  // The ring pose for a pack at angle `a` from the front (0 = dead centre; any real
+  // angle, the trig wraps it). ONE definition shared by the idle layout() and the
+  // intro's stepIntro(): the entrance docks packs on, and carries them round, exactly
+  // the pose the idle wheel will put them in, so the hand-off at the end of the
+  // entrance changes nothing on screen. (It used to omit the bob — the front pack
+  // dropped by the bob's current offset on the hand-off frame: a visible tick.)
+  function ringPose(a) {
+    const front = Math.max(0, Math.cos(a)); // 1 at front → 0 at the sides → 0 behind
+    const pop = Math.pow(front, 5);          // sharp: only the centred pack pops out
+    return {
+      front, pop,
+      x: RING_R * Math.sin(a),
+      z: RING_R * Math.cos(a) + pop * FRONT_PUSH, // focused pack juts at the lens
+      y: bobY(front) + pop * FRONT_LIFT,
+      scale: BASE_S + POP_S * pop,
+    };
+  }
+
   function layout() {
     for (let i = 0; i < N; i++) {
       const m = meshes[i];
       // angle of this pack from the front, normalised to [-PI, PI]
       let a = (i - pos) * STEP;
       a = Math.atan2(Math.sin(a), Math.cos(a));
-      const front = Math.max(0, Math.cos(a)); // 1 at front → 0 at the sides → 0 behind
-      const pop = Math.pow(front, 5);          // sharp: only the centred pack pops out
-      m.position.x = RING_R * Math.sin(a);
-      m.position.z = RING_R * Math.cos(a) + pop * FRONT_PUSH; // focused pack juts at the lens
-      m.position.y = bobY(front) + pop * FRONT_LIFT;
+      const { front, x, y, z, scale } = ringPose(a);
+      m.position.set(x, y, z);
       m.rotation.y = a * TURN + m.userData.flip; // shallow turn → all packs stay near face-on (even light)
-      m.scale.setScalar(BASE_S + POP_S * pop);
+      m.scale.setScalar(scale);
       // draw nearer packs last so they sit on top
       m.renderOrder = Math.round(m.position.z * 10);
       // Keep the rim/beam lit on the front AND side packs (so the side isn't "empty"),
@@ -798,10 +813,14 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   }
 
   // ---- intro entrance: queue the packs in to build the ring ----------------
-  // Hold the intro until the art is decoded and the GPU is warm, THEN start the
-  // motion. Nothing renders before this fires (the rAF loop is parked), so the user
-  // just sees the page's nebula bg for the load beat — far better than animating a
-  // ring that hitches every time a texture/shader finishes compiling mid-flight.
+  // Hold the intro until the art is decoded, the SURFACE MAPS are finished and the
+  // GPU is warm, THEN start the motion. Nothing renders before this fires (the rAF
+  // loop is parked), so the user just sees the page's nebula bg for the load beat —
+  // far better than animating a ring that hitches every time a texture/shader
+  // finishes compiling mid-flight. The surface maps (pack3d/textures.js) are built
+  // in idle slices after the art lands; when they completed DURING the fly-in their
+  // upload + the material refresh stalled a frame about a second into the entrance,
+  // so the entrance now waits for them as well (and the warm-up below uploads them).
   // A timeout backstops a slow/failed asset so the entrance always plays.
   function startIntroWhenReady(fadeIn = false) {
     let started = false;
@@ -849,7 +868,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
         });
       }
     };
-    Promise.all(assetsReady).then(begin);
+    const surfaceReady = assetReady.then((asset) => asset.surfaceReady).catch(() => {});
+    Promise.all([...assetsReady, surfaceReady]).then(begin);
     setTimeout(begin, 1500); // never hang on a stalled asset
   }
 
@@ -892,11 +912,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       // blend INTO the wheel's motion at the end, so it arrives already moving with the
       // ring (velocity-continuous) instead of landing, stopping, then being towed.
       if (!s.launched) { s.launched = true; s.slotAngle = Math.PI - (wheelAngle + INTRO_DIR * wheelSpeed * (INTRO_ARC - tt)); sfx.packWhoosh?.(i, N); } // airy swoosh as each pack is thrown onto its arc
-      // its docked pose on the wheel RIGHT NOW (also the steady-state once docked)
+      // its docked pose on the wheel RIGHT NOW (also the steady-state once docked) —
+      // the very pose layout() will give it after the hand-off (ringPose, bob included)
       const a = s.slotAngle + wheelAngle;
-      const front = Math.max(0, Math.cos(a)), pop = Math.pow(front, 5);
-      const rX = RING_R * Math.sin(a), rZ = RING_R * Math.cos(a) + pop * FRONT_PUSH, rY = pop * FRONT_LIFT;
-      const rScale = BASE_S + POP_S * pop;
+      const { front, x: rX, y: rY, z: rZ, scale: rScale } = ringPose(a);
       if (!s.docked) {
         const p = Math.min(1, tt / INTRO_ARC);
         if (p < 1) allDocked = false;
@@ -930,8 +949,12 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       placeReflection(m); // the reflection rides along through the fly-in too
     }
     if (introOutro) {
-      // spring has come to rest → hand off
-      if (Math.abs(targetWheel - wheelAngle) < 0.003 && Math.abs(wheelVel) < 0.03) { wheelAngle = targetWheel; endIntro(); }
+      // Spring has (all but) come to rest → hand off. NO snap to the rest angle here:
+      // the residual is handed to the idle wheel, whose own settle (frame(): ease to
+      // the nearest pack at 10/s) closes it at the same creep the spring was moving —
+      // snapping it shut moved the front pack a few times its running speed on one
+      // frame, a tick right as the ring completed.
+      if (Math.abs(targetWheel - wheelAngle) < 0.003 && Math.abs(wheelVel) < 0.03) endIntro();
     } else if (allDocked) {
       introSettle += dt;
       if (introSettle >= INTRO_SETTLE) {            // ring is whole → kick off the inertial settle
@@ -956,7 +979,8 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
 
   // Hand off to the steady carousel: pick the `pos` that makes layout() reproduce
   // the ring exactly where it sits now (meshAngle_i = i·STEP + C → pos = −C/STEP),
-  // then let the idle snap settle the nearest pack to the front.
+  // then let the idle snap settle the nearest pack to the front. (layout() runs on
+  // this same frame, from the same pose maths — ringPose — so nothing moves.)
   function endIntro() {
     introing = false;
     pos = -(introState[0].slotAngle + wheelAngle) / STEP;

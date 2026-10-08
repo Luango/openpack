@@ -34,8 +34,13 @@ function pickTier(odds) {
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 // Build a booster from the bundled pool and paint its five cards. Async: each
-// card is rendered (≈ a few ms + an async JPEG encode) one per frame.
-export async function buildBooster(size = PACK_SIZE) {
+// card is rendered (a full-size canvas paint — tens to hundreds of ms on the main
+// thread — plus an async WebP encode) one per frame. `pace` is awaited before EACH
+// paint: the default is a frame's breather; the host passes a gate that also holds
+// the paints while something it can't afford to hitch (the carousel entrance) is
+// animating, so a pack can be painted early — under the start gate, during the
+// haul — and never on top of the motion.
+export async function buildBooster(size = PACK_SIZE, { pace = nextFrame } = {}) {
   if (!POOL.length) return mysteryPack(size);
 
   const tier = (c) => rarityToTier(c);
@@ -71,9 +76,8 @@ export async function buildBooster(size = PACK_SIZE) {
   await Promise.all(pack.map(loadCardAssets));
   const out = [];
   for (const c of pack) {
-    const { art, bare, player } = await cardArt(c);
+    const { art, bare, player } = await cardArt(c, pace); // paced right before its paint
     out.push({ ...c, image: art, imageSmall: art, imageBare: bare, playerMask: player });
-    await nextFrame();
   }
   return out;
 }
