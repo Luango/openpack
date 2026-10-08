@@ -118,13 +118,7 @@ def write(name, x, peak=-6):
 
 # ---------------------------------------------------------------- build cues
 out = {}     # manifest: cue -> [filenames]
-# Cues now OWNED by tools/design_sfx.py (the modelled crystal / bell / tam-tam set that
-# replaced the arcade interface blips) — this script no longer touches their files or
-# their manifest entries, so re-running it can't regress them to the old foley.
-DESIGNED = {"pip", "hover", "spark", "sparkle", "ladder", "strain_loop", "pop", "open_burst",
-            "open_release", "reveal_impact", "riser", "chime", "conclude", "reseal", "reject", "gulp"}
 def emit(cue, name, sig, peak=-6):
-    if cue in DESIGNED: return
     write(name, sig, peak); out.setdefault(cue, []).append(name)
 
 # PHYSICAL FOLEY -------------------------------------------------------------
@@ -216,14 +210,7 @@ emit("hover", "hover.wav", one_shot("interface/**/select_001.ogg", -14))
 
 # ---------------------------------------------------------------- manifest + report
 os.makedirs(DEST, exist_ok=True)
-mpath = os.path.join(DEST, "manifest.json")
-try:
-    with open(mpath) as f: existing = json.load(f)
-except (OSError, ValueError):
-    existing = {}
-# keep the designed cues' entries exactly as design_sfx.py wrote them
-out.update({k: v for k, v in existing.items() if k in DESIGNED})
-with open(mpath, "w") as f:
+with open(os.path.join(DEST, "manifest.json"), "w") as f:
     json.dump(out, f, indent=2)
 
 total = 0

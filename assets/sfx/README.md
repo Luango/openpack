@@ -1,36 +1,20 @@
 # Recorded sound effects (`assets/sfx/`)
 
-The pack-opening audio engine ([`src/sfx.js`](../../src/sfx.js)) **prefers a sample**
-for each cue and falls back to its built-in synthesis when no sample is present. So
-this folder is how the game's sound is authored — **drop in audio files, list them in
-[`manifest.json`](manifest.json), done.** No code changes needed.
-
-The set is in two halves:
-
-- **Physical foley** (handling, card flicks, the rip) — real recordings, built by
-  `tools/build_sfx.py` from CC0 packs (see *Sources*).
-- **The tonal / UI / climax cues** — **modelled, not sampled**, rendered offline by
-  [`tools/design_sfx.py`](../../tools/design_sfx.py): struck crystal (wine-glass modes
-  with the slow beating of real glass), a bell with a real bell's partial set (hum,
-  prime, the minor-third tierce, quint, nominal), a felt-hammer string, a large tam-tam
-  whose upper partials bloom after the strike, and watch-escapement clicks for the UI.
-  These replaced the first pack's arcade interface blips, toy bell chime, "glitter magic"
-  sparkle and the synth pentatonic bell ladder — all of which read as cartoonish next
-  to the gold art direction. The palette is deliberately **dark, low and restrained**:
-  C-minor pentatonic crystal climbing through the tear, a Picardy lift to C major when
-  the pack gives way, a Cmaj9 crystal arpeggio over a low C3 bell for the hit, and a
-  felt-piano maj7 cadence to close. Re-render with `python tools/design_sfx.py`.
+The pack-opening audio engine ([`src/sfx.js`](../../src/sfx.js)) **prefers a recorded
+foley sample** for each cue and falls back to its built-in synthesis when no sample
+is present. So this folder is how you replace the "synthy" sounds with the real thing
+— **drop in audio files, list them in [`manifest.json`](manifest.json), done.** No code
+changes needed.
 
 ## How it works
 
-- At load the engine fetches `manifest.json` and decodes every file listed. Each cue
-  that got at least one buffer plays the **sample**; every other cue keeps using
-  **synthesis**. A missing/empty manifest = pure synthesis, with **no console errors**.
+- On the first user gesture the engine fetches `manifest.json` and decodes every file
+  listed. Each cue that got at least one buffer now plays the **sample**; every other
+  cue keeps using **synthesis**. A missing/empty manifest = pure synthesis (today's
+  sound), with **no console errors** — so you can migrate one cue at a time.
 - List **multiple files** for a cue to get **round-robin variation** (recommended for
-  anything that fires repeatedly: `flick`, `setdown`, `cardtap`, `sparkle`, `grab`,
+  anything that fires repeatedly: `flick`, `setdown`, `cardtap`, `spark`, `grab`,
   `scratch`, `tear_snap`). The engine also adds a little pitch/level jitter on top.
-- **`ladder` is the one ORDERED cue**: its files are rungs, low → high, and the engine
-  plays rung *k* as the tear (or the back pull's strain) reaches step *k* of ten.
 - Paths in the manifest are **relative to this folder**.
 
 ## Format
@@ -39,55 +23,94 @@ The set is in two halves:
   accepts. `.wav` (or 192 kbps+ `.mp3`) is safest. Mono is fine and smaller.
 - **Trim hard to the transient** — no leading silence (the engine fires at the exact
   game moment; pre-roll = audible lag). Keep one-shots tight.
-- Bake them roughly **−6 dB peak** (UI ticks and glints sit lower, −9 to −15); the
-  master bus has the final limiter + makeup, so don't pre-limit to the ceiling.
-- They go through a band-limited reverb send already — keep them **dry** (the climax
-  cues carry a little baked room because their tails *are* the sound).
+- Bake them roughly **−6 dB peak**; the master bus has the final limiter + makeup, so
+  don't pre-limit to the ceiling.
+- They go through a band-limited reverb send already — record **dry**.
 
 ## The cues — what each sound is, and how the engine drives it
 
-| Cue (`manifest` key) | The moment | What it is now | Engine behaviour |
+| Cue (`manifest` key) | The moment | What to record | Engine behaviour |
 |---|---|---|---|
-| `grab` | you first touch the pack | a short muffled **foil crinkle / handle** | round-robin + pitch jitter |
-| `tear_loop` | dragging the rip open (fallback when `tear_rip` is absent) | a **seamless looping** foil tear crackle | looped; gain + brightness + speed track your pull velocity |
-| `tear_rip` | the top rip, start to finish | one **long wrapper crinkle** recording | **scrubbed by the rip**: the playhead advances only while the tear advances |
-| `tear_snap` | the rip completes | the **fibrous final snap** | one-shot; gain scales with tear speed |
-| `ladder` | the rip / the back pull advancing | **ten struck crystals**, C4 → Bb5 up C-minor pentatonic, each over a warm octave-down string | ordered: rung *k* at step *k*; climbs louder; a touch of room |
-| `strain_loop` | hauling on the back seam | the rip recording at **half speed, darkened** — foil under tension, not tearing | looped; gain + pitch + brightness track how hard you pull |
-| `pop` | the back seal lets go — "pong" | a **tight pouch pop**: a fast pitch-drop body + the real foil crack + a puff of air | one-shot; gain scales with pull speed |
-| `open_release` | the instant it gives way | the **Picardy bloom** — C major in crystal over a breath of air and a low bell hum | one-shot, layered over `open_burst` |
+| `grab` | you first touch the pack | a short muffled **foil crinkle / handle** (~80–150 ms) | round-robin + pitch jitter |
+| `tear_loop` | dragging the rip open | a **seamless looping** foil/paper tear crackle (1–2 s, loopable) | looped; gain **+ brightness + speed track your pull velocity** |
+| `tear_rip` | the top rip, start to finish | one **long wrapper crinkle / tear** recording (several seconds, not a loop) | **scrubbed by the rip**: the playhead advances only while the tear advances — faster for a quick haul, frozen when the hand stops, resumed where it left off (when loaded, replaces `tear_loop` for the front rip) |
+| `tear_snap` | the rip completes | the **fibrous final snap** as it gives way | one-shot; gain scales with tear speed |
+| `strain_loop` | hauling on the back seam (the pull) | a **seamless looping** foil-under-tension creak (1–2 s, loopable) | looped; gain **+ pitch + brightness track how hard you pull** |
+| `pop` | the back seal lets go — "pong" | a tight **pop / snap** of a sealed pouch giving way | one-shot; gain scales with pull speed (falls back to `tear_snap`) |
+| `open_release` | the instant it pops open | a small **joyful release** — a bright chime/pop resolve (the satisfying "ah") | one-shot, layered over `open_burst` |
 | `scratch` | dragging the middle (no tear) | a light dry **surface scuff** on foil | gain scales with drag speed; round-robin |
-| `open_burst` | the pack bursts open | a **cinematic whump**: saturated sub drop + low body + the recorded foil crack + a fwoosh of released air | gain ↑ with power, pitch ↓ for rarer pulls |
-| `reveal_impact` | a rare card uncovers | the **money-moment downbeat**: a felt boom under a **tam-tam bloom** and a high crystal shimmer | gain ↑ / pitch ↓ with tier |
-| `riser` | anticipation before a rare | the **tam-tam reversed** + rising air + a low tension tone | **time-stretched** to the hold so its peak lands on `reveal_impact` |
-| `chime` | the rare "hit" | a slow **crystal Cmaj9 arpeggio** over a low C3 bell | slight pitch-up for rarer tiers |
-| `sparkle` | glitter over the hit | four short **crystal pings** (G5 B5 D6 F#6) | the engine **scatters many** with random pitch + timing → shimmer |
-| `flick` | tap a card to the next | an airy **card whoosh / flick** | round-robin + jitter |
-| `setdown` | the hand lands on arrival | a soft **glossy card set-down** | round-robin + jitter |
-| `cardtap` | deeper cards riffle in / a pack docks | a quiet **card-on-card riffle tap** | quieter the deeper the card; round-robin |
-| `pack_in` | a pack flies into the carousel ring | *(none yet — falls back to `flick`)* | pitched up per pack so the queue ascends |
-| `pip` | the count ticks / status pips | a **watch-escapement click** (an impulse through two metal modes and a wooden body) | pitched up as the count climbs |
-| `spark` | idle edge glints on the sealed pack | a soft **breath of high crystal** (A6 + an E7 whisper) | jitter (fires every few seconds) |
-| `reject` | a tear is voided (hooks back) | a **damped low knock** — the lock that doesn't give | one-shot |
-| `reseal` | "Open another" / halves close | a **falling breath of air** and a soft lid "thup" | one-shot |
-| `conclude` | "that's the pack" (last card) | a **felt-piano cadence** (C3 G3 E4 B4) with a crystal E5 → C5 | one-shot |
-| `hover` | hovering a gallery card (desktop) | a smaller, lower escapement click | round-robin + jitter |
+| `open_burst` | the pack bursts open | the **chest-thump open** — a punchy whump (foil pop + body) | gain ↑ with power, pitch ↓ for rarer pulls |
+| `reveal_impact` | a rare card uncovers | the **money-moment downbeat** — a boom/cymbal-swell hit | gain ↑ / pitch ↓ with tier — the bigger the rarity, the bigger the hit |
+| `riser` | anticipation before a rare | a **rising whoosh / swell** (a sweetener works great) | **time-stretched** to fit the hold so its climax lands on `reveal_impact` |
+| `chime` | the rare "hit" jingle | a bright **bell / chime cascade** (a real bell beats any synth here) | slight pitch-up for rarer tiers |
+| `sparkle` | glitter over the hit | a **single short sparkle/twinkle** grain | the engine **scatters many** of these with random pitch + timing → shimmer |
+| `flick` | tap a card to the next | an airy **card whoosh / flick** | round-robin + jitter (fires a lot — give it 2–3 variants) |
+| `setdown` | the hand lands on arrival | a soft **glossy card set-down** (a "pap" + contact click) | round-robin + jitter |
+| `cardtap` | deeper cards riffle in / a pack docks onto the ring | a quiet **card-on-card riffle tap** | quieter the deeper the card; round-robin |
+| `pack_in` | a pack flies into the carousel ring (queue-in entrance) | an airy **pack whoosh** with a little weight (heavier than a thin card flick) | pitched up per pack so the queue ascends; round-robin + jitter (give it 2–3 variants) |
+| `pip` | the count pips fade in | a tiny **UI tick / blip** | pitched up per card (ascending) |
+| `spark` | idle edge glints on the sealed pack | a soft **high glint / shimmer** | round-robin + jitter (fires every few seconds) |
+| `reject` | a tear is voided (hooks back) | a dull descending **"nope" / blocked** stab | one-shot |
+| `reseal` | "Open another" / halves close | a descending **foil whoosh** | one-shot |
+| `conclude` | "that's the pack" (last card) | a gentle **resolving cadence / chord** | one-shot |
+| `hover` | hovering a gallery card (desktop) | a soft **tick** | round-robin + jitter (optional — synth is fine here) |
 
-## Sources & licenses
+> Priority if you only do a few: the ones that sound most synthetic today are
+> **`chime`**, **`riser`**, **`open_burst`/`reveal_impact`**, and **`tear_loop`**.
+> Replacing those four moves the needle most.
 
-Everything here is redistributable with **no attribution required**:
+> The tear also has a built-in **musical layer** the engine always plays: a rising
+> "chime-up" pentatonic bell ladder that climbs with how far you've torn, resolving
+> into the `open_release` pop. It layers *over* whatever `tear_loop` you provide, so
+> your tear foley supplies the texture while the chime-up supplies the satisfaction.
 
-- The modelled cues (`pip`, `hover`, `spark`, `sparkle-*`, `ladder-*`, `pop`,
-  `open-burst-*`, `open-release`, `reveal-impact`, `riser`, `chime`, `conclude`,
-  `reseal`, `reject`) are **original**, generated by `tools/design_sfx.py`. The foil crack
-  inside `pop` / `open-burst-*` and the `strain-loop` are derived from the CC0 foil
-  recordings below.
+## Example
+
+Put `tear-loop.wav`, `flick-1.wav`, `flick-2.wav`, `flick-3.wav` in this folder, then:
+
+```json
+{
+  "tear_loop": ["tear-loop.wav"],
+  "flick": ["flick-1.wav", "flick-2.wav", "flick-3.wav"]
+}
+```
+
+Reload — the tear and the card-flick now play your foley; everything else stays synth
+until you add it.
+
+## Bundled sounds & licenses
+
+The `*.wav` files here are a **recorded foley pack**, rebuilt by `tools/build_sfx.py`
+(trimmed, normalised to ~−6 dB, and **layered** for the money cues — see below). The
+three "satisfying" climax cues are stacked stingers, not single hits:
+
+- **`reveal_impact`** = synth sub-bass drop + impact punch + explosion crack + deep gong
+  bloom + bright glass "tsss" + a magical shimmer on top.
+- **`riser`** = a **reverse-cymbal** swell (reversed gong + reversed glass + a rising
+  noise bed) that climaxes on the hit; the engine time-stretches it to the hold length.
+- **`chime`** = a bright bell with a glitter shimmer struck into its attack.
+- **`tear_loop`/`tear_snap`** = paper rip/crush, high-shelf-lifted to read as metallic foil.
+
+### Sources & licenses
+
+Almost everything is **CC0 (public domain)** — safe to redistribute, no attribution
+needed. Provenance:
+
 - **Kenney** (https://kenney.nl) — CC0 — *Casino Audio* (card slide/place/fan, pack
-  take-out & rip → `flick`, `setdown`, `cardtap`, `grab`), *Interface Sounds* (`scratch`).
-- **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop` / `tear_snap`.
-- `rip-crinkle.mp3` — the wrapper-crinkle recording supplied for the scrubbed top rip.
+  take-out & rip → `flick`, `setdown`, `cardtap`, `grab`, `tear_snap`), *Impact Sounds*
+  (punch body for `open_burst`/`reveal_impact`), *Interface Sounds* (`scratch`, `spark`,
+  `pip`, `gulp`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
+- **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`/`tear_snap`.
+- **"100 CC0 SFX"**, OpenGameArt — CC0 — gong/explosion/glass for `reveal_impact` &
+  `riser`, the bell for `chime`, metal/glass for the `tear_snap` crackle.
 
-The earlier CC-BY "Shimmer glitter magic" sparkle is gone, so there is no longer any
-credit obligation.
+**⚠ One CC-BY 3.0 file — attribution REQUIRED if shipped:**
+
+- **"Shimmer glitter magic"** by **ViRiX Dreamcore (David Mckee)**,
+  www.soundcloud.com/virix — OpenGameArt (https://opengameart.org/content/shimmer-glitter-magic),
+  licensed **CC-BY 3.0**. Used as the `sparkle` grain and the shimmer layer in
+  `reveal_impact` + `chime`. **Credit him somewhere user-visible** (about screen / credits)
+  if you ship this. To drop the attribution requirement entirely, swap `sparkle.wav` for a
+  CC0 twinkle and rebuild the two layered cues without the shimmer layer.
 
 To replace any cue, drop your own file in and edit `manifest.json` — no code changes.
