@@ -22,6 +22,7 @@
 
 import { renderCard } from "./card.js";
 import { cardPrint, ART_W, ART_H } from "./cardart.js";
+import { prepareDissolve } from "./dissolve.js";
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
 import { rarityToTier, tierOf, TIER_HEX, lighten } from "./rarity.js";
@@ -58,7 +59,7 @@ const CONFETTI = ["#ffffff", "#f7e4aa", "#d4a63a"]; // champagne-and-gold ticker
 // count-up, hold = the held breath between the rating landing and the name,
 // charge = the light swelling in the empty frame before the player appears.
 const NAME_TO_CHARGE = 360; // ms from the name's stamp to the light starting to swell
-const PLAYER_IN = 800; // ms the player takes to come out of the light
+const PLAYER_IN = 1300; // ms the player takes to dissolve onto the card out of the light
 const PLAYER_SETTLE = 150; // ms after that before the swap back to the baked art
 function printPace(tier) {
   const p = Math.max(0, Math.min(1, tier / 9));
@@ -470,14 +471,15 @@ export function createReveal({ mountEl, onAgain }) {
   // ease-out — the early points fly, the last few crawl, each clicking louder and
   // higher, and the final one lands with a slam — a held breath, and the name.
   // Then the light in the empty frame swells under a riser and the PLAYER comes out
-  // of it — a white silhouette rising into the photo — with a burst. Then the baked
-  // art (pixel-identical) swaps back in under the pieces and a gleam sweeps the
+  // of it — the photo DISSOLVING onto the card grain by grain from the head down,
+  // a hot edge riding the front (dissolve.js) — with a burst. Then the baked art
+  // (pixel-identical) swaps back in under the pieces and a gleam sweeps the
   // finished card. A tap mid-way finishes it at once (advance); the next tap moves
   // on. State lives on the entry: entry.bare until committed, entry.print while
   // it's going on.
   function stampIn(entry) {
     if (!entry.bare || entry.print) return;
-    const st = { timers: [], raf: 0, pieces: null, layer: null, glow: null, ghost: null, fx: [], shown: new Set(), counted: false, done: false };
+    const st = { timers: [], raf: 0, pieces: null, layer: null, glow: null, dissolve: null, dissolveRaf: 0, fx: [], shown: new Set(), counted: false, done: false };
     entry.print = st;
     const tier = rarityToTier(entry.card);
     const pace = printPace(tier);
@@ -629,6 +631,9 @@ export function createReveal({ mountEl, onAgain }) {
     if (!pc?.focus || !st.layer) return;
     const p = Math.max(0, Math.min(1, tier / 9));
     const [fx, fy, r] = pc.focus;
+    // the dissolve's noise field is built now, while the light swells, so the
+    // player's first grain lands on time rather than after a hitch
+    if (!REDUCED && !st.dissolve) st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: TIER_HEX[tier] || TIER_HEX[0] });
     const g = (st.glow = document.createElement("div"));
     g.className = "print-charge";
     Object.assign(g.style, { left: pct(fx, ART_W), top: pct(fy, ART_H), width: pct(r * 2.2, ART_W) });
@@ -672,10 +677,12 @@ export function createReveal({ mountEl, onAgain }) {
     if (navigator.vibrate) navigator.vibrate(6);
   }
 
-  // THE PLAYER APPEARS — the light bursts and the player rises out of it as a pure
-  // white silhouette (the player's own mask, card.playerMask), which then melts
-  // away to the photo underneath; the rim glow settles back, motes spray from the
-  // head, the card takes the blow and the impact lands.
+  // THE PLAYER APPEARS — the light bursts and the player DISSOLVES onto the card
+  // out of it: the photo materialises grain by grain, the face first (where the
+  // light was) and the body sweeping down after it, a hot edge in the edition's
+  // colour riding the front and motes lifting off it (dissolve.js); the rim glow
+  // settles back, the card takes the blow and the impact lands. Reduced motion
+  // (or no photo to dissolve) simply fades the player in.
   function playerIn(entry, tier) {
     const st = entry.print;
     const pc = st?.pieces?.get("player");
@@ -684,33 +691,48 @@ export function createReveal({ mountEl, onAgain }) {
     st.fx.forEach((a) => a.cancel());
     st.fx = [];
     const [fx, fy] = pc.focus || [ART_W / 2, ART_H / 2];
-    const origin = `${pct(fx, ART_W)} ${pct(fy, ART_H)}`;
-    const rise = { easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" };
-    const opts = { duration: PLAYER_IN, fill: "forwards" };
-    pc.canvas.style.transformOrigin = origin;
-    pc.canvas.animate(
-      [
-        { opacity: 0, transform: "translateY(3%) scale(0.94)", ...rise },
-        { opacity: 0, transform: "translateY(0%) scale(1.02)", offset: 0.22 },
-        { opacity: 1, transform: "translateY(0%) scale(1.01)", offset: 0.28 },
-        { opacity: 1, transform: "translateY(0%) scale(1)" },
-      ],
-      opts
-    );
-    if (entry.card.playerMask) {
-      const ghost = (st.ghost = document.createElement("div"));
-      ghost.className = "print-ghost";
-      ghost.style.setProperty("--ghost-mask", `url("${entry.card.playerMask}")`);
-      ghost.style.transformOrigin = origin;
-      pc.canvas.after(ghost); // over the player, under the print
-      ghost.animate(
+    const hex = TIER_HEX[tier] || TIER_HEX[0];
+    const dz = st.dissolve || (REDUCED ? null : (st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: hex })));
+    if (dz) {
+      dz.frame(0); // nothing of the photo yet — just the first glow at the head
+      pc.canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, fill: "forwards" });
+      const r = entry.cardEl.getBoundingClientRect();
+      const motes = ["#ffffff", "#fff4d6", lighten(hex, 0.5)];
+      const t0 = performance.now();
+      let tick = 0;
+      const step = (now) => {
+        if (st.dissolve !== dz) return; // finished or torn down meanwhile
+        const u = Math.min(1, (now - t0) / PLAYER_IN);
+        // ease in-out: the face gathers out of the light, then the front rushes
+        // down the body and eases onto the hem
+        const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+        dz.frame(e * dz.end);
+        // a mote lifts off the glowing front every other frame
+        if ((tick++ & 1) === 0 && u < 0.92) {
+          const at = dz.sample();
+          if (at) {
+            particles.emit(r.left + (at[0] / ART_W) * r.width, r.top + (at[1] / ART_H) * r.height, {
+              count: 1, speed: 1.1, dir: -Math.PI / 2, spread: 1.4, colors: motes, gravity: -0.015, life: 36, size: 1.7,
+            });
+          }
+        }
+        if (u < 1) { st.dissolveRaf = requestAnimationFrame(step); return; }
+        dz.finish();
+        st.dissolve = null;
+        st.dissolveRaf = 0;
+      };
+      st.dissolveRaf = requestAnimationFrame(step);
+    } else {
+      const origin = `${pct(fx, ART_W)} ${pct(fy, ART_H)}`;
+      pc.canvas.style.transformOrigin = origin;
+      pc.canvas.animate(
         [
-          { opacity: 0, transform: "translateY(3%) scale(0.94)", ...rise },
-          { opacity: 1, transform: "translateY(0%) scale(1.02)", offset: 0.22 },
-          { opacity: 1, transform: "translateY(0%) scale(1.01)", offset: 0.34, easing: "ease-in-out" },
-          { opacity: 0, transform: "translateY(0%) scale(1)" },
+          { opacity: 0, transform: "translateY(3%) scale(0.94)", easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" },
+          { opacity: 0, transform: "translateY(0%) scale(1.02)", offset: 0.22 },
+          { opacity: 1, transform: "translateY(0%) scale(1.01)", offset: 0.28 },
+          { opacity: 1, transform: "translateY(0%) scale(1)" },
         ],
-        opts
+        { duration: PLAYER_IN, fill: "forwards" }
       );
     }
     st.glow?.animate(
@@ -733,13 +755,22 @@ export function createReveal({ mountEl, onAgain }) {
       ],
       { duration: 320, easing: "ease-out" }
     );
-    const r = entry.cardEl.getBoundingClientRect();
-    const hex = TIER_HEX[tier] || TIER_HEX[0];
-    particles.emit(r.left + (fx / ART_W) * r.width, r.top + (fy / ART_H) * r.height, {
-      count: 16 + tier * 7, speed: 5.5, spread: Math.PI * 2,
-      // light tones only — a darker metal's own colour reads as specks on the white silhouette
+    const rb = entry.cardEl.getBoundingClientRect();
+    particles.emit(rb.left + (fx / ART_W) * rb.width, rb.top + (fy / ART_H) * rb.height, {
+      count: 10 + tier * 5, speed: 5.5, spread: Math.PI * 2,
+      // light tones only — a darker metal's own colour reads as specks on the glowing front
       colors: ["#ffffff", "#fff4d6", lighten(hex, 0.7)], gravity: 0.04, life: 64, size: 2.4, bloom: true,
     });
+  }
+
+  // stop a dissolve mid-flight and put the finished player back (finishPrint,
+  // commitPrint, cancelPrints)
+  function stopDissolve(st) {
+    if (!st?.dissolve) return;
+    cancelAnimationFrame(st.dissolveRaf);
+    st.dissolve.finish();
+    st.dissolve = null;
+    st.dissolveRaf = 0;
   }
 
   // A tap mid-stamp: every piece still to come lands at once (one quick fade and a
@@ -757,7 +788,7 @@ export function createReveal({ mountEl, onAgain }) {
     st.pieces.get("ovr").paint();
     st.fx.forEach((a) => a.cancel());
     st.glow?.remove();
-    st.ghost?.remove();
+    stopDissolve(st);
     for (const [key, pc] of st.pieces) {
       pc.canvas.getAnimations().forEach((a) => a.finish());
       if (st.shown.has(key)) continue;
@@ -782,6 +813,7 @@ export function createReveal({ mountEl, onAgain }) {
       st.done = true;
       st.timers.forEach(clearTimeout);
       cancelAnimationFrame(st.raf);
+      stopDissolve(st);
     }
     const { cardEl, card, slot } = entry;
     cardEl.classList.remove("unprinted"); // the player's gloss layer fades back in (index.html)
@@ -808,6 +840,7 @@ export function createReveal({ mountEl, onAgain }) {
       st.done = true;
       st.timers.forEach(clearTimeout);
       cancelAnimationFrame(st.raf);
+      stopDissolve(st);
       st.fx.forEach((a) => a.cancel());
     }
   }

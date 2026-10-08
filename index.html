@@ -1030,17 +1030,6 @@
         opacity: 0;
         pointer-events: none;
       }
-      /* the player rising out of that light as a pure white silhouette (its own
-         mask, card.playerMask) before it melts away to the photo */
-      .card__print .print-ghost {
-        position: absolute;
-        inset: 0;
-        background: #ffffff;
-        -webkit-mask: var(--ghost-mask) center / 100% 100% no-repeat;
-        mask: var(--ghost-mask) center / 100% 100% no-repeat;
-        opacity: 0;
-        pointer-events: none;
-      }
       /* the player's gloss layer lights the player's silhouette — keep it off while
          the card is still bare, and fade it in once the player is there */
       .reveal__slot .card__player { transition: opacity 0.45s ease; }
