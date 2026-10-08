@@ -28,9 +28,10 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 // TWO looping music beds that CROSS-FADE as the player moves between scenes:
 //   • "carousel" — the MAIN background music: the upbeat "Fun Life" hip-hop track,
 //                  looping while the player browses the deck of packs.
-//   • "open"     — the energetic Starlight Symphony theme. Swells up the moment a pack
-//                  is SELECTED, but only plays its INTRO and then HOLDS (see the intro-
-//                  hold block below); the rest pours in when the pack fully splits open.
+//   • "open"     — the upbeat funk breakbeat (alexguz, "Funk & Breakbeat Upbeat
+//                  Advertising"). Swells up the moment a pack is SELECTED, but only plays
+//                  its first 4-bar phrase and then HOLDS (see the intro-hold block below);
+//                  the rest pours in when the pack fully splits open.
 // Only one is audible at a time; switching scenes fades the other out under it.
 // Each bed plays NATIVELY from its own <audio> element — we do NOT route it through the
 // WebAudio graph. iOS/WebKit's createMediaElementSource silently drops ALL output (the bug
@@ -41,7 +42,7 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
 const MUSIC_SRC = {
   carousel: new URL("../assets/bgm-fun-life.mp3", import.meta.url),
-  open: new URL("../assets/bgm-starlight-symphony.mp3", import.meta.url),
+  open: new URL("../assets/bgm-funk-breakbeat.mp3", import.meta.url),
 };
 const beds = new Map(); // scene name -> { el }
 let musicStarted = false;
@@ -394,7 +395,10 @@ export function setMusicScene(scene, seconds = 1.6) {
 //   2) resumeOpenTheme() — the pack FULLY splits open. Release the hold so the rest of
 //      the theme pours in on the burst. If the open happens mid-intro (a fast select →
 //      yank), this just cancels the pending hold so the music plays straight through.
-const OPEN_INTRO_SEC = 6.1; // how much of the theme plays on select, before it holds for the open
+// The funk bed is 125 BPM (1.92s bars), downbeat at 0.50s; the groove thickens at bar 5
+// (8.18s). timeupdate fires every ~250ms and the fade-out takes ~0.3s, so 7.6 parks the
+// bed at ~7.9–8.2s: the open releases straight onto that bar-5 downbeat.
+const OPEN_INTRO_SEC = 7.6; // how much of the theme plays on select, before it holds for the open
 const OPEN_FADE = 0.25;     // the quick fade-out into the hold / fade-in out of it (seconds)
 let openHoldHandler = null; // the timeupdate listener that fades + pauses the open bed at the intro end
 let openPauseTimer = null;  // pending "pause at the bottom of the fade-out"
