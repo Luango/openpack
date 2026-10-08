@@ -12,6 +12,14 @@
 // then the rating counts up, slowing as it nears the number, the name lands, and
 // only then, out of a swelling light, does the PLAYER appear (stampIn).
 //
+// THE SCATTER — when the 3D pack is popped from the BACK, its cards blow out of the
+// wrapper and land FACE DOWN around the stage (the burst in pack3d/view.js; the DOM
+// takes them over at the hand-off at the exact same rects — scatter()). Nothing is
+// shown until the player turns a card: tap one and it flies to the centre, flips
+// over and lands with the full entrance + stamp-in above (a rare holds a beat face
+// down first — the tell, or the walkout); tap it again and it's flung away and the
+// rest of the face-down cards wait for the next pick (pick / flipOpen / advance).
+//
 // Once every card is seen they fan back into the HAUL — a draggable fan SELECTOR of
 // the pull: drag / swipe / wheel / arrow-keys rotate the fan to switch which card
 // sits centre (popped, enlarged, glowing, with a live holo sheen). See showHaul /
@@ -172,6 +180,12 @@ export function createReveal({ mountEl, onAgain }) {
   let anticTimer = null; // the pending uncover after the anticipation tell
   let lastAdvanceT = 0; // timestamp of the last tap-advance — throttles machine-gun tapping (ADVANCE_MIN_MS)
   let walkTimers = []; // the walkout's clue beats (cleared on close/replay)
+  // the scatter (the back pop): the cards lie face down round the stage and are
+  // turned over one at a time; `current` is the one up at the centre (or null while
+  // the player is choosing). Each face-down entry keeps its pose (entry.pose) and
+  // entry.down; slots are reordered on each pick so slots[pos] is always the card up.
+  let scatterMode = false;
+  let current = null;
 
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
@@ -286,7 +300,10 @@ export function createReveal({ mountEl, onAgain }) {
     clearTimeout(anticTimer);
     clearArrival();
     clearEnter();
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "haul-live");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "haul-live", "scatter", "picked");
+    scatterMode = false;
+    current = null;
+    stackEl.style.visibility = "";
     haulDragging = false;
     stopHaulLoop();
     tiltSpring.stop();
@@ -328,8 +345,13 @@ export function createReveal({ mountEl, onAgain }) {
 
   // Bring the stack in behind the pack the moment it's grabbed to tear (the pack
   // is sealed and covering, so the cards stay hidden until the gap opens).
-  function wake() {
-    if (slots.length) host.classList.remove("hidden");
+  function wake(mode) {
+    if (!slots.length) return;
+    host.classList.remove("hidden");
+    // the back route's cards come OUT of the 3D pack (its burst) and only exist here
+    // from the hand-off — keep the DOM stack out of sight until then, so nothing peeks
+    // out from behind the pack as it's hauled about
+    stackEl.style.visibility = mode === "back" ? "hidden" : "";
   }
 
   // Open the prepared stack — instant. The pack drops away (CSS, body.revealing),
@@ -343,8 +365,9 @@ export function createReveal({ mountEl, onAgain }) {
   // shadow on one contact frame), a gleam sweeps the fresh card, embers settle,
   // and the count pips fade in once it's planted. Humble for a common; the rare
   // build is layered on top by flourishIfRare (unchanged).
-  function show() {
+  function show(opts) {
     if (!slots.length) return;
+    if (opts?.scatter) { scatter(opts.scatter); return; } // the back pop: the cards lie face down
     host.classList.remove("hidden"); // ensure visible (normally already woken on grab)
     document.body.classList.add("revealing"); // the pack drops away + stops taking taps
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
@@ -372,6 +395,165 @@ export function createReveal({ mountEl, onAgain }) {
     for (let i = 0; i < cards.length; i++) {
       arrivalTimers.push(setTimeout(() => sfx.pipTone(i), 420 + i * 70));
     }
+  }
+
+  // ---- THE SCATTER (the back pop) -----------------------------------------------
+  // The 3D pack blew its cards out and they lie face DOWN in a spread; `layout` is
+  // their on-screen rects from pack3d/view.js (`poses`: centre, width, tilt — one per
+  // card, in card order). Each slot takes that exact pose, shows its back, and fades in
+  // over the 3D card as it fades out underneath (the same image at the same rect),
+  // then waits to be picked. The blown-open wrapper only drops away once the swap
+  // is done: the 3D cards ride the stage, so it can't move while they still show.
+  function scatter(poses) {
+    if (!slots.length) return;
+    clearWalkout();
+    clearArrival();
+    host.classList.remove("hidden");
+    host.classList.add("scatter");
+    scatterMode = true;
+    current = null;
+    peeking = false;
+    particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
+    const r = stackEl.getBoundingClientRect();
+    const scx = r.left + r.width / 2, scy = r.top + r.height / 2, sw = r.width || 1;
+    const byIndex = new Map((poses || []).map((l) => [l.i, l]));
+    slots.forEach((s, i) => {
+      const l = byIndex.get(i) || ringSpot(i, slots.length, r);
+      s.pose = { dx: l.cx - scx, dy: l.cy - scy, rot: l.rot || 0, sc: (l.w || sw * 0.48) / sw };
+      s.order = l.order ?? i;
+      s.down = true;
+      s.slot.classList.add("facedown");
+      s.slot.classList.remove("front", "flung", "picking");
+      s.slot.style.transition = "none"; // land on the pose, don't slide to it from the stack
+      s.slot.style.opacity = "0";
+      placeFacedown(s, false);
+    });
+    void stackEl.offsetWidth; // commit the poses before the transitions come back
+    layout();
+    stackEl.style.visibility = "";
+    requestAnimationFrame(() => {
+      for (const s of slots) s.slot.style.transition = "";
+      requestAnimationFrame(() => { for (const s of slots) if (s.down) s.slot.style.opacity = "1"; }); // the cross-fade
+    });
+    arrivalTimers.push(setTimeout(() => { for (const s of slots) s.slot.style.opacity = ""; }, 560)); // then the CSS owns it
+    arrivalTimers.push(setTimeout(() => document.body.classList.add("revealing"), 460)); // the spent wrapper drops away
+    // the afterglow + a few embers, as the stack arrival has — the stage never cuts to black
+    interiorAnim?.cancel();
+    interiorAnim = interiorEl.animate(
+      [{ opacity: 0 }, { opacity: 0.6, offset: 0.2 }, { opacity: 0.16 }],
+      { duration: 900, easing: "ease-out", fill: "forwards" }
+    );
+    embers();
+    hintEl.textContent = "Tap a card to turn it over";
+    arrivalTimers.push(setTimeout(() => host.classList.add("show-status"), 600));
+    updateHint();
+  }
+  // a fallback pose (no layout from the 3D pack): a loose ring round the centre
+  function ringSpot(i, n, r) {
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    return { cx: r.left + r.width / 2 + Math.cos(a) * r.width * 0.75, cy: r.top + r.height / 2 + Math.sin(a) * r.height * 0.62, w: r.width * 0.48, rot: (i % 2 ? 1 : -1) * 8, order: i };
+  }
+  // write a face-down card's pose; `pushed` eases it outward (and the CSS shrinks it via
+  // --shy) while another card is up at the centre, so the hero has the stage
+  function placeFacedown(entry, pushed) {
+    const p = entry.pose;
+    if (!p) return;
+    const k = pushed ? 1.22 : 1;
+    entry.slot.style.transform =
+      `translate(${(p.dx * k).toFixed(1)}px, ${(p.dy * k).toFixed(1)}px) rotate(${p.rot.toFixed(2)}deg) scale(calc(${p.sc.toFixed(4)} * var(--shy, 1)))`;
+  }
+
+  // THE PICK — a face-down card is tapped: it becomes the current card (moved to the
+  // front of the order so everything below reads slots[pos]), the others ease aside,
+  // and it flies to the centre still face down. A common is turned over at once; a
+  // rare holds there a beat on the rising tell (the top editions get the walkout)
+  // and is only then flipped — then it lands + stamps in exactly like a stack card.
+  function pick(entry) {
+    if (!scatterMode || current || anticipating || !entry.down || peeking) return;
+    if (host.classList.contains("held")) return;
+    current = entry;
+    const i = slots.indexOf(entry);
+    if (i !== pos) { slots.splice(i, 1); slots.splice(pos, 0, entry); }
+    host.classList.add("picked");
+    entry.slot.classList.add("picking");
+    entry.slot.style.pointerEvents = "none";
+    entry.slot.style.zIndex = "150";
+    for (const s of slots) if (s !== entry && s.down) { placeFacedown(s, true); s.slot.style.pointerEvents = "none"; }
+    hintEl.textContent = "";
+    sfx.flick();
+    if (navigator.vibrate) navigator.vibrate(6);
+    const tier = rarityToTier(entry.card);
+    flyToCentre(entry, () => {
+      if (tier >= RARE_TIER) {
+        // ANTICIPATION — the card is up but still face down: its colour leaks up behind
+        // it, the world dims, a riser climbs (or the walkout plays) before it's turned
+        anticipating = true;
+        const cfg = hitCfg(tier);
+        host.style.setProperty("--tier-color", TIER_HEX[tier]);
+        host.classList.add("telling");
+        if (navigator.vibrate) navigator.vibrate(8);
+        const uncover = () => {
+          host.classList.remove("telling");
+          anticipating = false;
+          flipOpen(entry, () => landed(entry));
+        };
+        if (tier >= WALKOUT_TIER && !REDUCED) { walkout(entry.card, tier, uncover); return; }
+        const wait = REDUCED ? Math.min(220, cfg.antic) : cfg.antic;
+        sfx.riser(tier, wait); // duration = the actual hold, so the climax lands on the turn
+        anticTimer = setTimeout(uncover, wait);
+        return;
+      }
+      flipOpen(entry, () => landed(entry));
+    });
+  }
+  // the picked card flies from its spot to the centre, growing to full size, face down
+  function flyToCentre(entry, done) {
+    const slot = entry.slot;
+    const from = slot.style.transform;
+    const to = "translate(0px, 0px) rotate(0deg) scale(1)";
+    if (REDUCED || !slot.animate) { slot.style.transform = to; arrivalTimers.push(setTimeout(done, 80)); return; }
+    const a = slot.animate([{ transform: from }, { transform: to }], { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" });
+    a.onfinish = () => { slot.style.transform = to; a.cancel(); done(); };
+  }
+  // THE FLIP — the card turns over at the centre: its back swings edge-on, the face
+  // swaps in behind the edge and swings flat, ending exactly on the entrance's first
+  // pose so `enter` carries straight on from it (no jump).
+  function flipOpen(entry, done) {
+    const slot = entry.slot;
+    const { rise, from } = enterVars(entry);
+    const land = `translateY(${rise}px) scale(${from})`;
+    const swap = () => { slot.classList.remove("facedown", "picking"); entry.down = false; };
+    if (REDUCED || !slot.animate) { swap(); slot.style.transform = ""; done(); return; }
+    const a1 = slot.animate(
+      [{ transform: "perspective(1100px) rotateY(0deg) scale(1)" }, { transform: "perspective(1100px) rotateY(90deg) scale(1.04)" }],
+      { duration: 200, easing: "ease-in", fill: "forwards" }
+    );
+    a1.onfinish = () => {
+      a1.cancel();
+      swap();
+      sfx.cardTap(0); // the card slapping over
+      const a2 = slot.animate(
+        [{ transform: "perspective(1100px) rotateY(-90deg) scale(1.04)" }, { transform: `perspective(1100px) rotateY(0deg) ${land}` }],
+        { duration: 240, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)", fill: "forwards" }
+      );
+      a2.onfinish = () => { slot.style.transform = ""; a2.cancel(); done(); };
+    };
+  }
+  // turned over: it's the front card now — it lands with weight and its print goes on
+  function landed(entry) {
+    layout();
+    enter(entry, true);
+    landingShadow();
+    flourishIfRare();
+    updateHint();
+  }
+  // the centre card has been flung: the stage goes back to the face-down spread
+  function returnToScatter() {
+    host.classList.remove("picked", "iridescent");
+    clearHit();
+    for (const s of slots) if (s.down) placeFacedown(s, false);
+    hintEl.textContent = "Tap a card to turn it over";
+    updateHint();
   }
 
   // Riffle the deeper cards (depth ≥ 1) from flush-behind-the-front into their
@@ -439,15 +621,7 @@ export function createReveal({ mountEl, onAgain }) {
     // backdrop): a common sets down gently on the defaults; a chase drops from
     // higher, overshoots deeper, and pops larger. Timing is fixed (see the CSS) so
     // the contact dip stays locked to the impact cues. punch: 0 below Team of the Week → 1 at Legend.
-    const punch = Math.max(0, Math.min(1, (rarityToTier(entry.card) - 3) / 6));
-    // A common starts EXACTLY where it already sat as the card behind (the depth-1
-    // resting pose: 5px down, 1% smaller — see the CSS stack step) so the swap reads
-    // as the front card being lifted off a real deck, with nothing jumping or
-    // fading underneath. A rare (uncovered after the hold) still rises from deeper.
-    el.style.setProperty("--enter-rise", (5 + punch * 40).toFixed(0) + "px");
-    el.style.setProperty("--enter-dip", (-(6 + punch * 12)).toFixed(0) + "px");
-    el.style.setProperty("--enter-pop", (1.015 + punch * 0.05).toFixed(3));
-    el.style.setProperty("--enter-from", (0.99 - punch * 0.12).toFixed(3));
+    enterVars(entry);
     el.classList.remove("entering", "gleaming");
     void el.offsetWidth; // restart the keyframe if it was mid-play
     el.classList.add("entering");
@@ -461,6 +635,23 @@ export function createReveal({ mountEl, onAgain }) {
       }, CONTACT_MS));
     }
     stampIn(entry); // …and once it's planted, its print goes on
+  }
+
+  // The entrance's amplitude, by tier, written as the card-enter keyframe vars (and
+  // returned, so the scatter's flip can end exactly on the entrance's first pose).
+  // A common starts EXACTLY where it already sat as the card behind (the depth-1
+  // resting pose: 5px down, 1% smaller — see the CSS stack step) so the swap reads
+  // as the front card being lifted off a real deck, with nothing jumping or
+  // fading underneath. A rare (uncovered after the hold) still rises from deeper.
+  function enterVars(entry) {
+    const el = entry.slot;
+    const punch = Math.max(0, Math.min(1, (rarityToTier(entry.card) - 3) / 6));
+    const rise = +(5 + punch * 40).toFixed(0), from = +(0.99 - punch * 0.12).toFixed(3);
+    el.style.setProperty("--enter-rise", rise + "px");
+    el.style.setProperty("--enter-dip", (-(6 + punch * 12)).toFixed(0) + "px");
+    el.style.setProperty("--enter-pop", (1.015 + punch * 0.05).toFixed(3));
+    el.style.setProperty("--enter-from", String(from));
+    return { rise, from };
   }
 
   // ---- the print: stamped on piece by piece, the player last --------------------
@@ -868,7 +1059,10 @@ export function createReveal({ mountEl, onAgain }) {
   function close() {
     clearWalkout();
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting", "scatter", "picked");
+    scatterMode = false;
+    current = null;
+    stackEl.style.visibility = "";
     binderEl.classList.remove("rising");
     againEl.disabled = false;
     collecting = false;
@@ -889,7 +1083,9 @@ export function createReveal({ mountEl, onAgain }) {
   function makeSlot(card) {
     const slot = document.createElement("div");
     slot.className = "reveal__slot";
-    slot.innerHTML = renderCard(card, { variant: "detail" });
+    // …plus the card's BACK for the scatter (the reveal flattens the card component and
+    // drops its own back face — see index.html — so the slot carries one of its own)
+    slot.innerHTML = renderCard(card, { variant: "detail" }) + `<div class="slot__back" aria-hidden="true"></div>`;
     const cardEl = slot.querySelector(".card");
     // renderCard seeds the thumbnail; swap in the full-res scan (already preloaded)
     // so the pulled card is as crisp as the gallery's lightbox — or, for a painted
@@ -903,11 +1099,21 @@ export function createReveal({ mountEl, onAgain }) {
     if (bare) cardEl.classList.add("unprinted");
     stackEl.appendChild(slot);
 
-    const entry = { slot, cardEl, card, bare, print: null };
-    let downX = 0, downY = 0, moved = false, holding = false;
+    const entry = { slot, cardEl, card, bare, print: null, down: false, pose: null, order: 0 };
+    let downX = 0, downY = 0, moved = false, holding = false, pressing = false;
     const isFront = () => slots[pos] === entry;
 
     slot.addEventListener("pointerdown", (e) => {
+      if (scatterMode && entry.down) {
+        // a face-down card in the scatter: a clean tap turns it over (pick)
+        if (current || anticipating || peeking) return;
+        pressing = true;
+        moved = false;
+        downX = e.clientX;
+        downY = e.clientY;
+        try { slot.setPointerCapture?.(e.pointerId); } catch {}
+        return;
+      }
       if (!isFront()) return;
       holding = true;
       moved = false;
@@ -918,10 +1124,11 @@ export function createReveal({ mountEl, onAgain }) {
       tiltToward(e.clientX, e.clientY); // grab feel: the whole stack leans toward where you press
     });
     slot.addEventListener("pointermove", (e) => {
+      if (pressing) { if (Math.hypot(e.clientX - downX, e.clientY - downY) > TAP_SLOP) moved = true; return; }
       if (!isFront()) return;
       if (!holding) { tiltToward(e.clientX, e.clientY); return; } // hover (desktop): lean only, no press
       const dx = e.clientX - downX, dy = e.clientY - downY, m = Math.hypot(dx, dy);
-      if (!sliding && m > SLIDE_SLOP) {
+      if (!sliding && m > SLIDE_SLOP && !scatterMode) { // (no deck to spread in the scatter)
         sliding = true;
         moved = true;
         host.classList.add("browsing"); // freeze the CSS transition so the spread tracks the finger 1:1
@@ -933,6 +1140,7 @@ export function createReveal({ mountEl, onAgain }) {
       tiltToward(e.clientX, e.clientY); // …and the whole stack tilts at the same time
     });
     const release = () => {
+      if (pressing) { pressing = false; if (!moved) pick(entry); return; }
       if (!holding) return;
       holding = false;
       if (sliding) {
@@ -957,6 +1165,15 @@ export function createReveal({ mountEl, onAgain }) {
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
+      if (scatterMode && s.down && s !== current) {
+        // a face-down card in the scatter keeps its own pose (inline), lies under the
+        // card that's up, and takes taps only while the player is choosing
+        s.slot.classList.remove("front", "flung");
+        s.slot.style.setProperty("--d", "0");
+        s.slot.style.zIndex = String(50 + (s.order || 0));
+        s.slot.style.pointerEvents = !current && !peeking && !anticipating ? "auto" : "none";
+        return;
+      }
       s.slot.classList.toggle("front", d === 0);
       s.slot.classList.toggle("flung", d < 0);
       s.slot.style.setProperty("--d", String(Math.max(0, d)));
@@ -964,7 +1181,8 @@ export function createReveal({ mountEl, onAgain }) {
       // leaving card covers the cards behind it all the way off — a real swap-off,
       // not a card sinking through the stack as it goes
       s.slot.style.zIndex = String(d < 0 ? 200 + i : 100 - d);
-      s.slot.style.pointerEvents = d === 0 && !peeking ? "auto" : "none";
+      // (a picked card takes no taps until it's been turned over)
+      s.slot.style.pointerEvents = d === 0 && !peeking && !(scatterMode && s.down) ? "auto" : "none";
     });
   }
 
@@ -982,6 +1200,19 @@ export function createReveal({ mountEl, onAgain }) {
     const cur = slots[pos];
     if (cur?.print && !cur.print.done) { finishPrint(cur); return; }
     if (cur) commitPrint(cur); // it leaves the hand finished
+    if (scatterMode) {
+      // the scatter: the card up is flung away and the face-down spread takes over
+      // again — the player picks the next one (no fixed order, so no tell here)
+      sfx.flick();
+      flingCurrent();
+      if (navigator.vibrate) navigator.vibrate(6);
+      pos++;
+      current = null;
+      layout();
+      if (pos < cards.length) returnToScatter();
+      else endOfPack();
+      return;
+    }
     const next = slots[pos + 1];
     const nextTier = next ? rarityToTier(next.card) : -1;
     sfx.flick();
@@ -1210,6 +1441,9 @@ export function createReveal({ mountEl, onAgain }) {
     if (!slots.length) return;
     tiltSpring.stop(); // no more stack holo tilt
     slots.forEach((s) => commitPrint(s)); // every card shows its full print in the fan
+    scatterMode = false;
+    current = null;
+    host.classList.remove("scatter", "picked");
     host.classList.add("haul", "show-status");
     haulN = slots.length;
     // hero = rarest (rarest-LAST → >= keeps the last among ties)
@@ -1222,7 +1456,8 @@ export function createReveal({ mountEl, onAgain }) {
     haulW = stackEl.getBoundingClientRect().width || 240;
     haulStep = haulW * 0.33; // px between fanned card centres
     slots.forEach((s) => {
-      s.slot.classList.remove("flung", "front", "entering", "gleaming", "rare");
+      s.slot.classList.remove("flung", "front", "entering", "gleaming", "rare", "facedown", "picking");
+      s.down = false;
       s.slot.style.pointerEvents = "auto"; // tappable → centre that card
       s._centre = undefined; s._zi = undefined; // force the first layout to write z + foil
     });
@@ -1467,6 +1702,11 @@ export function createReveal({ mountEl, onAgain }) {
 
   // Announce the current card to screen readers (the SR live region).
   function updateHint() {
+    if (scatterMode && !current) {
+      const left = slots.filter((s) => s.down).length;
+      srEl.textContent = `${left} card${left === 1 ? "" : "s"} face down. Tap one to turn it over.`;
+      return;
+    }
     const card = slots[pos]?.card;
     if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}: ${card.name}, ${card.pos || ""} ${card.ovr || ""}, ${card.rarity}. Tap for the next card.`;
   }
