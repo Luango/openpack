@@ -76,7 +76,8 @@ export function createController({ dims, reduced = false, emit = () => {} }) {
     const across = state.mode === "front" ? Math.max(0, local.y - yT0) : Math.abs(local.x);
     if (!broke) {
       const moved = Math.hypot(local.x - origin.x, local.y - origin.y);
-      if (moved < BREAK_DIST) return;
+      // the foil straining before it gives: 0 → 1 over the pull to the first break
+      if (moved < BREAK_DIST) { emit("strain", { k: moved / BREAK_DIST }); return; }
       broke = true;
       origin = { x: local.x, y: local.y }; // the break resets the drag origin: no jump
       p0 = state.p;

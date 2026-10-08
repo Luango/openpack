@@ -436,48 +436,22 @@ export function makeEdgeTexture() {
   return t;
 }
 
-// a soft radial bloom + ray fan for the opening light (additive sprites)
-export function makeGlowTexture() {
+// The light at the tear tip / the open mouth: a small, nearly white core inside a
+// warm gold halo that falls off fast — drawn as a depth-tested sprite just inside
+// the foil, so only the part showing through the torn gap is seen.
+export function makeCoreTexture() {
   const S = 256;
   const c = document.createElement("canvas");
   c.width = c.height = S;
   const g = c.getContext("2d");
   const rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  rg.addColorStop(0, "rgba(255,253,243,1)");
-  rg.addColorStop(0.3, "rgba(255,231,154,0.85)");
-  rg.addColorStop(0.65, "rgba(255,186,56,0.3)");
-  rg.addColorStop(1, "rgba(255,158,31,0)");
+  rg.addColorStop(0, "rgba(255,253,246,1)");
+  rg.addColorStop(0.1, "rgba(255,244,214,0.92)");
+  rg.addColorStop(0.26, "rgba(255,206,110,0.5)");
+  rg.addColorStop(0.55, "rgba(255,160,48,0.14)");
+  rg.addColorStop(1, "rgba(255,140,30,0)");
   g.fillStyle = rg;
   g.fillRect(0, 0, S, S);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-export function makeRaysTexture() {
-  const S = 512;
-  const c = document.createElement("canvas");
-  c.width = c.height = S;
-  const g = c.getContext("2d");
-  g.translate(S / 2, S / 2);
-  const N = 22;
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2;
-    const jL = Math.abs((Math.sin(i * 12.9 + 1.7) * 4391) % 1);
-    const jW = Math.abs((Math.sin(i * 7.31 + 0.4) * 2719) % 1);
-    const len = (S / 2) * (0.55 + 0.45 * jL);
-    const hw = 0.014 + 0.03 * jW;
-    const grad = g.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-    grad.addColorStop(0, "rgba(255,248,230,0.95)");
-    grad.addColorStop(0.35, "rgba(255,222,138,0.45)");
-    grad.addColorStop(1, "rgba(255,165,34,0)");
-    g.fillStyle = grad;
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(Math.cos(a - hw) * len, Math.sin(a - hw) * len);
-    g.lineTo(Math.cos(a + hw) * len, Math.sin(a + hw) * len);
-    g.closePath();
-    g.fill();
-  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

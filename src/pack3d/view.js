@@ -12,31 +12,43 @@
 //           fin seam and drag down: the back splits along the seam and its two
 //           flaps peel open; the cards come out toward you and turn face-up.
 //
+// The light (see "the light inside" below): trapped in the pack, let out through
+// the tear, at its brightest for the one instant the seal breaks, then settling
+// into soft beams the card rises through.
+//
 // Rendering is on demand: the loop runs only while something moves (a drag, the
 // strip settling, a pose spring, the open beats) and stops once settled.
 
 import * as THREE from "three";
 import { makeConfig, pickQuality } from "./config.js";
 import { buildCardStack } from "./geometry.js";
-import { makeEdgeTexture, makeGlowTexture, makeRaysTexture } from "./textures.js";
+import { makeEdgeTexture, makeCoreTexture } from "./textures.js";
 import { getPackAsset } from "./asset.js";
 import { makeMaterials, makeCardMaterials } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
 import { createController, P_NOTCH } from "./controller.js";
+import { createSeamGlow } from "./glow.js";
 import { createParticles } from "../particles.js";
+import { getOpenLight } from "../openlight.js";
 import { TIER_HEX } from "../rarity.js";
 import * as sfx from "../sfx.js";
 
 const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 const REST_YAW = 0.34; // ~19.5°: a slight three-quarter view, the notch corner toward the lens
 const REST_PITCH = -0.07; // the top edge tilts a touch toward the lens
+const STRAIN_PITCH = -0.045; // gripped: the pack bends a little more toward the hand
 // foil flecks: the pouch's own black foil + its gold (champagne → gold → bronze), with a white-hot glint
 const FOIL = ["#fff3c4", "#d4a63a", "#b8862b", "#ffffff", "#2a2016", "#80521c"];
 const TORE_KEY = "openpack.toreOnce";
 let toredSession = false;
 const hasToredBefore = () => { if (toredSession) return true; try { return localStorage.getItem(TORE_KEY) === "1"; } catch { return false; } };
 const markTored = () => { toredSession = true; try { localStorage.setItem(TORE_KEY, "1"); } catch { /* private mode */ } };
+
+// the light inside the pack, at full: point-light candela at this (metre) scale —
+// bright at the torn mouth, 1/d² dark by the lower half (materials.js lifts the
+// 10 cm floor three puts under the falloff)
+const INNER_MAX = 0.00042;
 
 export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = false }) {
   let cfg = makeConfig({ quality: pickQuality(), ...config }); // replaced by the shared asset's once loaded
@@ -64,6 +76,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   const openBtn = mountEl.querySelector(".pack3d-open");
   const particles = createParticles(mountEl.querySelector(".pack-fx"));
   const sceneFx = document.querySelector(".scene-fx");
+  const room = getOpenLight(); // the light outside the pack: dim, floor, beams, dust, flash
 
   // ---- renderer (throws without WebGL → the host falls back to the SVG pack) ----
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: T.antialias, powerPreference: "high-performance", premultipliedAlpha: true });
@@ -79,11 +92,13 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   scene.add(packGroup);
   const env = buildEnvironment(renderer);
   scene.environment = env.texture;
-  addLights(scene);
+  const lights = addLights(scene);
+  const KEY_I = lights.key.intensity, HEMI_I = lights.hemi.intensity;
 
   // ---- state ------------------------------------------------------------------
   let pack = null, deformer = null, ctl = null, mats = null, cardMats = null, wrapper = null;
-  let stack = null, topCard = null, deckMesh = null, bloom = null, rays = null;
+  let stack = null, topCard = null, deckMesh = null;
+  let core = null, innerLight = null, seam = null; // the light inside (see below)
   let surface = null, atlasTex = null, faceTex = null;
   let armed = false, opened = false, built = false, disposed = false;
   let tellTier = 0;
@@ -92,13 +107,26 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   let frozen = false; // pose locked during a tear
   let fly = null; // the detached cap's flight (front)
   let stackAnim = null; // the stack emerging + turning face-up (back)
-  let glowAnim = null; // the opening light beat
   let handoffTimer = 0, settleTimer = 0;
+  const beatTimers = []; // the open's scheduled beats (beams, shimmer, floor)
   const openSpring = { v: 0, t: 0 }; // the mouth
   const flapSpring = { v: 0, t: 0 };
-  const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
+  const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
+
+  // ---- the light inside -----------------------------------------------------------
+  // Levels ease toward targets set by the beats of the open:
+  //   seam  — the hair-thin leak along the prepared tear line (gripped: the foil
+  //           strains and the seam brightens; tearing: it runs ahead of the tip)
+  //   inner — the light in the pack: a point light at the tip, a near-white core
+  //           sprite just inside the foil (only the gap shows it), the slab of light
+  //           at the lip (glow.js), the inner foil's warm glow, hot torn edges
+  //   room  — how dark the surroundings have gone (the pack's own reflections and
+  //           key light dim with it, so its lower half sinks into shadow)
+  //   impulse — the one spike at the instant the seal breaks (the flash)
+  const light = { seam: 0, seamT: 0, inner: 0, innerT: 0, room: 0, roomT: 0, impulse: 0, strain: 0, phase: "idle", t: 0, hold: 0, flicker: 1 };
+  const tipTint = new THREE.Color(0xffd98a);
 
   // the DOM card's CSS width — the 3D card inside the pack projects to exactly this
   const probe = document.createElement("div");
@@ -167,13 +195,19 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     packGroup.add(stack);
     if (faceTex) { cardMats.face.map = faceTex; cardMats.face.needsUpdate = true; }
 
-    // the opening light: additive sprites at the mouth, off until the open
-    const spriteMat = (tex) => new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, opacity: 0, toneMapped: false });
-    bloom = new THREE.Sprite(spriteMat(makeGlowTexture()));
-    rays = new THREE.Sprite(spriteMat(makeRaysTexture()));
-    bloom.renderOrder = 60; rays.renderOrder = 61;
-    bloom.visible = rays.visible = false;
-    packGroup.add(bloom, rays);
+    // the light inside: a point light at the tear (in the scene from the start, at
+    // zero, so its shader is compiled during the warm-up and never on the first
+    // rip), the core sprite just inside the foil (depth-tested: only the gap shows
+    // it), and the slab of light along the lip
+    innerLight = new THREE.PointLight(0xffc462, 0, 0.16, 2);
+    innerLight.position.set(0, pack.dims.yT0 - 0.004, 0);
+    packGroup.add(innerLight);
+    core = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeCoreTexture(), blending: THREE.AdditiveBlending, depthTest: true, depthWrite: false, transparent: true, opacity: 0, toneMapped: false }));
+    core.renderOrder = 4;
+    core.visible = false;
+    packGroup.add(core);
+    seam = createSeamGlow(pack, deformer);
+    packGroup.add(seam.mesh);
 
     fit();
     built = true;
@@ -322,21 +356,43 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   }
 
   // ---- feedback -------------------------------------------------------------------------
+  // where the opening is on screen, and which way is "out" of it
+  function mouthScreen() {
+    const { b0, yT0, ySeal } = pack.dims;
+    return ctl.state.mode === "front" ? screenOf({ x: 0, y: yT0 + 0.001, z: b0 }) : screenOf({ x: 0, y: ySeal - 0.006, z: -b0 });
+  }
+  function upAngle() {
+    const { b0, yT0 } = pack.dims;
+    const a = screenOf({ x: 0, y: yT0, z: b0 }), b = screenOf({ x: 0, y: yT0 + 0.02, z: b0 });
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  }
   function onEvent(type, d) {
     switch (type) {
       case "grip":
       case "resume":
         frozen = true;
-        wrap.classList.add("tearing");
+        wrap.classList.add("tearing", "lit");
         wrap.classList.remove("guide", "settled");
         sceneFx?.classList.add("paused");
         sfx.grab();
         onGrab?.();
+        anticipate(type === "resume");
+        if (type === "resume" && d.p > P_NOTCH + 1e-4) sfx.tearStart(tellTier); // the rip picks its sound back up
         updateCue();
         break;
+      case "strain":
+        // the foil strains before it gives: the seam brightens, the creak rises
+        light.strain = d.k;
+        light.seamT = 0.45 + 0.55 * d.k;
+        sfx.foilStretch(true, d.k);
+        break;
       case "break": {
+        sfx.foilStretch(false);
         sfx.tearStart(tellTier);
         if (navigator.vibrate) navigator.vibrate(9);
+        light.phase = "tear";
+        light.seamT = 1;
+        light.innerT = Math.max(light.innerT, 0.3);
         const s = screenOf(deformer.tipLocal(ctl.state));
         particles.emit(s.x, s.y, { count: 4, speed: 3, colors: FOIL, life: 30, shape: "chip", size: 1.8 });
         break;
@@ -347,6 +403,11 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         const s = screenOf(deformer.tipLocal(ctl.state));
         particles.emit(s.x, s.y, { count: 1 + Math.round(inten * 3), speed: 2 + inten * 5, colors: FOIL, life: 36, shape: "chip", size: 1.9 });
         if (inten > 0.5) particles.emit(s.x, s.y, { count: 1, speed: 3 + inten * 4, colors: ["#fff", "#ffe7b0"], life: 24, size: 1.3 });
+        // the light follows the tear: more of it the further the foil has opened,
+        // and a few lit motes escape at the tip
+        light.innerT = 0.3 + 0.7 * d.p;
+        room.leak(s.x, s.y, 4 + inten * 8, upAngle());
+        room.floor(null, 0.14 + 0.26 * d.p, 220);
         if (d.buzz && navigator.vibrate) navigator.vibrate(5);
         break;
       }
@@ -354,13 +415,42 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         frozen = false;
         wrap.classList.remove("tearing");
         sceneFx?.classList.remove("paused");
+        sfx.foilStretch(false);
         if (d.tearing) sfx.tearEnd(false);
+        if (d.p <= P_NOTCH + 1e-4) relax(); // let go before anything tore: the room comes back
+        else pose.pitchT = REST_PITCH; // mid-tear: the light stays trapped, the pack eases
         updateCue();
         break;
       case "complete":
         completeSequence(d);
         break;
     }
+  }
+
+  // ANTICIPATION — the pack is gripped: the surroundings go almost black, a gold
+  // pool reflects beneath the pack, the thin seam along the tear line appears and
+  // the pack bends a touch toward the hand. (A resumed tear keeps its light.)
+  function anticipate(resuming) {
+    if (light.phase === "idle" || light.phase === "antic") light.phase = resuming && ctl.state.p > P_NOTCH + 1e-4 ? "tear" : "antic";
+    light.roomT = 1;
+    light.seamT = Math.max(light.seamT, 0.45);
+    light.innerT = Math.max(light.innerT, 0.1);
+    room.dim(1, 450);
+    room.floor(getHandoffRect(), 0.14, 450);
+    pose.pitchT = REST_PITCH + STRAIN_PITCH;
+    if (!resuming) sfx.foilStretch(true, 0);
+    requestRender();
+  }
+  // the hand let go before the first break — nothing tore, so the room comes back
+  function relax() {
+    light.phase = "idle";
+    light.roomT = light.seamT = light.innerT = 0;
+    light.strain = 0;
+    room.dim(0, 700);
+    room.floor(null, 0, 500);
+    pose.pitchT = REST_PITCH;
+    wrap.classList.remove("lit");
+    requestRender();
   }
 
   // ---- the open ----------------------------------------------------------------------------
@@ -372,8 +462,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     wrap.classList.add("opening");
     wrap.classList.remove("tearing", "settled");
     cueEl.textContent = "";
-    sfx.tearEnd(true, power);
-    sfx.burst(power, tellTier);
+    sfx.foilStretch(false);
+    sfx.tearEnd(true, power); // the sharp rip
+    sfx.burst(power, tellTier); // the short bass impact
     sfx.resumeOpenTheme?.();
     sfx.tearRelease();
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
@@ -392,12 +483,12 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       // the pack straightens to face the lens so the card inside lines up with the DOM card
       pose.yawT = Math.round(pose.yawT / (2 * Math.PI)) * 2 * Math.PI;
       pose.pitchT = 0;
-      startGlow({ x: 0, y: pack.dims.yT0 + 0.002, z: pack.dims.b0 + 0.004 }, 0);
+      release(power, 0);
     } else {
       flapSpring.t = 1; // the flaps swing fully open (the spring drives it; needsLoop watches it)
       // the stack comes out of the opened back toward the lens and turns face-up
       stackAnim = { t: 0, dur: REDUCED ? 0.3 : 0.52, delay: 0.12, q0: new THREE.Quaternion(), started: false };
-      startGlow({ x: 0, y: 0.01, z: -pack.dims.b0 - 0.006 }, 0.1);
+      release(power, 0.1);
     }
     // exit: the spent body drops away (px, so iOS animates it)
     const reach = Math.max(window.innerWidth, window.innerHeight) * 1.3;
@@ -407,46 +498,108 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     requestRender();
   }
 
-  // The opening light: shoots out, HOLDS and breathes (two surges), then fades —
-  // the "what's in here?!" window before the cards. Longer for a chase. Only when
-  // it has fully faded does the body drop (gated on the fade, with a safety net).
-  function startGlow(local, delay) {
+  // THE RELEASE — the seal breaks: this is the brightest instant of the whole open.
+  // One warm-white flash, the light inside spiking, a small camera impact and a
+  // tight burst of dust; then the flash settles into soft beams escaping upward
+  // from the mouth, which HOLD and breathe (longer for a chase — the "what's in
+  // here?!" window) before the body drops and the card rises through them. The
+  // hand-off is gated on the hold, with a safety net so the flow can never stall.
+  function release(power, delay) {
     const holdMs = REDUCED ? 420 : 760 + tellTier * 70;
     const dropBeat = 150;
-    bloom.position.set(local.x, local.y, local.z);
-    rays.position.set(local.x, local.y, local.z);
-    bloom.visible = rays.visible = true;
-    glowAnim = { t: -delay, hold: holdMs / 1000, done: false };
-    const total = delay * 1000 + holdMs + dropBeat;
+    light.phase = "open";
+    light.t = -delay;
+    light.hold = holdMs / 1000;
+    light.releasedAt = performance.now();
+    light.impulse = 1;
+    light.innerT = 0.9;
+    light.seamT = 1;
+    light.roomT = 1;
+    core.visible = true;
+    const at = (ms, fn) => beatTimers.push(setTimeout(() => { if (!disposed && opened) fn(); }, ms));
+    at(delay * 1000, () => { const s = mouthScreen(); room.flash(power, s.x, s.y); room.floor(null, 0.62, 100); });
+    at(delay * 1000 + 70, () => { const s = mouthScreen(); room.release({ x: s.x, y: s.y, width: packPx.w, tier: tellTier, up: upAngle() }); });
+    at(delay * 1000 + 130, () => sfx.sparkleDust(5 + Math.round(tellTier * 0.5), 0.9)); // the delicate shimmer
+    at(delay * 1000 + 340, () => room.floor(null, 0.42, 500));
     clearTimeout(handoffTimer);
-    handoffTimer = setTimeout(handOff, total + 60);
+    handoffTimer = setTimeout(handOff, delay * 1000 + holdMs + dropBeat + 60);
   }
   let handedOff = false;
   function handOff() {
     if (handedOff) return;
     handedOff = true;
-    bloom.visible = rays.visible = false;
+    light.handedAt = performance.now();
+    // the beams and the dark room linger while the card rises; the light inside
+    // goes out quickly so nothing rides the body as it drops
+    light.phase = "out";
+    light.innerT = light.seamT = light.roomT = 0;
+    light.impulse = 0;
+    room.settle();
     if (stack) stack.visible = false; // the DOM stack behind the canvas takes over, in place
     ctl.reveal();
     onOpen?.();
     requestRender();
   }
-  function stepGlow(dt) {
-    if (!glowAnim) return;
-    glowAnim.t += dt;
-    const t = glowAnim.t;
-    if (t < 0) return;
-    const u = Math.min(1, t / glowAnim.hold);
-    // surge → ease back → swell again → out
-    const env = u < 0.16 ? u / 0.16 : u < 0.46 ? 1 - 0.24 * ((u - 0.16) / 0.3) : u < 0.7 ? 0.76 + 0.24 * ((u - 0.46) / 0.24) : 1 - (u - 0.7) / 0.3;
-    const grow = Math.min(1, t / 0.25);
-    bloom.material.opacity = 0.95 * Math.max(0, env);
-    rays.material.opacity = 0.9 * Math.max(0, env);
-    bloom.scale.setScalar(0.05 + 0.13 * grow);
-    rays.scale.setScalar(0.12 + 0.34 * grow);
-    rays.material.rotation += dt * 0.25;
-    if (u >= 1) { glowAnim = null; bloom.visible = rays.visible = false; }
+
+  // ease the levels, run the open's envelope, and write the light into the scene
+  function stepLight(dt) {
+    const k = 1 - Math.exp(-dt / 0.11), kr = 1 - Math.exp(-dt / 0.28);
+    if (light.phase === "open") {
+      light.t += dt;
+      if (light.t >= 0) {
+        const u = Math.min(1, light.t / light.hold);
+        // settle from the flash, then two gentle surges — the trapped light breathing out
+        const env = u < 0.3 ? 1 - 0.3 * (u / 0.3)
+          : u < 0.55 ? 0.7 + 0.2 * Math.sin(((u - 0.3) / 0.25) * Math.PI)
+          : u < 0.85 ? 0.7 + 0.25 * Math.sin(((u - 0.55) / 0.3) * Math.PI) : 0.7;
+        light.innerT = 0.55 + 0.35 * env;
+      }
+    }
+    light.seam += (light.seamT - light.seam) * k;
+    light.inner += (light.innerT - light.inner) * k;
+    light.room += (light.roomT - light.room) * kr;
+    light.impulse *= Math.exp(-dt / 0.09);
+    // a live flame while the hand is on it; steady when paused or open
+    const live = light.phase === "antic" || light.phase === "tear";
+    const flickT = live ? 0.9 + 0.1 * Math.sin(performance.now() * 0.021) * Math.sin(performance.now() * 0.0073) : 1;
+    light.flicker += (flickT - light.flicker) * k;
+    if (!built) return;
+
+    const st = ctl.state;
+    const { b0, yT0, a0, W, ySeal } = pack.dims;
+    const detached = st.phase === "detached" || st.phase === "revealed";
+    const front = st.mode === "front";
+    const tipX = detached ? 0 : -a0 + st.p * W;
+    const tipY = detached ? 0 : ySeal - st.p * 2 * ySeal;
+    const inner = light.inner * light.flicker, imp = light.impulse;
+
+    // the room dims → the pack's own reflections and key light sink with it
+    const dimK = 1 - 0.5 * light.room;
+    mats.bodyExt.envMapIntensity = mats.headerExt.envMapIntensity = 1.15 * dimK;
+    lights.key.intensity = KEY_I * (1 - 0.45 * light.room);
+    lights.hemi.intensity = HEMI_I * dimK;
+    // the inside catches the light
+    mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = 0.55 * inner + 0.9 * imp;
+    // the point light at the tear tip, inside the foil
+    innerLight.intensity = INNER_MAX * (inner + 2.4 * imp);
+    if (front) innerLight.position.set(detached ? 0 : tipX - 0.004, yT0 - 0.005, 0.0004);
+    else innerLight.position.set(0, detached ? 0.01 : tipY + 0.004, -b0 + 0.0025);
+    // the core: just inside the surface, so the foil still in place hides it
+    const coreA = Math.min(1, inner * 0.92 + imp);
+    core.visible = coreA > 0.01;
+    if (core.visible) {
+      if (front) core.position.set(detached ? 0 : tipX - 0.0015, yT0 + (detached ? 0.002 : 0.0012), b0 - 0.0008);
+      else core.position.set(0, detached ? ySeal - 0.01 : tipY - 0.001, -b0 + 0.0008);
+      core.material.opacity = coreA;
+      core.scale.setScalar(detached ? 0.02 + 0.016 * inner + 0.05 * imp : 0.011 + 0.013 * inner + 0.04 * imp);
+    }
+    seam.update({ mode: st.mode, seam: light.seam, inner: Math.min(1, inner + imp * 0.8), tipX, tipY, open: detached });
+    if (light.phase === "open" && light.t >= 0) { const s = mouthScreen(); room.setSource(s.x, s.y); }
+    return { heat: Math.min(1, inner + imp), tipX, tipY };
   }
+  // (a paused tear keeps its light but needs no frames: the levels are static until the hand returns)
+  const lightMoving = () => light.phase === "open" || light.impulse > 0.004
+    || Math.abs(light.seam - light.seamT) > 0.004 || Math.abs(light.inner - light.innerT) > 0.004 || Math.abs(light.room - light.roomT) > 0.004;
 
   function stepFly(dt) {
     if (!fly) return;
@@ -487,26 +640,28 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     ctl.state.flapOpen = flapSpring.x;
   }
 
-  // a brief, decaying screen-kick on the burst (skipped under reduced motion)
+  // a small camera impact on the release: a quick push-in and a short settle,
+  // not a shake (skipped under reduced motion)
   function kick(power) {
     if (REDUCED || !mountEl.animate) return;
-    const amp = 5 + power * 9;
-    const frames = [{ transform: `translate(0px, 0px) scale(${(1 + 0.05 * power).toFixed(3)})` }];
-    for (let i = 1; i <= 7; i++) {
-      const decay = 1 - i / 7;
-      frames.push({ transform: `translate(${((Math.random() * 2 - 1) * amp * decay).toFixed(1)}px, ${((Math.random() * 2 - 1) * amp * decay).toFixed(1)}px) scale(1)` });
-    }
-    frames.push({ transform: "translate(0px, 0px) scale(1)" });
-    mountEl.animate(frames, { duration: 260 + power * 80, easing: "ease-out", fill: "none" });
+    const a = 3 + power * 4;
+    const frames = [
+      { transform: `translate(0px, ${(a * 0.6).toFixed(1)}px) scale(${(1 + 0.028 * power).toFixed(3)})`, offset: 0 },
+      { transform: `translate(${(-a * 0.5).toFixed(1)}px, ${(-a * 0.7).toFixed(1)}px) scale(${(1 + 0.012 * power).toFixed(3)})`, offset: 0.3 },
+      { transform: `translate(${(a * 0.3).toFixed(1)}px, ${(a * 0.25).toFixed(1)}px) scale(1)`, offset: 0.58 },
+      { transform: `translate(${(-a * 0.12).toFixed(1)}px, ${(-a * 0.1).toFixed(1)}px) scale(1)`, offset: 0.8 },
+      { transform: "translate(0px, 0px) scale(1)", offset: 1 },
+    ];
+    mountEl.animate(frames, { duration: 240 + power * 60, easing: "ease-out", fill: "none" });
   }
   function burstAlongRoute(mode) {
     const { a0, b0, yT0, ySeal } = pack.dims;
-    for (let k = 0; k <= 12; k++) {
-      const u = k / 12;
+    for (let k = 0; k <= 10; k++) {
+      const u = k / 10;
       const l = mode === "front" ? { x: -a0 + u * 2 * a0, y: yT0, z: b0 } : { x: 0, y: ySeal - u * 2 * ySeal, z: -b0 };
       const s = screenOf(l);
-      particles.emit(s.x, s.y, { count: 3, speed: 4.5, colors: FOIL, life: 50, size: 2.6, shape: "chip" });
-      particles.emit(s.x, s.y, { count: 1, speed: 5.5, colors: ["#fff", "#ffe7b0"], life: 30, size: 1.6 });
+      particles.emit(s.x, s.y, { count: 2, speed: 4.5, colors: FOIL, life: 50, size: 2.6, shape: "chip" });
+      if (k % 2 === 0) particles.emit(s.x, s.y, { count: 1, speed: 5.5, colors: ["#fff", "#ffe7b0"], life: 30, size: 1.6 });
     }
   }
 
@@ -516,8 +671,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function needsLoop() {
     if (!built) return false;
     const st = ctl.state;
-    if (drag || st.auto || fly || stackAnim || glowAnim) return true;
+    if (drag || st.auto || fly || stackAnim) return true;
     if (st.phase === "gripping" || st.phase === "tearing") return true;
+    if (lightMoving()) return true;
     if (poseMoving()) return true;
     if (Math.abs(openSpring.t - (openSpring.x || 0)) > 0.002 || Math.abs(openSpring.v) > 0.01) return true;
     if (Math.abs(flapSpring.t - (flapSpring.x || 0)) > 0.002 || Math.abs(flapSpring.v) > 0.01) return true;
@@ -536,8 +692,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       stepFly(dt);
       stepPose(dt);
       stepStack(dt);
-      stepGlow(dt);
-      deformer.evaluate(ctl.state, dt);
+      const lit = stepLight(dt);
+      deformer.evaluate(ctl.state, dt, lit);
       renderer.render(scene, camera);
       placeNotch();
       if (debugPanel) debugPanel.stats();
@@ -565,10 +721,12 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     mountEl.style.setProperty("--tell", hex);
     mountEl.style.setProperty("--idle-heat", heat.toFixed(2));
     mountEl.classList.toggle("chase", tellTier >= 8);
-    if (bloom) {
-      const c = new THREE.Color(hex);
-      bloom.material.color.copy(c).lerp(new THREE.Color(0xffe9a8), 0.55);
-      rays.material.color.copy(c).lerp(new THREE.Color(0xffd98a), 0.7);
+    if (core) {
+      // the light stays gold; the tell only warms or cools it a little
+      tipTint.set(hex);
+      core.material.color.set(0xfff1cf).lerp(tipTint, 0.18);
+      innerLight.color.set(0xffc462).lerp(tipTint, 0.28);
+      seam.setTint(hex);
     }
   }
 
@@ -576,20 +734,29 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function reset() {
     if (!built) return;
     opened = false; handedOff = false; frozen = false;
-    fly = null; stackAnim = null; glowAnim = null;
+    fly = null; stackAnim = null;
     clearTimeout(handoffTimer); clearTimeout(settleTimer);
+    for (const t of beatTimers) clearTimeout(t);
+    beatTimers.length = 0;
+    light.phase = "idle";
+    light.seam = light.seamT = light.inner = light.innerT = light.room = light.roomT = light.impulse = light.strain = 0;
+    light.flicker = 1;
+    room.reset();
+    sfx.foilStretch(false);
     openSpring.x = openSpring.v = openSpring.t = 0;
     flapSpring.x = flapSpring.v = flapSpring.t = 0;
     for (const m of [mats.headerExt, mats.headerInt]) { m.visible = true; m.opacity = 1; m.transparent = false; m.needsUpdate = true; }
     packGroup.attach(stack);
     stack.position.set(0, 0, 0); stack.quaternion.identity(); stack.visible = true;
-    bloom.visible = rays.visible = false;
+    core.visible = false;
+    seam.reset();
     pose.yaw = pose.yawT = 0; pose.pitch = pose.pitchT = 0; pose.yawV = pose.pitchV = 0;
     packGroup.rotation.set(0, 0, 0);
     ctl.reset();
     deformer.reset();
+    stepLight(0);
     deformer.evaluate(ctl.state, 0);
-    wrap.classList.remove("opening", "tearing", "settled", "back");
+    wrap.classList.remove("opening", "tearing", "settled", "back", "lit");
     updateCue();
     requestRender();
   }
@@ -627,13 +794,15 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     disposed = true;
     cancelAnimationFrame(raf);
     clearTimeout(handoffTimer); clearTimeout(settleTimer);
+    for (const t of beatTimers) clearTimeout(t);
     pack?.geometry.dispose();
     deformer?.ribbonGeo.dispose();
     mats?.all.forEach((m) => m.dispose());
     cardMats?.all.forEach((m) => m.dispose());
     deckMesh?.geometry.dispose(); topCard?.geometry.dispose();
     faceTex?.dispose(); // (the atlas + surface maps belong to the shared asset)
-    bloom?.material.map.dispose(); bloom?.material.dispose(); rays?.material.map.dispose(); rays?.material.dispose();
+    core?.material.map.dispose(); core?.material.dispose();
+    seam?.dispose();
     env.dispose();
     renderer.dispose();
     mountEl.innerHTML = "";
@@ -660,6 +829,11 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       const p = Number(q("p").value);
       out.value = `${Math.round(p * 100)}%`;
       ctl.scrub(p, p > P_NOTCH ? (ctl.state.mode === "front" ? { x: -pack.dims.a0 + p * pack.dims.W, y: pack.dims.yT0 + 0.012 } : { x: 0.006, y: pack.dims.ySeal - p * 2 * pack.dims.ySeal }) : null);
+      // scrubbing shows the trapped light at that point of the tear
+      light.phase = p > P_NOTCH ? "tear" : "idle";
+      light.seamT = p > P_NOTCH ? 1 : 0;
+      light.innerT = p > P_NOTCH ? 0.3 + 0.7 * p : 0;
+      light.roomT = p > P_NOTCH ? 1 : 0;
       requestRender();
     });
     q("yaw").addEventListener("input", () => { pose.yawT = Number(q("yaw").value); requestRender(); });
@@ -669,7 +843,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     debugPanel = {
       stats() {
         const r = renderer.info.render;
-        stats.textContent = `tier ${cfg.quality} · wrapper ${pack.stats.triangles} tris · pass ${r.triangles} tris / ${r.calls} calls · phase ${ctl.state.phase} · p ${ctl.state.p.toFixed(3)} · ${facing()}`;
+        stats.textContent = `tier ${cfg.quality} · wrapper ${pack.stats.triangles} tris · pass ${r.triangles} tris / ${r.calls} calls · phase ${ctl.state.phase} · p ${ctl.state.p.toFixed(3)} · ${facing()} · light ${light.phase} ${light.inner.toFixed(2)}`;
       },
     };
   }
@@ -684,6 +858,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     get stack() { return stack; },
     get materials() { return mats; },
     get pose() { return pose; },
+    get light() { return light; },
+    get seam() { return seam; },
+    room,
     flip, requestRender,
     auto: (m) => { if (built) { ctl.auto(m || facing()); requestRender(); } },
     facing,
