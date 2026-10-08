@@ -70,7 +70,7 @@ export function getPackAsset(overrides = {}) {
 
     return {
       cfg, aspect, layout, front, back, cardBack, frontTex, backTex,
-      map, normalMap: surface.normalMap, ormMap: surface.ormMap, surfaceReady: surface.whenReady,
+      map, normalMap: surface.normalMap, normalMapIn: surface.normalMapIn, ormMap: surface.ormMap, surfaceReady: surface.whenReady,
       showGeometry,
       showOutline,
       showStats: show.stats,

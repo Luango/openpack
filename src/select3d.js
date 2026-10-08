@@ -711,11 +711,22 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // emissive flash punches the moment. The canvas stays fully opaque the whole way —
   // the REAL pack is hidden until the hero lands exactly on top of it (finishSelect),
   // so it's only swapped in once it perfectly overlaps. No early reveal, no jump.
+  // On the way it SPINS a full 360° about its own upright axis — a showy pirouette rather
+  // than a plain slide to the lens. The spin is driven by the same eased progress as the
+  // flight (fast through the middle, settling at the end) and totals exactly one turn, so
+  // at selT=1 the pack is back to the billboard pose and the cross-dissolve rect is
+  // untouched. The flight is longer than the old 0.66s slide so the turn can be read.
+  const SELECT_SEC = 1.05;
+  const SELECT_TURNS = 1;
+  const _spinQ = new THREE.Quaternion(), _upAxis = new THREE.Vector3(0, 1, 0);
   function stepSelect(dt) {
-    selT = Math.min(1, selT + dt / 0.66);
+    selT = Math.min(1, selT + dt / SELECT_SEC);
     const e = easeInOut(selT);
     heroMesh.position.lerpVectors(restPose.pos, heroTarget.pos, e);
     heroMesh.quaternion.copy(restPose.quat).slerp(heroTarget.quat, e); // ease the billboard turn
+    // the pirouette: a local-Y spin layered on the billboard turn (multiply = local axis)
+    _spinQ.setFromAxisAngle(_upAxis, Math.PI * 2 * SELECT_TURNS * e);
+    heroMesh.quaternion.multiply(_spinQ);
     heroMesh.scale.setScalar(lerp(restPose.s, heroTarget.scale, e));
     heroMesh.renderOrder = 999;
     applyOpacity(heroMesh, 1);
@@ -723,7 +734,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // on has none, so the rim is gone well before the cross-dissolve (no popping seam)
     const heroRim = heroMesh.userData.rim;
     if (heroRim) heroRim.material.uniforms.uOpacity.value = Math.max(0, 1 - selT / 0.55);
-    setHeroFlash(Math.sin(selT * Math.PI) * 0.9); // golden-streak flash, peaks mid-flight
+    // golden-streak flash: peaks as the face swings back round to the lens (~3/4 through
+    // the spin), not mid-flight when the pack is showing us its back
+    const fl = Math.max(0, Math.min(1, (selT - 0.45) / 0.55));
+    setHeroFlash(Math.sin(fl * Math.PI) * 0.9);
     // ease the hero's sheen from the dock's focus lift to the tear stage's level: face-on
     // at the lens it mirrors the room's soft wall in full, and the stage pack it dissolves
     // into carries the same room at EXT_ENV — matched here so there's no brightness step

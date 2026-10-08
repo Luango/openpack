@@ -26,7 +26,9 @@ export function nearLight(m) {
 // the stage's room dims both with `light.room` during the open (view.js stepLight).
 export const EXT_ENV = 0.85;
 export const EXT_EMI = 0.1;
-export function makeMaterials({ map, normalMap, ormMap }) {
+// the bare foil's gold (what the laminate is under the print): the metal's reflectance
+export const INT_GOLD = 0xd6aa5e;
+export function makeMaterials({ map, normalMap, normalMapIn = normalMap, ormMap }) {
   const ext = () => nearLight(new THREE.MeshStandardMaterial({
     map,
     normalMap,
@@ -41,17 +43,19 @@ export function makeMaterials({ map, normalMap, ormMap }) {
     emissiveIntensity: EXT_EMI,
     side: THREE.FrontSide,
   }));
-  // the inner foil: bare silver, softer than the print side. Not a pure metal, so
-  // the light inside the pack (a point light at the tear, view.js) lands on it as a
-  // warm diffuse glow and not just a specular dot; the emissive is the inside
-  // catching that light, driven from 0 while the pack is sealed.
+  // the inner foil: the SAME gold laminate as the outside, unprinted — the foil's
+  // crinkle relief at full strength (the crinkle-only normal map: no raised ink on
+  // this face) over a bare gold base, a touch more matte than the print side. A hair
+  // short of a pure metal so the light inside the pack (a point light at the tear,
+  // view.js) still lands on it as a warm glow and not only a specular streak; the
+  // emissive is the inside catching that light, driven from 0 while the pack is sealed.
   const int = () => nearLight(new THREE.MeshStandardMaterial({
-    color: 0xd4d8df,
-    normalMap,
-    normalScale: new THREE.Vector2(0.45, 0.45),
-    roughness: 0.5,
-    metalness: 0.72,
-    envMapIntensity: 0.9,
+    color: INT_GOLD,
+    normalMap: normalMapIn,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughness: 0.4,
+    metalness: 0.9,
+    envMapIntensity: EXT_ENV,
     emissive: 0xffb347,
     emissiveIntensity: 0,
     side: THREE.BackSide,

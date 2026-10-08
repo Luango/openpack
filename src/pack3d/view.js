@@ -116,7 +116,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   let handoffTimer = 0, settleTimer = 0;
   const beatTimers = []; // the open's scheduled beats (beams, shimmer, floor)
   const openSpring = { v: 0, t: 0, k: 60, c: 10 }; // the mouth
-  const flapSpring = { v: 0, t: 0, k: 190, c: 14 }; // the back's doors: fast, with an overshoot — the pop
+  const flapSpring = { v: 0, t: 0, k: 190, c: 16 }; // the back blown open: fast, a little past flat and back — the pop
+  // the laid-out wrapper is twice the pack's width; where that would run off a narrow
+  // viewport the pack draws back from the lens as it opens, so the whole sheet stays in frame
+  let recedeZ = 0;
   // the back pull's rigid feel: the pack is hauled a little toward the hand (held back
   // elastically, so it boings on release and recoils on the pop), leans with the pull,
   // and trembles harder the closer the seal is to giving
@@ -155,6 +158,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const w = cardPx() * (cfg.widthM / cfg.cardWM);
     packPx = { w, h: w * (cfg.heightM / cfg.widthM) };
     const d = fitDistance(camera, cfg.heightM, packPx.h, vh);
+    // the opened wrapper's width on screen (twice the pack, plus the crimps' flare) vs the frame
+    const splay = 2 * packPx.w * (1 + 2 * cfg.sealFlareM / cfg.widthM), room = 0.9 * vw;
+    recedeZ = splay > room ? d * (splay / room - 1) : 0; // a sheet at d + Δ draws at d / (d + Δ) of its size
     camera.position.set(0, 0, d);
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
@@ -179,8 +185,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const cardBack = asset.cardBack;
     pack = asset.buildTear();
     atlasTex = asset.map;
-    surface = { normalMap: asset.normalMap, ormMap: asset.ormMap, whenReady: asset.surfaceReady };
-    mats = makeMaterials({ map: atlasTex, normalMap: surface.normalMap, ormMap: surface.ormMap });
+    surface = { normalMap: asset.normalMap, normalMapIn: asset.normalMapIn, ormMap: asset.ormMap, whenReady: asset.surfaceReady };
+    mats = makeMaterials({ map: atlasTex, normalMap: surface.normalMap, normalMapIn: surface.normalMapIn, ormMap: surface.ormMap });
     surface.whenReady.then(() => { if (!disposed) { for (const m of mats.all) m.needsUpdate = true; requestRender(); } });
     wrapper = new THREE.Mesh(pack.geometry, [mats.bodyExt, mats.bodyInt, mats.headerExt, mats.headerInt]);
     wrapper.frustumCulled = false;
@@ -705,8 +711,11 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     for (const s of [openSpring, flapSpring]) { if (s.x === undefined) s.x = 0; sp(s, s.k, s.c); }
     ctl.state.open = openSpring.x;
     ctl.state.flapOpen = flapSpring.x;
+    ctl.state.flapVel = flapSpring.v;
     // the back pull's rigid feel
     const st = ctl.state;
+    // popped: the pack draws back as the wrapper lays out, where the frame needs it
+    if (st.mode === "back" && recedeZ > 0 && (st.phase === "detached" || st.phase === "revealed")) follow.tz = -recedeZ * Math.min(1, flapSpring.x);
     if (st.mode === "back" && st.grip && (st.phase === "gripping" || st.phase === "tearing")) {
       // the hand's pull (pack-local, on the back) → a fraction of it, in world space
       _v.set(st.pullX, st.pullY, 0).applyQuaternion(packGroup.quaternion);
