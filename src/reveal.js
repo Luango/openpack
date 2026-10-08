@@ -12,12 +12,12 @@
 // then the rating counts up, slowing as it nears the number, the name lands, and
 // only then, out of a swelling light, does the PLAYER appear (stampIn).
 //
-// THE FILM — a staged card (staged.js, `card.cinematic`) holds its player back one
-// more beat: once the name has landed the card ZOOMS up into the screen, the stage
-// going black beneath it, the empty frame lighting up — and a full-screen clip
-// fades in out of that light and plays. When it ends the camera pulls back out to
-// the card, the light swelling in the frame as it settles, and the player comes out
-// of it as the card lands (cinema()). A tap during the clip cuts to the pull-back.
+// THE FILM — a staged card (staged.js, `card.cinematic`) holds its NAME and its
+// player back: once the rating has landed the camera rushes into the empty frame and
+// the screen dips to black; a full-screen clip comes up out of the black and plays
+// (at 1.35×), dips back to black, and the black lifts on the card drifting back to
+// rest — then the name lands and the player comes out of the light (cinema()). A tap
+// during the clip cuts to the dip out.
 //
 // THE SCATTER — when the 3D pack is popped from the BACK, its cards blow out of the
 // wrapper, land FACE DOWN around the stage and then GATHER BACK INTO A STACK (the
@@ -79,23 +79,25 @@ const CONFETTI = ["#ffffff", "#f7e4aa", "#d4a63a"]; // champagne-and-gold ticker
 const NAME_TO_CHARGE = 360; // ms from the name's stamp to the light starting to swell
 const PLAYER_IN = 1300; // ms the player takes to dissolve onto the card out of the light
 const PLAYER_SETTLE = 150; // ms after that before the swap back to the baked art
-// THE FILM's pace (cinema()). The clip plays in the card's empty portrait panel — a
-// WINDOW the camera pushes into: the card zooms until the panel is most of the screen,
-// then the window's edges slip past the screen's and the clip is everything. The
-// pull-back is the same move reversed: the window closes back onto the panel as the
-// card shrinks, and the clip fades out of it into the light the player comes from.
-const FILM_IN = 1700; // ms the card takes to zoom up into the screen
-const FILM_IN_FADE = 650; // ms the clip takes to fade up inside the panel at the start of the push-in
-const FILM_OPEN_AT = 1150; // ms into the push-in the window starts to open past the panel…
-const FILM_OPEN = 500; // …and how long it takes to reach the whole screen
-const FILM_OUT = 1600; // ms the card takes to pull back to rest (the light swells across it)
-const FILM_CLOSE = 500; // ms the window takes to close back onto the panel at the start of the pull-back
-const FILM_OUT_FADE_AT = 350; // ms into the pull-back the clip starts to fade out of the panel…
-const FILM_OUT_FADE = 750; // …over this long
-const FILM_POOL_FILL = 0.66; // the panel's height as a fraction of the screen's at the end of the push-in
-const FILM_SKIP_AFTER = 2400; // ms of the clip before a tap may cut away (the window has opened by then)
-const FILM_EASE = "cubic-bezier(0.6, 0, 0.25, 1)"; // slow off the mark, slow onto the landing — a camera, not a spring
-const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+// THE FILM's pace (cinema()). After the rating lands — the NAME held back — the camera
+// RUSHES into the card's empty portrait panel and the screen dips to black on the way
+// in; the clip comes up out of the black at FILM_RATE, dips back to black just before
+// its last frame, and the black lifts on the card easing back to rest. Only then does
+// the name stamp on, and the player follows out of the light.
+const FILM_IN = 780; // ms the camera takes to rush into the panel (accelerating)
+const FILM_DARK_AT = 260; // ms into the push-in the screen starts to dip to black (it's black as the push-in ends)
+const FILM_UP = 420; // ms the clip takes to come up out of the black
+const FILM_DOWN = 400; // ms the clip takes to dip back to black — it starts this long (screen time) before the clip's last frame
+const FILM_BLACK = 140; // ms of pure black between the clip and the card
+const FILM_LIFT = 560; // ms the black takes to lift off the card
+const FILM_OUT = 1000; // ms the card takes to settle back to rest from just inside the panel (starts as the black lifts)
+const FILM_NAME_AT = 640; // ms after the black starts lifting that the name stamps on
+const FILM_RATE = 1.35; // the clip's playback speed
+const FILM_POOL_FILL = 1.15; // the panel's height as a fraction of the screen's at the end of the push-in (the black takes it from there)
+const FILM_NEAR = 1.18; // the card's scale under the black as the pull-back starts
+const FILM_SKIP_AFTER = 1200; // ms of the clip before a tap may cut away
+const FILM_IN_EASE = "cubic-bezier(0.5, 0, 0.85, 0.4)"; // a camera rushing in — gathering speed into the black
+const FILM_OUT_EASE = "cubic-bezier(0.2, 0.65, 0.25, 1)"; // a camera drifting back — slowing onto the landing
 function printPace(tier) {
   const p = Math.max(0, Math.min(1, tier / 9));
   return {
@@ -794,11 +796,11 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
       t += pace.count;
       at(t, () => landRating(entry)); // on time even if rAF is throttled
       t += pace.hold;
+      // a staged card plays its FILM here, before its name — the name and the player
+      // follow the pull-back
+      if (filmOf(entry) && !REDUCED) { at(t, () => cinema(entry)); return; }
       at(t, () => stampPiece(entry, "name", 1));
-      t += NAME_TO_CHARGE;
-      // a staged card plays its FILM here, and the player follows the pull-back
-      if (filmOf(entry) && !REDUCED) at(t, () => cinema(entry));
-      else finale(entry, t);
+      finale(entry, t + NAME_TO_CHARGE);
     }, () => commitPrint(entry));
   }
 
@@ -817,27 +819,26 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
   }
 
   // ---- THE FILM ----------------------------------------------------------------
-  // The print has landed, the frame is still empty. The clip fades up INSIDE the empty
-  // portrait panel — a window in the card — as the card starts to ZOOM up into the
-  // screen, the stage blacking out beneath it; the camera pushes into the window until
-  // it's most of the screen and then its edges slip past the screen's: the clip is
-  // everything, and plays with its own sound (the bed ducked right down). On its last
-  // frame the camera pulls back: the window closes back onto the panel as the card
-  // shrinks toward rest, the clip fades out of the panel into the light swelling there
-  // (charge), and the player comes out of that light as the card lands (finale). A tap
-  // during the clip cuts to the pull-back; a clip that can't play pulls back at once.
-  // The window is the film layer's clip-path, tracked to the panel's on-screen rect
-  // every frame of the push-in and pull-back (the slot is mid-transform both times).
-  // Everything the film touches is tracked on st.cinema so a teardown (stopCinema)
-  // leaves nothing behind.
+  // The rating has landed, the frame is still empty and the name is held back. The
+  // camera RUSHES into the empty portrait panel — the card gathering speed up into the
+  // screen, the panel lighting up, the stage going dark beneath it — and the screen
+  // dips to black as it arrives. The clip comes up out of the black and plays (at
+  // FILM_RATE, with its own sound, the bed ducked right down); just before its last
+  // frame it dips back to black, the card waits under the black just inside the
+  // panel, and as the black lifts the camera drifts back out to the card at rest.
+  // Then the name stamps on and the player comes out of the light (finale). A tap
+  // during the clip cuts to the dip; a clip that can't play dips out at once.
+  // The black is the film layer's own background (.reveal__cinema, over the card); the
+  // clip fades in and out on top of it. Everything the film touches is tracked on
+  // st.cinema so a teardown (stopCinema) leaves nothing behind.
   function cinema(entry) {
     const st = entry.print;
     const film = filmOf(entry);
     if (!st || st.done || st.cinema || st.cinemaDone) return;
     const slot = entry.slot;
-    if (!film || !slot.animate || !videoEl.canPlayType) { finale(entry, 0); return; }
+    if (!film || !slot.animate || !videoEl.canPlayType) { afterFilm(entry, 0); return; }
     const tier = rarityToTier(entry.card);
-    const c = (st.cinema = { phase: "in", timers: [], anims: [], watch: 0, raf: 0, playAt: 0, t0: performance.now() });
+    const c = (st.cinema = { phase: "in", timers: [], anims: [], watch: 0, raf: 0, playAt: 0 });
     cinemaOn = entry;
     flat(); // the deck lies flat for the camera
     host.classList.add("cinema");
@@ -845,95 +846,90 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
     const at = (ms, fn) => c.timers.push(setTimeout(fn, ms));
     const run = (el, frames, opts) => { const a = el.animate(frames, opts); c.anims.push(a); return a; };
 
-    // THE PUSH-IN — toward the panel's centre (it ends centred on the screen), scaled so
-    // the panel stands FILM_POOL_FILL of the screen's height
+    // THE PUSH-IN — toward the panel's centre, scaled until the panel overfills the
+    // screen (FILM_POOL_FILL); the near pose is the same aim, only just inside the panel
     const r = slot.getBoundingClientRect();
     const pc = st.pieces?.get("player");
     const [px, py, pw, ph] = pc?.window || [ART_W * 0.35, ART_H * 0.07, ART_W * 0.58, ART_W * 0.67];
     const [fx, fy] = pc?.focus || [px + pw / 2, py + ph * 0.4];
-    const vw = innerWidth, vh = innerHeight;
-    const S = Math.max(2.4, (vh * FILM_POOL_FILL) / (r.height * (ph / ART_H)));
-    const tx = -S * ((px + pw / 2) / ART_W - 0.5) * r.width;
-    const ty = -S * ((py + ph / 2) / ART_H - 0.5) * r.height;
-    c.far = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${S.toFixed(3)})`;
+    const ox = ((px + pw / 2) / ART_W - 0.5) * r.width, oy = ((py + ph / 2) / ART_H - 0.5) * r.height;
+    const pose = (s, k) => `translate(${(-s * ox * k).toFixed(1)}px, ${(-s * oy * k).toFixed(1)}px) scale(${s.toFixed(3)})`;
+    const S = Math.max(2.6, (innerHeight * FILM_POOL_FILL) / (r.height * (ph / ART_H)));
     c.rest = "translate(0px, 0px) scale(1)";
-    run(slot, [{ transform: c.rest }, { transform: c.far }], { duration: FILM_IN, easing: FILM_EASE, fill: "forwards" });
-    run(veilEl, [{ opacity: 0 }, { opacity: 1 }], { duration: FILM_IN * 0.75, easing: "ease-in-out", fill: "forwards" });
-    // the empty panel lights up as the clip comes up in it
+    c.near = pose(FILM_NEAR, 0.6);
+    c.push = run(slot, [{ transform: c.rest }, { transform: pose(S, 1) }], { duration: FILM_IN, easing: FILM_IN_EASE, fill: "forwards" });
+    run(veilEl, [{ opacity: 0 }, { opacity: 1 }], { duration: FILM_IN, easing: "ease-in", fill: "forwards" });
+    // the dip to black (the clip itself is held at 0 until it's playing)
+    videoEl.style.opacity = "0";
+    run(cinemaEl, [{ opacity: 0 }, { opacity: 1 }], { duration: FILM_IN - FILM_DARK_AT, delay: FILM_DARK_AT, easing: "ease-in", fill: "both" });
+    // the empty panel lights up as the camera rushes at it, and the rim with it
     if (st.layer && pc?.focus) {
       const g = (c.glow = document.createElement("div"));
       g.className = "print-charge";
       Object.assign(g.style, { left: pct(fx, ART_W), top: pct(fy, ART_H), width: pct(pc.focus[2] * 2.6, ART_W) });
       st.layer.prepend(g);
-      run(g, [{ opacity: 0, transform: "translate(-50%, -50%) scale(0.5)" }, { opacity: 0.8, transform: "translate(-50%, -50%) scale(1)" }], { duration: FILM_IN_FADE, easing: "ease-out", fill: "forwards" });
+      run(g, [{ opacity: 0, transform: "translate(-50%, -50%) scale(0.5)" }, { opacity: 0.85, transform: "translate(-50%, -50%) scale(1)" }], { duration: FILM_IN, easing: "ease-in", fill: "forwards" });
     }
-    // (the rim glow brightens too — on its own handle: it hands straight over to the
-    // pull-back's charge, which reads the rim's resting value as its start)
     const rim = entry.cardEl.querySelector(".card__glow");
     if (rim) c.rimAnim = rim.animate([{ opacity: +getComputedStyle(rim).opacity || 0 }, { opacity: 0.85 }], { duration: FILM_IN, easing: "ease-in", fill: "forwards" });
     sfx.riser(tier, FILM_IN);
     if (navigator.vibrate) navigator.vibrate(10);
 
-    // THE WINDOW — the film layer clipped to the panel's rect on screen (k 0), opened
-    // out to the whole screen (k 1); re-measured every frame while the slot moves
-    const setWindow = (k) => {
-      const q = entry.cardEl.getBoundingClientRect();
-      const sx = q.width / ART_W, sy = q.height / ART_H;
-      const l = q.left + px * sx, t = q.top + py * sy, w = pw * sx, h = ph * sy;
-      const m = 1 - k;
-      const ins = (v) => Math.max(0, v * m).toFixed(1);
-      cinemaEl.style.clipPath = `inset(${ins(t)}px ${ins(vw - l - w)}px ${ins(vh - t - h)}px ${ins(l)}px round ${(w * 0.045 * m).toFixed(1)}px)`;
-    };
-    const trackIn = (now) => {
-      if (st.cinema !== c || c.phase === "out") return;
-      const u = now - c.t0;
-      setWindow(smoothstep((u - FILM_OPEN_AT) / FILM_OPEN));
-      if (u < FILM_IN) { c.raf = requestAnimationFrame(trackIn); return; }
-      cinemaEl.style.clipPath = ""; // open — the clip is the whole screen
-      c.raf = 0;
-      at(80, () => { if (c.phase !== "out") stackEl.style.visibility = "hidden"; }); // nothing to composite under an opaque clip
-    };
-    setWindow(0);
-    c.raf = requestAnimationFrame(trackIn);
-
-    // THE CLIP — plays from the first frame of the push-in, fading up in the panel; with
-    // sound (the bed ducked for its whole length), or silent if sound is refused, or not
-    // at all (→ pull back at once)
-    const pullBack = () => zoomOut();
-    const onEnded = () => pullBack();
-    const onError = () => pullBack();
+    // THE CLIP — started as the screen goes black, and brought up out of it once it's
+    // actually playing: with sound (the bed ducked for its whole length), silent if
+    // sound is refused, or not at all (→ dip out at once)
+    const onEnded = () => dipOut();
+    const onError = () => dipOut();
     c.unlisten = () => { videoEl.removeEventListener("ended", onEnded); videoEl.removeEventListener("error", onError); };
     videoEl.addEventListener("ended", onEnded);
     videoEl.addEventListener("error", onError);
-    videoEl.muted = sfx.isMuted();
-    try { videoEl.volume = sfx.getVolume(); } catch {}
-    try { videoEl.currentTime = 0; } catch {}
-    run(cinemaEl, [{ opacity: 0 }, { opacity: 1 }], { duration: FILM_IN_FADE, easing: "ease-in-out", fill: "forwards" });
+    const runtime = ((film.seconds || 10) * 1000) / FILM_RATE; // the clip's length on screen
     const begin = () => {
       if (st.cinema !== c || c.phase !== "in") return;
       c.phase = "play";
       c.playAt = performance.now();
-      if (!videoEl.muted) sfx.duck(0.05, (film.seconds || 10) * 1000 + 800, 1800);
+      stackEl.style.visibility = "hidden"; // nothing to composite under the black
+      videoEl.playbackRate = FILM_RATE; // (again — some engines reset it on play)
+      run(videoEl, [{ opacity: 0 }, { opacity: 1 }], { duration: FILM_UP, easing: "ease-out", fill: "forwards" });
+      if (!videoEl.muted) sfx.duck(0.05, runtime + 800, 1800);
+      // the dip back to black starts FILM_DOWN before the clip's last frame, so the
+      // clip is still moving as it goes
+      const lead = (FILM_DOWN / 1000) * FILM_RATE;
+      const tail = () => {
+        if (st.cinema !== c || c.phase !== "play") return;
+        const d = videoEl.duration;
+        if (d && isFinite(d) && d - videoEl.currentTime <= lead) { dipOut(); return; }
+        c.raf = requestAnimationFrame(tail);
+      };
+      c.raf = requestAnimationFrame(tail);
       // a stalled clip (no progress for a while) cuts away rather than hanging
       let lastT = -1, lastAt = performance.now();
       c.watch = setInterval(() => {
         if (videoEl.currentTime !== lastT) { lastT = videoEl.currentTime; lastAt = performance.now(); }
-        else if (performance.now() - lastAt > 2600) pullBack();
+        else if (performance.now() - lastAt > 2600) dipOut();
       }, 400);
-      at((film.seconds || 10) * 1000 + 2500, pullBack); // and a hard backstop past its length
+      at(runtime + 2500, dipOut); // and a hard backstop past its length
     };
-    const p = videoEl.play();
-    if (!p?.then) begin();
-    else p.then(begin, () => {
-      // sound refused — play it silent rather than not at all
-      videoEl.muted = true;
-      videoEl.play().then(begin, pullBack);
+    at(FILM_IN, () => {
+      if (st.cinema !== c || c.phase !== "in") return;
+      videoEl.muted = sfx.isMuted();
+      try { videoEl.volume = sfx.getVolume(); } catch {}
+      try { videoEl.currentTime = 0; } catch {}
+      videoEl.defaultPlaybackRate = FILM_RATE;
+      videoEl.playbackRate = FILM_RATE;
+      const p = videoEl.play();
+      if (!p?.then) begin();
+      else p.then(begin, () => {
+        // sound refused — play it silent rather than not at all
+        videoEl.muted = true;
+        videoEl.play().then(begin, dipOut);
+      });
     });
 
-    // THE PULL-BACK — the window closes back onto the panel as the card eases toward
-    // rest, the clip fades out of the panel into the light swelling there, and the
-    // player lands with the card
-    function zoomOut() {
+    // THE DIP OUT — the clip fades back to black, a beat of black, then the black lifts
+    // on the card drifting back to rest from just inside the panel; the name and the
+    // player follow (afterFilm)
+    function dipOut() {
       if (st.cinema !== c || c.phase === "out") return;
       c.phase = "out";
       c.unlisten();
@@ -941,43 +937,51 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
       cancelAnimationFrame(c.raf);
       c.timers.forEach(clearTimeout);
       c.timers = [];
-      stackEl.style.visibility = ""; // (the clip still covers it)
-      const slotNow = getComputedStyle(slot).transform; // from wherever the push-in got to
-      const veilNow = +getComputedStyle(veilEl).opacity || 0;
-      const clipNow = +getComputedStyle(cinemaEl).opacity || 0;
-      const settle = run(slot, [{ transform: slotNow === "none" ? c.rest : slotNow }, { transform: c.rest }], { duration: FILM_OUT, easing: FILM_EASE, fill: "forwards" });
-      settle.onfinish = () => { settle.cancel(); }; // back on the CSS rest (identical) — no jump
-      run(veilEl, [{ opacity: veilNow }, { opacity: 0 }], { duration: FILM_OUT, easing: "ease-in-out", fill: "forwards" });
-      const fade = run(cinemaEl, [{ opacity: clipNow }, { opacity: 0 }], { duration: FILM_OUT_FADE, delay: FILM_OUT_FADE_AT, easing: "ease-in-out", fill: "forwards" });
-      fade.onfinish = () => { try { videoEl.pause(); } catch {} };
-      const t1 = performance.now();
-      const trackOut = (now) => {
-        if (st.cinema !== c) return;
-        const u = now - t1;
-        setWindow(1 - smoothstep(u / FILM_CLOSE));
-        if (u < FILM_OUT_FADE_AT + FILM_OUT_FADE) { c.raf = requestAnimationFrame(trackOut); return; }
-        cinemaEl.style.clipPath = ""; // (faded out by now)
-        c.raf = 0;
-      };
-      c.raf = requestAnimationFrame(trackOut);
-      if (c.glow) { const g = c.glow; run(g, [{ opacity: +getComputedStyle(g).opacity || 0 }, { opacity: 0 }], { duration: FILM_OUT * 0.5, fill: "forwards" }).onfinish = () => g.remove(); }
-      c.rimAnim?.cancel(); // (behind the still-opaque clip) → the charge starts from the rim's rest
-      if (!videoEl.muted) sfx.releaseDuck(1400); // the bed comes back under the pull-back (the charge's riser re-ducks it)
-      // the film is over: taps + tilt are the card's again (a tap from here is the
-      // ordinary "finish the print"); the record stays on st.cinema until the card has
-      // landed, so a teardown mid-pull-back still finds everything to cancel
-      st.cinemaDone = true;
-      cinemaOn = null;
-      c.timers.push(setTimeout(() => {
-        if (st.cinema !== c) return;
-        st.cinema = null;
-        host.classList.remove("cinema");
-        c.anims.forEach((a) => a.cancel()); // every layer is back on its own CSS rest — no visible change
-        c.anims = [];
-      }, FILM_OUT + 60));
-      finale(entry, 0, FILM_OUT);
+      const vNow = +getComputedStyle(videoEl).opacity || 0;
+      const down = Math.round(FILM_DOWN * vNow);
+      if (down) run(videoEl, [{ opacity: vNow }, { opacity: 0 }], { duration: down, easing: "ease-in", fill: "forwards" });
+      if (!videoEl.muted) sfx.releaseDuck(down + FILM_BLACK + FILM_LIFT + 600); // the bed comes back under the lift
+      at(down + FILM_BLACK, () => {
+        try { videoEl.pause(); } catch {}
+        // under the black: the card waits just inside the panel, the panel's light and
+        // the rim back at rest (the charge swells them again for the player)
+        c.push.cancel();
+        c.rimAnim?.cancel();
+        c.glow?.remove();
+        c.glow = null;
+        stackEl.style.visibility = "";
+        const settle = run(slot, [{ transform: c.near }, { transform: c.rest }], { duration: FILM_OUT, easing: FILM_OUT_EASE, fill: "both" });
+        settle.onfinish = () => settle.cancel(); // back on the CSS rest (identical) — no jump
+        run(veilEl, [{ opacity: 1 }, { opacity: 0 }], { duration: FILM_OUT, easing: "ease-in-out", fill: "forwards" });
+        run(cinemaEl, [{ opacity: 1 }, { opacity: 0 }], { duration: FILM_LIFT, easing: "ease-out", fill: "forwards" });
+        cinemaEl.style.pointerEvents = "none"; // a tap from here is the card's (finish the print)
+        // the film is over: taps + tilt are the card's again; the record stays on
+        // st.cinema until the card has landed, so a teardown mid-lift still finds
+        // everything to cancel
+        st.cinemaDone = true;
+        cinemaOn = null;
+        at(Math.max(FILM_OUT, FILM_LIFT) + 60, () => {
+          if (st.cinema !== c) return;
+          st.cinema = null;
+          host.classList.remove("cinema");
+          c.anims.forEach((a) => a.cancel()); // every layer is back on its own CSS rest — no visible change
+          c.anims = [];
+          videoEl.style.opacity = "";
+          cinemaEl.style.pointerEvents = "";
+        });
+        afterFilm(entry, FILM_NAME_AT);
+      });
     }
-    c.out = zoomOut;
+    c.out = dipOut;
+  }
+
+  // after the film (or instead of it): the name stamps on at `t`, then the light
+  // swells and the player comes out of it
+  function afterFilm(entry, t) {
+    const st = entry.print;
+    if (!st || st.done) return;
+    st.timers.push(setTimeout(() => stampPiece(entry, "name", 1), t));
+    finale(entry, t + NAME_TO_CHARGE);
   }
 
   // the film's teardown (a card torn down mid-film): everything it animates or holds
@@ -995,12 +999,13 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
     c.rimAnim?.cancel();
     c.glow?.remove();
     try { videoEl.pause(); } catch {}
-    cinemaEl.style.clipPath = "";
+    videoEl.style.opacity = "";
+    cinemaEl.style.pointerEvents = "";
     host.classList.remove("cinema");
     stackEl.style.visibility = "";
     if (cinemaOn) { cinemaOn = null; sfx.releaseDuck(900); }
   }
-  // a tap on the clip cuts to the pull-back (once it's had a moment to play)
+  // a tap on the clip cuts to the dip out (once it's had a moment to play)
   cinemaEl.addEventListener("pointerup", () => {
     const c = cinemaOn?.print?.cinema;
     if (c?.phase === "play" && performance.now() - c.playAt > FILM_SKIP_AFTER) c.out();
@@ -1282,10 +1287,10 @@ export function createReveal({ mountEl, onAgain, onHaul }) {
     st.glow?.remove();
     stopDissolve(st);
     // a staged card's FILM is the set piece — a tap mid-stamp lands the print, but the
-    // film still plays and the player still waits for it
+    // film still plays and the name and the player still wait for it
     const film = !!filmOf(entry) && !st.cinemaDone && !REDUCED && !!entry.slot.animate;
     for (const [key, pc] of st.pieces) {
-      if (film && key === "player") continue;
+      if (film && (key === "player" || key === "name")) continue;
       pc.canvas.getAnimations().forEach((a) => a.finish());
       if (st.shown.has(key)) continue;
       pc.canvas.animate(

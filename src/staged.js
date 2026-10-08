@@ -3,10 +3,10 @@
 // Every pack after the first is rolled from the pool (booster.js). The first one a
 // player opens is a set piece: a Real Madrid hand that builds to Jude Bellingham's
 // Team of the Year card — and that card plays a FILM. Once its print has stamped
-// on (position, nation, club, stats, rating, name) the card zooms up into the
-// screen and the empty frame opens onto a full-screen clip; when it ends the
-// camera pulls back out to the card and only then does the player's portrait
-// appear (reveal.js, cinema()). Card ids are `<player>-<edition>` as players.js
+// on (position, nation, club, stats, rating — NOT the name) the camera rushes into
+// the empty frame and dips to black, the clip plays full screen (at 1.35×) and dips
+// back to black, the black lifts on the card, and only then do the name and the
+// player's portrait appear (reveal.js, cinema()). Card ids are `<player>-<edition>` as players.js
 // builds them; the order here is the reveal order (rarest LAST, as a rolled pack).
 //
 // `?stage=0` opens a rolled pack first instead (for testing the ordinary flow).
