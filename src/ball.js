@@ -1,8 +1,8 @@
 // ball.js — the classic match ball (a truncated-icosahedron "Telstar" seen face-on
 // down a pentagon axis), as path data in a 100×100 box: the centre pentagon, the
 // five rim pentagons and the seams between the white hexagons. One geometry for
-// every ball in the app — the floating backdrop balls (index.html, as an SVG data
-// URI) and the balls rising through the 3D carousel.
+// every ball in the app — the golden ball printed on the pack art (tools/art) and the
+// favicon's SVG data URI (index.html).
 
 export const BALL_CENTER = "M50.00 36.50 L62.84 45.83 L57.94 60.92 L42.06 60.92 L37.16 45.83 Z";
 export const BALL_PANELS =
