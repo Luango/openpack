@@ -17,7 +17,9 @@
 // layers to the frame's silhouette (data-frame on the card). Alongside it comes
 // the PLAYER's silhouette (the same footprint the photo was painted with), so
 // card.css can give the photo its own material — the frame lights as metal, the
-// player as a gloss print.
+// player as a gloss print. And the BARE card — the same art before its print
+// (the data) goes on — which the reveal shows first and stamps the print onto
+// piece by piece (cardPrint).
 
 import { lin, rad, rgba, shade, font, spacedText, fitSize } from "./paint.js";
 import { drawFlag, drawCrest, crestURL } from "./emblems.js";
@@ -230,12 +232,83 @@ function mysteryBadge(ctx, L, x, y, w, h, r) {
   ctx.restore();
 }
 
+// ---- the print -------------------------------------------------------------------
+// The card's DATA — position, nation, club, the six face stats, the rating and the
+// name — as separate pieces, in the order the reveal stamps them on (reveal.js
+// stampIn). Each paints in art pixels inside its `box` [x, y, w, h] (padded for
+// the engraving's shadow); the rating takes an optional value so it can count up.
+// drawCard paints them all over the bare card, and cardPrint() paints each into
+// its own small canvas with the SAME painter — so the stamped pieces match the
+// baked art pixel for pixel and the reveal can swap back to it unseen.
+function printPieces(card, L, F, assets) {
+  const colX = F.colX;
+  const ink = (ctx, weight, px, text, x, y, spacing, align, color = L.ink) =>
+    engraved(ctx, L, () => {
+      ctx.fillStyle = color;
+      ctx.font = font(weight, px);
+      spacedText(ctx, text, x, y, spacing, align);
+    });
+
+  const pieces = [
+    { key: "pos", box: [colX - 80, F.posY - 52, 160, 68], draw: (ctx) => ink(ctx, 700, 58, card.pos || "", colX, F.posY, 2, "center") },
+    {
+      key: "nation", box: [colX - 52, F.flagY - 2, 104, 74],
+      draw: (ctx) => {
+        if (card.mystery) mysteryBadge(ctx, L, colX - 46, F.flagY + 4, 92, 61, 10);
+        else if (card.nation) drawFlag(ctx, card.nation, colX - 46, F.flagY + 4, 92, 61);
+      },
+    },
+    {
+      key: "club", box: [colX - 76, F.crestY - 76, 152, 156],
+      // the club's real crest; on the dark editions ringed in white so a black or
+      // navy crest doesn't sink into the field
+      draw: (ctx) => {
+        if (card.mystery) mysteryBadge(ctx, L, colX - 44, F.crestY - 46, 88, 96, 44);
+        else if (card.club) drawCrest(ctx, card.club, colX, F.crestY, assets.crest ? 108 : 100, { img: assets.crest, keyline: L.dark ? "#ffffff" : null });
+      },
+    },
+  ];
+
+  // the six face stats — the left column top to bottom, then the right
+  const labels = card.pos === "GK" ? KEEPER : OUTFIELD;
+  const stats = card.stats || [];
+  for (const [x, off] of [[262, 0], [530, 3]]) {
+    for (let row = 0; row < 3; row++) {
+      const y = F.statY + row * 56;
+      pieces.push({
+        key: `stat${off + row}`, box: [x - 96, y - 50, 200, 64],
+        draw: (ctx) => {
+          ink(ctx, 800, 56, String(stats[off + row] ?? ""), x - 10, y, 0, "right");
+          ink(ctx, 600, 46, labels[off + row], x + 4, y, 1.5, "left", L.sub);
+        },
+      });
+    }
+  }
+
+  pieces.push({
+    key: "ovr", box: [colX - 110, F.ovrY - 132, 220, 150],
+    draw: (ctx, value = card.ovr) => ink(ctx, 800, 150, String(value ?? ""), colX, F.ovrY, -3, "center"),
+  });
+
+  const name = (card.display || card.name || "").toUpperCase();
+  pieces.push({
+    key: "name", box: [W / 2 - 300, F.nameY - 98, 600, 116],
+    draw: (ctx) => {
+      const size = fitSize(ctx, name, 800, 84, 540, 3, 40);
+      ink(ctx, 800, size, name, W / 2, F.nameY, 3, "center");
+    },
+  });
+  return pieces;
+}
+
 // ---- the whole card --------------------------------------------------------------
 
 // Paint `card` with its loaded `assets` (loadCardAssets). Leaves everything
 // outside the frame transparent. Returns the player layer (a shared canvas —
-// read it before the next card is painted) for playerMask().
-export function drawCard(ctx, card, assets) {
+// read it before the next card is painted) for playerMask(). With `bare` set it
+// calls `bare()` once the card is painted WITHOUT its print (frame, player, the
+// rules between the print's slots, the edition mark), before the print goes on.
+export function drawCard(ctx, card, assets, bare = null) {
   const L = lookOf(card);
   const F = LAYOUT[L.family];
   ctx.save();
@@ -272,53 +345,15 @@ export function drawCard(ctx, card, assets) {
   ctx.drawImage(player, 0, 0);
   ctx.restore();
 
-  // 4 — rating, position, flag, crest
+  // 4 — the rules between the print's slots: under the position, round the
+  // flag, under the name, between the stat columns
   const colX = F.colX;
-  engraved(ctx, L, () => {
-    ctx.fillStyle = L.ink;
-    ctx.font = font(800, 150);
-    spacedText(ctx, String(card.ovr), colX, F.ovrY, -3, "center");
-    ctx.font = font(700, 58);
-    spacedText(ctx, card.pos || "", colX, F.posY, 2, "center");
-  });
   divider(ctx, L, colX - 44, F.flagY - 10, colX + 44, F.flagY - 10);
-  if (card.mystery) mysteryBadge(ctx, L, colX - 46, F.flagY + 4, 92, 61, 10);
-  else if (card.nation) drawFlag(ctx, card.nation, colX - 46, F.flagY + 4, 92, 61);
   divider(ctx, L, colX - 44, F.flagY + 80, colX + 44, F.flagY + 80);
-  if (card.mystery) mysteryBadge(ctx, L, colX - 44, F.crestY - 46, 88, 96, 44);
-  // the club's real crest; on the dark editions ringed in white so a black or
-  // navy crest doesn't sink into the field
-  else if (card.club) drawCrest(ctx, card.club, colX, F.crestY, assets.crest ? 108 : 100, { img: assets.crest, keyline: L.dark ? "#ffffff" : null });
-
-  // 5 — the name
-  const name = (card.display || card.name || "").toUpperCase();
-  const size = fitSize(ctx, name, 800, 84, 540, 3, 40);
-  engraved(ctx, L, () => {
-    ctx.fillStyle = L.ink;
-    ctx.font = font(800, size);
-    spacedText(ctx, name, W / 2, F.nameY, 3, "center");
-  });
   divider(ctx, L, 150, F.nameY + 30, W - 150, F.nameY + 30, 0.42);
-
-  // 6 — the six face stats
-  const labels = card.pos === "GK" ? KEEPER : OUTFIELD;
-  const stats = card.stats || [];
-  engraved(ctx, L, () => {
-    for (const [x, off] of [[262, 0], [530, 3]]) {
-      for (let row = 0; row < 3; row++) {
-        const y = F.statY + row * 56;
-        ctx.fillStyle = L.ink;
-        ctx.font = font(800, 56);
-        spacedText(ctx, String(stats[off + row] ?? ""), x - 10, y, 0, "right");
-        ctx.fillStyle = L.sub;
-        ctx.font = font(600, 46);
-        spacedText(ctx, labels[off + row], x + 4, y, 1.5, "left");
-      }
-    }
-  });
   divider(ctx, L, W / 2 - 4, F.statY - 44, W / 2 - 4, F.statY + 2 * 56 + 8, 0.3);
 
-  // 7 — the edition mark in the shield's point (promos; the base metals carry
+  // 5 — the edition mark in the shield's point (promos; the base metals carry
   // the frame's own GFP mark there)
   const mark = card.markLabel;
   if (mark && F.markY) {
@@ -334,8 +369,41 @@ export function drawCard(ctx, card, assets) {
     spacedText(ctx, mark, W / 2, F.markY + 25, 4, "center");
     ctx.restore();
   }
+  bare?.();
+
+  // 6 — the print: position, nation, club, stats, rating, name
+  for (const p of printPieces(card, L, F, assets)) {
+    ctx.save();
+    p.draw(ctx);
+    ctx.restore();
+  }
   ctx.restore();
   return player;
+}
+
+// The print as loose pieces for the reveal to stamp on over the bare art, in
+// stamping order: [{ key, box, canvas, paint(value?) }]. Each canvas is the
+// piece's box at art resolution (lay it over the card at box / ART_W·ART_H);
+// paint() repaints it — the rating with a count-up value.
+export async function cardPrint(card) {
+  const [assets] = await Promise.all([loadCardAssets(card), ensureFonts()]);
+  const L = lookOf(card);
+  return printPieces(card, L, LAYOUT[L.family], assets).map((p) => {
+    const [x, y, w, h] = p.box;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    const paint = (value) => {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, w, h);
+      g.textBaseline = "alphabetic";
+      g.setTransform(1, 0, 0, 1, -x, -y);
+      p.draw(g, value);
+    };
+    paint();
+    return { key: p.key, box: p.box, canvas, paint };
+  });
 }
 
 // The player's silhouette as a mask: white, with the photo layer's alpha (soft
@@ -360,7 +428,7 @@ export async function paintCard(ctx, card) {
 
 // ---- export to an <img>-able URL, cached per card --------------------------------
 
-const _art = new Map(); // card id → Promise<{ art, player }> (urls)
+const _art = new Map(); // card id → Promise<{ art, bare, player }> (urls)
 const MAX_CACHED = 40;
 
 // WebP keeps the alpha at a fraction of PNG's size; a browser that can't encode
@@ -375,14 +443,18 @@ function canvasURL(c) {
   });
 }
 
-// → { art, player }: the painted card, and the player's silhouette (playerMask).
+// → { art, bare, player }: the painted card, the same card without its print (the
+// reveal stamps the print on over it — cardPrint), and the player's silhouette
+// (playerMask).
 export function cardArt(card) {
   if (_art.has(card.id)) return _art.get(card.id);
   const pr = Promise.all([loadCardAssets(card), ensureFonts()]).then(([assets]) => {
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
-    const mask = playerMask(drawCard(c.getContext("2d"), card, assets));
-    return Promise.all([canvasURL(c), canvasURL(mask)]).then(([art, player]) => ({ art, player }));
+    const b = document.createElement("canvas");
+    b.width = W; b.height = H;
+    const mask = playerMask(drawCard(c.getContext("2d"), card, assets, () => b.getContext("2d").drawImage(c, 0, 0)));
+    return Promise.all([canvasURL(c), canvasURL(b), canvasURL(mask)]).then(([art, bare, player]) => ({ art, bare, player }));
   });
   _art.set(card.id, pr);
   // keep the cache bounded — drop (and revoke) the oldest renders

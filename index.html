@@ -1003,6 +1003,28 @@
       .reveal__slot .card__edge {
         display: none;
       }
+      /* the PRINT being stamped onto a fresh card (reveal.js stampIn): loose pieces
+         laid over the bare art at their art-pixel boxes (in percent), on top of the
+         face and NOT clipped to it — so a stamp can come down from bigger than the
+         card. Gone once the baked art swaps back in. */
+      .reveal__slot .card__print {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .card__print .print-piece {
+        position: absolute;
+        opacity: 0;
+      }
+      /* the burst of light where the rating and the name land */
+      .card__print .print-flash {
+        position: absolute;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(255, 250, 232, 0.95), rgba(255, 236, 190, 0.4) 45%, transparent);
+        opacity: 0;
+        pointer-events: none;
+      }
       /* a rare pull adds a tier-colored glow on top of the card's own shadow */
       .reveal__slot.front.rare .card--detail {
         box-shadow:

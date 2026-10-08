@@ -28,8 +28,7 @@ export function renderCard(card, { variant = "grid", index } = {}) {
   const attrs =
     `class="card card--${variant} tier-${tier}" data-tier="${tier}" ` +
     (frame ? `data-frame="${frame}" ` : "") +
-    `data-rarity="${escapeAttr(card.rarity)}"${dataI} ` +
-    `title="${escapeAttr(card.name)} · ${escapeAttr(card.rarity)}"`;
+    `data-rarity="${escapeAttr(card.rarity)}"${dataI}`; // no title — a hover tooltip over the card spoils the look
   const art = `<img class="card__art" loading="lazy" src="${src}" alt="${escapeAttr(card.name)}" />`;
   const vfx = `<div class="card__vfx" data-vfx="${vfxFor(card)}" aria-hidden="true"></div>`;
 
