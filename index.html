@@ -1603,6 +1603,7 @@
 
     <script type="module">
       import { createPackAuto } from "./src/pack3d/index.js";
+      import { getPackAsset } from "./src/pack3d/asset.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
       import { rarityToTier } from "./src/rarity.js";
@@ -1631,6 +1632,17 @@
       const GATE_FALLBACK_MS = 3500; // never sit on "Loading…" longer than this, audio or not
       let launched = false;     // set true on the opening tap (shared with the handlers below)
       let gateRevealed = false; // set true once the gate flips to "Tap to kick off"
+      // The first pack's cards are painted under the gate (prefetchBooster, below) — the
+      // gate waits for them too, so "Tap to kick off" means the entrance that follows has
+      // nothing heavy left to do. Resolved by the prefetch either way (paint or failure);
+      // the backstop timer reveals regardless if it's slow.
+      let firstPackPainted = () => {};
+      const firstPackReady = new Promise((r) => { firstPackPainted = r; });
+      // …and likewise the 3D pack's procedural surface maps (built in idle slices after
+      // the art decodes): the entrance holds for them too (select3d), so if the gate
+      // opened first a tap would just sit on the gate's light until they finished.
+      let packSurfaceDone = () => {};
+      const packSurfaceReady = new Promise((r) => { packSurfaceDone = r; });
       (() => {
         startGate.classList.add("loading");
         const startT = performance.now();
@@ -1663,7 +1675,7 @@
         };
         try {
           sfx.onReadyProgress?.((p) => { realProgress = Math.max(realProgress, p); });
-          sfx.whenReady?.().then(revealGate);
+          sfx.whenReady?.().then(() => Promise.all([firstPackReady, packSurfaceReady])).then(revealGate);
         } catch { /* audio module unavailable — the backstop below still reveals */ }
         setTimeout(revealGate, GATE_FALLBACK_MS); // immune to any failure in the init below
       })();
@@ -1719,13 +1731,45 @@
         paint();
       }
 
-      // Build a booster AND render its card stack (hidden) up front, then ARM the
-      // pack. The pack can't be torn until its cards are ready, so the reveal is
-      // always instant — no fetch or render after the rip.
+      // ---- the next pack is painted EARLY, never on top of the motion --------------
+      // Painting a card is a full-size canvas render on the main thread: tens to a few
+      // hundred ms each (the first one more — fonts, first-paint warm-up). Five of them
+      // used to start on the very frame the carousel entrance settled, each one stalling
+      // a frame of the still-bobbing, still-sweeping ring — the "small jump" right after
+      // the packs had all flown in. Now the booster is painted at the two moments nothing
+      // we'd mind hitching is moving: under the start gate (the first pack) and once the
+      // haul fan is up (every pack after). The 3D pack's face texture (its top card,
+      // seen through the torn mouth) is primed then too — its upload was another stall.
+      // `whenCalm` paces the paints: one per frame, and HELD while the entrance plays
+      // (a quick tap can still overlap it), resuming the frame it hands off.
+      let entranceBusy = false;
+      const calmWaiters = [];
+      function setEntranceBusy(v) {
+        entranceBusy = v;
+        if (!v) calmWaiters.splice(0).forEach((r) => r());
+      }
+      const whenCalm = () => new Promise((r) => requestAnimationFrame(() => (entranceBusy ? calmWaiters.push(r) : r())));
+      let nextBooster = null; // Promise<cards> for the pack that loadNextPack will arm next
+      function prefetchBooster() {
+        if (!nextBooster) {
+          nextBooster = buildBooster(undefined, { pace: whenCalm }).then(async (cards) => {
+            const p = await packReady;
+            p.setCards?.(cards); // prime the 3D pack's top-card face now (texture decode + upload)
+            return cards;
+          });
+        }
+        return nextBooster;
+      }
+
+      // Take the (ideally already painted) booster, render its card stack (hidden),
+      // then ARM the pack. The pack can't be torn until its cards are ready, so the
+      // reveal is always instant — no fetch or render after the rip.
       function loadNextPack() {
         pack?.setArmed(false);
         hintEl.textContent = "Preparing pack…";
-        ready = Promise.all([buildBooster(), packReady]).then(([cards]) => new Promise((resolve) => {
+        const booster = prefetchBooster(); // painted under the gate / during the haul — or now, paced
+        nextBooster = null;                // consumed: the next prefetch starts a fresh pack
+        ready = Promise.all([booster, packReady]).then(([cards]) => new Promise((resolve) => {
           // loadNextPack runs from onIntroEnd, i.e. the frame the carousel settles — but
           // the wheel keeps bobbing/drifting after that, so building the stack + warming
           // 5 hi-res scans synchronously here stalls a still-animating frame (the "卡一下"
@@ -1734,7 +1778,6 @@
           const build = async () => {
             cards.forEach((c) => { const im = new Image(); im.src = c.image; }); // warm hi-res
             await reveal.prepare(cards); // pre-render the stack (chunked per-frame) while sealed
-            pack.setCards?.(cards); // the 3D pack shows the real top card inside the torn mouth
             // foreshadow the pull: tint the idle pack toward the rarest card inside
             pack.setTell(Math.max(...cards.map(rarityToTier)));
             pack.setArmed(true); // stack is fully built — now it's safe to tear
@@ -1752,6 +1795,10 @@
           pack?.reset(); // reseal the pack
           backToSelect(); // return to the 3D picker to choose the next pack
         },
+        // The fan of five is up — the calm end state. Paint the NEXT pack's cards now
+        // (one per frame, after the fan-in has landed), so the entrance that follows
+        // "Open another" hands off to an idle ring with nothing left to build.
+        onHaul: () => setTimeout(prefetchBooster, 900),
       });
 
       // The pack is the procedural 3D foil pouch (src/pack3d): it builds its geometry
@@ -1823,15 +1870,16 @@
           setTimeout(() => pack?.present?.(), 440);
           sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up and play its INTRO, then HOLD at the intro's end until the pack fully opens
         },
-        // The entrance animation has finished — only NOW pre-arm the first pack.
-        // buildBooster + reveal.prepare build and render the card-stack DOM (plus
-        // warm 5 hi-res images), which is heavy main-thread work; running it during
-        // the intro is what made the carousel stutter, so we hold it until the wheel
-        // is idle. Selection still works if tapped immediately — onLand awaits `ready`.
-        onIntroEnd: () => loadNextPack(),
+        // The entrance animation has finished — NOW arm the pack: its cards were painted
+        // earlier (prefetchBooster — under the gate, or during the last haul), so what's
+        // left is building the (hidden) card-stack DOM, chunked one slot per frame in idle
+        // time, off the settle frame. Any paints a quick tap left in flight resume here.
+        // Selection still works if tapped immediately — onLand awaits `ready`.
+        onIntroEnd: () => { setEntranceBusy(false); loadNextPack(); },
         // Fired the frame the packs actually start flying in (after the asset/GPU warm-up
         // wait). The start-gate uses this to fade its open exactly INTO the fly-in.
-        onIntroStart: () => { introStarted = true; onIntroStarted?.(); },
+        // (Any card paints still in flight hold here until the entrance hands off.)
+        onIntroStart: () => { setEntranceBusy(true); introStarted = true; onIntroStarted?.(); },
       });
 
       function backToSelect() {
@@ -1848,6 +1896,11 @@
 
       hintEl.textContent = ""; // no "Preparing pack…" behind the picker
       document.body.classList.add("picking"); // tear-pack stays hidden until a pack is chosen
+      // paint the first pack NOW, under the start gate, while nothing moves (the gate's
+      // "Tap to kick off" waits on it — see firstPackReady), and let the gate know when
+      // the pack's surface maps are in (the same asset the selector + 3D pack share)
+      prefetchBooster().then(firstPackPainted, firstPackPainted);
+      getPackAsset().then((a) => a.surfaceReady).then(packSurfaceDone, packSurfaceDone);
 
       // First load shows a tap-to-start gate. The tap is the user gesture that unlocks
       // the AudioContext (sfx.js's capture-phase handler resumes it on this same

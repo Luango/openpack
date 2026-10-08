@@ -482,10 +482,14 @@ function canvasURL(c) {
 
 // → { art, bare, player }: the painted card, the same card without its print (the
 // reveal stamps the print on over it — cardPrint), and the player's silhouette
-// (playerMask).
-export function cardArt(card) {
+// (playerMask). `pace` (optional, async) is awaited right before the paint itself —
+// AFTER the assets and fonts have arrived — so a caller can hold the heavy
+// synchronous canvas work for a quiet frame (booster.js); a card already painted
+// resolves from the cache without it.
+export function cardArt(card, pace) {
   if (_art.has(card.id)) return _art.get(card.id);
-  const pr = Promise.all([loadCardAssets(card), ensureFonts()]).then(([assets]) => {
+  const pr = Promise.all([loadCardAssets(card), ensureFonts()]).then(async ([assets]) => {
+    if (pace) await pace();
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const b = document.createElement("canvas");

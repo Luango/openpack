@@ -98,7 +98,9 @@ const HIT = {
 };
 const hitCfg = (tier) => HIT[Math.max(4, Math.min(9, tier))];
 
-export function createReveal({ mountEl, onAgain }) {
+// onHaul fires once the fan of five is up (the calm, mostly-static end state) — the
+// host uses it to paint the NEXT pack's cards while nothing it can hitch is moving.
+export function createReveal({ mountEl, onAgain, onHaul }) {
   const host = document.createElement("div");
   host.className = "reveal hidden";
   host.innerHTML = `
@@ -1470,6 +1472,7 @@ export function createReveal({ mountEl, onAgain }) {
     setTimeout(() => { if (host.classList.contains("haul")) host.classList.add("haul-live"); }, 620);
     hintEl.textContent = "";
     srEl.textContent = `That's your pack. Best signing: ${slots[hero].card.name}, ${tierOf(slots[hero].card).label}. Drag to browse, or send them to your club.`;
+    onHaul?.();
   }
 
   // place every card on the fan for the (fractional) centre position
