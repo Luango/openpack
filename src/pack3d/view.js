@@ -8,9 +8,11 @@
 // Two rip methods, one state machine (controller.js):
 //   FRONT — pinch the notch at the upper-left corner and drag across the top:
 //           the sealed header strip tears off around the pack and lifts away.
-//   BACK  — flip the pack (tap, or drag to turn it), pinch the top of the rear
-//           fin seam and drag down: the back splits along the seam and its two
-//           flaps peel open; the cards come out toward you and turn face-up.
+//   BACK  — flip the pack (tap, or drag to turn it), pinch the rear fin seam
+//           and PULL: nothing tears — the pack strains harder the further you
+//           haul (it bulges, creases, trembles, the seam gapes), until the seal
+//           gives all at once and the whole back pops open; the cards leap out
+//           toward you and turn face-up.
 //
 // Rendering is on demand: the loop runs only while something moves (a drag, the
 // strip settling, a pose spring, the open beats) and stops once settled.
@@ -23,7 +25,7 @@ import { getPackAsset } from "./asset.js";
 import { makeMaterials, makeCardMaterials } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
-import { createController, P_NOTCH } from "./controller.js";
+import { createController, P_NOTCH, PULL_LIMIT } from "./controller.js";
 import { createParticles } from "../particles.js";
 import { TIER_HEX } from "../rarity.js";
 import * as sfx from "../sfx.js";
@@ -94,8 +96,15 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   let stackAnim = null; // the stack emerging + turning face-up (back)
   let glowAnim = null; // the opening light beat
   let handoffTimer = 0, settleTimer = 0;
-  const openSpring = { v: 0, t: 0 }; // the mouth
-  const flapSpring = { v: 0, t: 0 };
+  const openSpring = { v: 0, t: 0, k: 60, c: 10 }; // the mouth
+  const flapSpring = { v: 0, t: 0, k: 190, c: 14 }; // the back's doors: fast, with an overshoot — the pop
+  // the back pull's rigid feel: the pack is hauled a little toward the hand (held back
+  // elastically, so it boings on release and recoils on the pop), leans with the pull,
+  // and trembles harder the closer the seal is to giving
+  const follow = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tx: 0, ty: 0, tz: 0 };
+  const lean = { pitch: 0, roll: 0, vp: 0, vr: 0, tp: 0, tr: 0 };
+  const shake = { x: 0, y: 0, z: 0, rx: 0, rz: 0, until: 0 };
+  let strainTick = 0; // the last strain level that ticked the haptics
   const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -194,7 +203,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       pose[k + "V"] = nv;
       pose[k] = x + nv * dt;
     }
-    packGroup.rotation.set(pose.pitch, pose.yaw, 0);
+    packGroup.rotation.set(pose.pitch + lean.pitch + shake.rx, pose.yaw, lean.roll + shake.rz);
+    packGroup.position.set(follow.x + shake.x, follow.y + shake.y, follow.z + shake.z);
   }
   const poseMoving = () => Math.abs(pose.yaw - pose.yawT) > 0.0008 || Math.abs(pose.pitch - pose.pitchT) > 0.0008 || Math.abs(pose.yawV) > 0.003 || Math.abs(pose.pitchV) > 0.003;
   const facing = () => (Math.round((pose.yawT - REST_YAW) / Math.PI) % 2 === 0 ? "front" : "back");
@@ -243,7 +253,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       const top = screenOf({ x: 0.002, y: ySeal - 0.004, z: -b0 });
       const l = localOn(e, -b0);
       if (Math.hypot(e.clientX - top.x, e.clientY - top.y) <= big) return "back";
-      if (l && Math.abs(l.x) < 0.013 && l.y > ySeal - 0.022 && l.y < pack.dims.yTop + 0.004) return "back";
+      if (l && Math.abs(l.x) < 0.014 && l.y > ySeal - 0.034 && l.y < pack.dims.yTop + 0.004) return "back";
     }
     return null;
   }
@@ -315,8 +325,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function updateCue() {
     if (!built) return;
     const ph = ctl.state.phase;
-    if (ph === "paused") cueEl.textContent = ctl.state.mode === "front" ? "Grab the strip and keep tearing" : "Grab the seam and keep peeling";
-    else if (ph === "ready") cueEl.textContent = facing() === "front" ? "Pinch the corner · tear across the top" : "Pinch the seam · peel down the back";
+    if (ph === "paused") cueEl.textContent = "Grab the strip and keep tearing";
+    else if (ph === "ready") cueEl.textContent = facing() === "front" ? "Pinch the corner · tear across the top" : "Pinch the seam · pull until it pops";
     else cueEl.textContent = "";
     wrap.classList.toggle("back", facing() === "back");
   }
@@ -331,9 +341,22 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         wrap.classList.remove("guide", "settled");
         sceneFx?.classList.add("paused");
         sfx.grab();
+        strainTick = 0;
         onGrab?.();
         updateCue();
         break;
+      case "strainStart":
+        // the slack is taken up: the seam starts to creak
+        sfx.strainStart?.(tellTier);
+        if (navigator.vibrate) navigator.vibrate(6);
+        break;
+      case "strain": {
+        // the power builds: the creak rises with it, the haptics ratchet harder
+        sfx.strain?.(d.s, d.vel);
+        if (d.s - strainTick >= 0.08) { strainTick = d.s; if (navigator.vibrate) navigator.vibrate(Math.round(4 + d.s * 12)); }
+        else if (d.s < strainTick - 0.1) strainTick = d.s; // slackened: ratchet again on the way back up
+        break;
+      }
       case "break": {
         sfx.tearStart(tellTier);
         if (navigator.vibrate) navigator.vibrate(9);
@@ -354,7 +377,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         frozen = false;
         wrap.classList.remove("tearing");
         sceneFx?.classList.remove("paused");
-        if (d.tearing) sfx.tearEnd(false);
+        if (d.slack) { if (d.tearing) sfx.strainEnd?.(false); }
+        else if (d.tearing) sfx.tearEnd(false);
+        follow.tx = follow.ty = follow.tz = 0;
+        lean.tp = lean.tr = 0;
         updateCue();
         break;
       case "complete":
@@ -372,12 +398,13 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     wrap.classList.add("opening");
     wrap.classList.remove("tearing", "settled");
     cueEl.textContent = "";
-    sfx.tearEnd(true, power);
+    if (mode === "front") sfx.tearEnd(true, power);
+    else { sfx.strainEnd?.(true); sfx.pop?.(power); }
     sfx.burst(power, tellTier);
     sfx.resumeOpenTheme?.();
     sfx.tearRelease();
-    if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
-    kick(power);
+    if (navigator.vibrate) navigator.vibrate(mode === "front" ? [18, 30, 14] : [26, 24, 18]);
+    kick(mode === "front" ? power : Math.min(1, power + 0.2));
     burstAlongRoute(mode);
     const st = ctl.state;
     if (mode === "front") {
@@ -394,10 +421,26 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       pose.pitchT = 0;
       startGlow({ x: 0, y: pack.dims.yT0 + 0.002, z: pack.dims.b0 + 0.004 }, 0);
     } else {
-      flapSpring.t = 1; // the flaps swing fully open (the spring drives it; needsLoop watches it)
-      // the stack comes out of the opened back toward the lens and turns face-up
-      stackAnim = { t: 0, dur: REDUCED ? 0.3 : 0.52, delay: 0.12, q0: new THREE.Quaternion(), started: false };
-      startGlow({ x: 0, y: 0.01, z: -pack.dims.b0 - 0.006 }, 0.1);
+      // THE POP: the seal lets go all at once — both doors blow open (the fast spring
+      // overshoots), the hauled pack recoils away from the hand, the strain rings
+      // back through zero (controller), and the cards LEAP out of the back
+      flapSpring.t = 1;
+      follow.tx = follow.ty = follow.tz = 0;
+      lean.tp = lean.tr = 0;
+      {
+        // the recoil: an impulse against the pull, plus a kick toward the lens
+        const L = Math.hypot(follow.x, follow.y, follow.z) || 1;
+        const kickV = 0.26 + power * 0.14;
+        follow.vx -= (follow.x / L) * kickV; follow.vy -= (follow.y / L) * kickV; follow.vz += 0.12 + power * 0.08;
+        lean.vp -= 1.4; // the top nods back as the tension lets go
+      }
+      shake.until = 0;
+      stackAnim = { t: 0, dur: REDUCED ? 0.34 : 0.64, delay: 0.03, q0: new THREE.Quaternion(), started: false, power };
+      // the cards leap out IN FRONT of the opening light (it's the backdrop they pop
+      // out of, not a glare over them): draw them after the additive sprites
+      for (const m of cardMats.all) { m.transparent = true; m.needsUpdate = true; }
+      stack.traverse((o) => { o.renderOrder = 70; });
+      startGlow({ x: 0, y: 0.012, z: -pack.dims.b0 - 0.006 }, 0.04);
     }
     // exit: the spent body drops away (px, so iOS animates it)
     const reach = Math.max(window.innerWidth, window.innerHeight) * 1.3;
@@ -472,20 +515,60 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       scene.attach(stack); // animate in world space: the DOM card is world-aligned
       a.q0.copy(stack.quaternion);
       a.p0 = stack.position.clone();
+      a.topZ = topCard ? topCard.position.z : 0;
     }
     const u = Math.min(1, (a.t - a.delay) / a.dur);
+    // the leap: fast off the mark, a high arc up and out toward the lens, then it
+    // settles into the DOM card's place; the turn to face-up overshoots a touch
     const e = 1 - Math.pow(1 - u, 3);
-    stack.quaternion.slerpQuaternions(a.q0, _q.identity(), e);
-    const arc = Math.sin(u * Math.PI);
-    stack.position.set(a.p0.x * (1 - e), a.p0.y * (1 - e) + 0.012 * arc, a.p0.z * (1 - e) + 0.04 * arc);
-    if (u >= 1) stackAnim = null;
+    const c1 = 1.25, c3 = c1 + 1;
+    const eb = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); // ease-out-back
+    stack.quaternion.slerpQuaternions(a.q0, _q.identity(), Math.min(1.08, eb));
+    const arc = Math.sin(Math.PI * Math.pow(u, 0.82)); // up quickly, down slower
+    const h = REDUCED ? 0.012 : 0.024 + (a.power || 0.7) * 0.012;
+    stack.position.set(a.p0.x * (1 - e), a.p0.y * (1 - e) + h * arc, a.p0.z * (1 - e) + (REDUCED ? 0.026 : 0.05) * arc);
+    // the top card lifts off the deck at the peak — they're cards, not a slab
+    if (topCard) { topCard.position.z = a.topZ + 0.006 * arc; topCard.rotation.x = -0.16 * arc; }
+    if (u >= 1) { stackAnim = null; if (topCard) { topCard.position.z = a.topZ; topCard.rotation.x = 0; } }
   }
   function stepSprings(dt) {
     const sp = (s, k, c) => { const a = (s.t - s.x) * k - s.v * c; s.v += a * dt; s.x += s.v * dt; };
-    for (const s of [openSpring, flapSpring]) { if (s.x === undefined) s.x = 0; sp(s, 60, 10); }
+    for (const s of [openSpring, flapSpring]) { if (s.x === undefined) s.x = 0; sp(s, s.k, s.c); }
     ctl.state.open = openSpring.x;
     ctl.state.flapOpen = flapSpring.x;
+    // the back pull's rigid feel
+    const st = ctl.state;
+    if (st.mode === "back" && st.grip && (st.phase === "gripping" || st.phase === "tearing")) {
+      // the hand's pull (pack-local, on the back) → a fraction of it, in world space
+      _v.set(st.pullX, st.pullY, 0).applyQuaternion(packGroup.quaternion);
+      const K = 0.2;
+      follow.tx = _v.x * K; follow.ty = _v.y * K; follow.tz = _v.z * K;
+      lean.tp = Math.max(-0.14, Math.min(0.14, st.pullY * 2.4));
+      lean.tr = Math.max(-0.14, Math.min(0.14, -st.pullX * 2.4));
+    }
+    const fk = 150, fc = 11; // underdamped: it boings when let go, recoils on the pop
+    for (const [x, v, t] of [["x", "vx", "tx"], ["y", "vy", "ty"], ["z", "vz", "tz"]]) {
+      const a = (follow[t] - follow[x]) * fk - follow[v] * fc;
+      follow[v] += a * dt; follow[x] += follow[v] * dt;
+    }
+    for (const [x, v, t] of [["pitch", "vp", "tp"], ["roll", "vr", "tr"]]) {
+      const a = (lean[t] - lean[x]) * 120 - lean[v] * 11;
+      lean[v] += a * dt; lean[x] += lean[v] * dt;
+    }
+    // the tremble: the seal shudders harder the closer it is to giving (not after)
+    const sa = (st.phase === "gripping" || st.phase === "tearing") && st.mode === "back" ? Math.max(0, st.strain) : 0;
+    const now = performance.now();
+    if (sa > 0.05 && !REDUCED) {
+      if (now > shake.until) {
+        const amp = 0.0016 * Math.pow(sa, 2.4);
+        shake.x = (Math.random() * 2 - 1) * amp; shake.y = (Math.random() * 2 - 1) * amp; shake.z = (Math.random() * 2 - 1) * amp * 0.5;
+        shake.rx = (Math.random() * 2 - 1) * 0.014 * sa * sa; shake.rz = (Math.random() * 2 - 1) * 0.014 * sa * sa;
+        shake.until = now + 28 + (1 - sa) * 40; // faster as it nears the limit
+      }
+    } else { shake.x = shake.y = shake.z = shake.rx = shake.rz = 0; }
   }
+  const followMoving = () => Math.hypot(follow.vx, follow.vy, follow.vz) > 0.0006 || Math.hypot(follow.x - follow.tx, follow.y - follow.ty, follow.z - follow.tz) > 0.00003
+    || Math.abs(lean.vp) + Math.abs(lean.vr) > 0.004 || Math.abs(lean.pitch - lean.tp) + Math.abs(lean.roll - lean.tr) > 0.0005;
 
   // a brief, decaying screen-kick on the burst (skipped under reduced motion)
   function kick(power) {
@@ -523,6 +606,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (Math.abs(flapSpring.t - (flapSpring.x || 0)) > 0.002 || Math.abs(flapSpring.v) > 0.01) return true;
     if (st.p > P_NOTCH && st.mode === "front" && deformer.chain.motion() > 0.00002) return true;
     if (st.press > 0.01 || Math.abs(st.pull) > 0.01) return true;
+    if (st.ringing || Math.abs(st.strain) > 0.002 || Math.abs(st.strain - st.strainT) > 0.002) return true;
+    if (followMoving() || shake.x !== 0) return true;
     return false;
   }
   function frame(t) {
@@ -532,8 +617,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     lastT = t;
     if (built) {
       ctl.update(dt);
-      stepSprings(dt);
       stepFly(dt);
+      stepSprings(dt);
       stepPose(dt);
       stepStack(dt);
       stepGlow(dt);
@@ -580,9 +665,17 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     clearTimeout(handoffTimer); clearTimeout(settleTimer);
     openSpring.x = openSpring.v = openSpring.t = 0;
     flapSpring.x = flapSpring.v = flapSpring.t = 0;
+    follow.x = follow.y = follow.z = follow.vx = follow.vy = follow.vz = follow.tx = follow.ty = follow.tz = 0;
+    lean.pitch = lean.roll = lean.vp = lean.vr = lean.tp = lean.tr = 0;
+    shake.x = shake.y = shake.z = shake.rx = shake.rz = 0; shake.until = 0;
+    strainTick = 0;
+    packGroup.position.set(0, 0, 0);
+    if (topCard) { topCard.rotation.x = 0; }
     for (const m of [mats.headerExt, mats.headerInt]) { m.visible = true; m.opacity = 1; m.transparent = false; m.needsUpdate = true; }
     packGroup.attach(stack);
     stack.position.set(0, 0, 0); stack.quaternion.identity(); stack.visible = true;
+    for (const m of cardMats.all) { if (m.transparent) { m.transparent = false; m.needsUpdate = true; } }
+    stack.traverse((o) => { o.renderOrder = 0; });
     bloom.visible = rays.visible = false;
     pose.yaw = pose.yawT = 0; pose.pitch = pose.pitchT = 0; pose.yawV = pose.pitchV = 0;
     packGroup.rotation.set(0, 0, 0);
@@ -645,8 +738,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const el = document.createElement("div");
     el.className = "pack3d-debug";
     el.innerHTML = `
-      <label>route <select name="mode"><option value="front">front (top strip)</option><option value="back">back (fin seam)</option></select></label>
-      <label>progress <input name="p" type="range" min="0" max="1" step="0.001" value="0"><output>0%</output></label>
+      <label>route <select name="mode"><option value="front">front (top strip)</option><option value="back">back (pull → pop)</option></select></label>
+      <label>progress <input name="p" type="range" min="0" max="1" step="0.001" value="0" title="front: torn length · back: strain (1 = the pop)"><output>0%</output></label>
       <label>yaw <input name="yaw" type="range" min="-3.2" max="3.2" step="0.01" value="0.34"></label>
       <label>pitch <input name="pitch" type="range" min="-0.6" max="0.6" step="0.01" value="-0.07"></label>
       <button type="button" name="auto">auto open</button>
@@ -659,7 +752,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     q("p").addEventListener("input", () => {
       const p = Number(q("p").value);
       out.value = `${Math.round(p * 100)}%`;
-      ctl.scrub(p, p > P_NOTCH ? (ctl.state.mode === "front" ? { x: -pack.dims.a0 + p * pack.dims.W, y: pack.dims.yT0 + 0.012 } : { x: 0.006, y: pack.dims.ySeal - p * 2 * pack.dims.ySeal }) : null);
+      ctl.scrub(p, p > P_NOTCH ? (ctl.state.mode === "front" ? { x: -pack.dims.a0 + p * pack.dims.W, y: pack.dims.yT0 + 0.012 } : { x: 0.004, y: pack.dims.ySeal - 0.004 - p * PULL_LIMIT }) : null);
       requestRender();
     });
     q("yaw").addEventListener("input", () => { pose.yawT = Number(q("yaw").value); requestRender(); });

@@ -881,13 +881,18 @@ function tearBell(c, freq, vel) {
 // Ring the next bell(s) up the ladder as the tear advances. `progress` 0→1 along
 // the rip; we only ever climb (jitter back-and-forth never replays a note).
 function tearChimeUp(progress) {
-  if (!tear || !tear.c) return;
-  if (tear.step == null) tear.step = -1;
+  chimeUp(tear, progress);
+}
+// the ladder itself, for any holder with {c, step}: the tear climbs it by torn
+// length, the back pull by strain (the power builds up the scale toward the pop)
+function chimeUp(h, progress) {
+  if (!h || !h.c) return;
+  if (h.step == null) h.step = -1;
   const steps = TEAR_SCALE.length;
   const target = Math.min(steps - 1, Math.floor(Math.max(0, Math.min(1, progress)) * steps));
-  while (tear.step < target) {
-    tear.step++;
-    tearBell(tear.c, TEAR_SCALE[tear.step], 0.75 + (tear.step / steps) * 0.5); // climbs louder
+  while (h.step < target) {
+    h.step++;
+    tearBell(h.c, TEAR_SCALE[h.step], 0.75 + (h.step / steps) * 0.5); // climbs louder
   }
 }
 
@@ -1168,6 +1173,158 @@ function stopTear() {
     /* already stopped */
   }
   tear = null;
+}
+
+// ---- the back PULL ----------------------------------------------------------------
+// Nothing tears on the back: the hand hauls on the seam and the pack STRAINS until
+// the seal pops. Three cues carry that: strainStart (the slack is taken up),
+// strain(level) every move (the creak + a tense body tone that rise with the power,
+// and the chime-up ladder climbing with it), strainEnd (let go → it slackens; or
+// the pop). The pop itself is pop(): the seal letting go all at once.
+let strainN = null;
+
+export function strainStart(tier = 0) {
+  let c;
+  try {
+    c = ensure();
+  } catch {
+    return;
+  }
+  strainStop();
+  const loop = startLoopSample("strain_loop");
+  if (loop) { strainN = { ...loop, sample: true, tier, step: -1, lastCreak: 0 }; return; } // recorded creak — modulated in strain()
+  const t = c.currentTime;
+  // the pack's "power": a low detuned pair under a resonant lowpass, swelling and
+  // rising with the strain, with a tremolo that quickens as the seal nears giving
+  const o1 = c.createOscillator();
+  const o2 = c.createOscillator();
+  o1.type = "triangle";
+  o2.type = "sawtooth";
+  o1.frequency.value = 58;
+  o2.frequency.value = 58.7;
+  const lp = c.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 150;
+  lp.Q.value = 3.2;
+  const g = c.createGain();
+  g.gain.value = 0.0001;
+  o1.connect(lp);
+  o2.connect(lp);
+  lp.connect(g).connect(master);
+  send(g, 0.12);
+  const lfo = c.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 4;
+  const lfoG = c.createGain();
+  lfoG.gain.value = 0;
+  lfo.connect(lfoG).connect(g.gain);
+  o1.start(t);
+  o2.start(t);
+  lfo.start(t);
+  strainN = { c, o1, o2, lp, g, lfo, lfoG, tier, step: -1, lastCreak: 0 };
+}
+
+export function strain(level = 0, vel = 0) {
+  if (!strainN) return;
+  const s = Math.max(0, Math.min(1, level));
+  const n = strainN;
+  const t = n.c.currentTime;
+  chimeUp(n, s); // the ladder climbs with the power
+  if (n.sample) {
+    n.g.gain.setTargetAtTime(0.06 + s * 0.6, t, 0.04);
+    n.src.playbackRate.setTargetAtTime(0.85 + s * 0.45, t, 0.06); // tauter as it strains
+    n.bp.frequency.setTargetAtTime(500 + s * 3200, t, 0.06);
+  } else {
+    const f = 58 + s * s * 76;
+    n.o1.frequency.setTargetAtTime(f, t, 0.05);
+    n.o2.frequency.setTargetAtTime(f * 1.012, t, 0.05);
+    n.lp.frequency.setTargetAtTime(140 + s * 560, t, 0.05);
+    n.g.gain.setTargetAtTime(0.003 + s * s * 0.15, t, 0.05);
+    n.lfo.frequency.setTargetAtTime(4 + s * 15, t, 0.08);
+    n.lfoG.gain.setTargetAtTime(s * 0.05, t, 0.08);
+  }
+  // the creak: foil crinkle grains — denser, brighter and louder the harder you pull
+  const now = performance.now();
+  if (now - n.lastCreak > 150 - s * 100) {
+    n.lastCreak = now;
+    const c = live();
+    if (c) crinkle(c, c.currentTime, { n: 1 + Math.round(s * 3), gain: 0.012 + s * 0.05 + Math.min(1, vel / 0.5) * 0.01, lo: 700 + s * 900, hi: 2200 + s * 2800, send: 0.08 });
+  }
+}
+
+export function strainEnd(popped = false) {
+  if (!strainN) return;
+  const n = strainN;
+  strainN = null;
+  const t = n.c.currentTime;
+  if (n.sample) {
+    n.g.gain.cancelScheduledValues(t);
+    n.g.gain.setValueAtTime(Math.max(0.0002, n.g.gain.value), t);
+    n.g.gain.exponentialRampToValueAtTime(0.0001, t + (popped ? 0.05 : 0.22));
+    try { n.src.stop(t + (popped ? 0.08 : 0.26)); } catch { /* already stopped */ }
+  } else {
+    n.g.gain.cancelScheduledValues(t);
+    n.g.gain.setValueAtTime(Math.max(0.0002, n.g.gain.value), t);
+    n.g.gain.exponentialRampToValueAtTime(0.0001, t + (popped ? 0.04 : 0.26));
+    n.lfoG.gain.setTargetAtTime(0, t, 0.03);
+    for (const o of [n.o1, n.o2, n.lfo]) { try { o.stop(t + 0.3); } catch { /* already stopped */ } }
+  }
+  // let go early: the foil slackens with a soft, falling crinkle
+  if (!popped) {
+    const c = live();
+    if (c) crinkle(c, c.currentTime, { n: 3, gain: 0.014, lo: 900, hi: 2400, send: 0.06 });
+  }
+}
+function strainStop() {
+  if (!strainN) return;
+  const n = strainN;
+  strainN = null;
+  try {
+    if (n.sample) n.src.stop();
+    else for (const o of [n.o1, n.o2, n.lfo]) o.stop();
+  } catch {
+    /* already stopped */
+  }
+}
+
+// THE POP — "pong": the seal lets go all at once. A recorded pop if present, else
+// the snap foley, else a synth: a bright crack + a plucked, pitch-dropping body
+// tone (the pouch's air escaping), under the burst's thump.
+export function pop(power = 0.7) {
+  const p = Math.max(0, Math.min(1, power));
+  if (playSample("pop", { gain: 0.7 + p * 0.5, send: 0.25 })) return;
+  if (playSample("tear_snap", { gain: 0.8 + p * 0.5, rate: 1.08, send: 0.2 })) return;
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  const crackBuf = c.createBuffer(1, Math.ceil(c.sampleRate * 0.018), c.sampleRate);
+  const cd = crackBuf.getChannelData(0);
+  for (let k = 0; k < cd.length; k++) cd[k] = (Math.random() * 2 - 1) * (1 - k / cd.length);
+  const crack = c.createBufferSource();
+  crack.buffer = crackBuf;
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 1800;
+  const cg = c.createGain();
+  cg.gain.setValueAtTime(0.0001, t);
+  cg.gain.exponentialRampToValueAtTime(0.14 + p * 0.16, t + 0.003);
+  cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
+  crack.connect(hp).connect(cg).connect(master);
+  send(cg, 0.2);
+  crack.start(t);
+  crack.stop(t + 0.02);
+  const o = c.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(300 + p * 60, t);
+  o.frequency.exponentialRampToValueAtTime(110, t + 0.14);
+  const og = c.createGain();
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.2 + p * 0.12, t + 0.006);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+  o.connect(og).connect(master);
+  send(og, 0.3);
+  o.start(t);
+  o.stop(t + 0.3);
 }
 
 // A dull descending "nope" stab when a tear is voided (turned back on itself). A

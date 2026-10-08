@@ -34,6 +34,8 @@ changes needed.
 | `grab` | you first touch the pack | a short muffled **foil crinkle / handle** (~80–150 ms) | round-robin + pitch jitter |
 | `tear_loop` | dragging the rip open | a **seamless looping** foil/paper tear crackle (1–2 s, loopable) | looped; gain **+ brightness + speed track your pull velocity** |
 | `tear_snap` | the rip completes | the **fibrous final snap** as it gives way | one-shot; gain scales with tear speed |
+| `strain_loop` | hauling on the back seam (the pull) | a **seamless looping** foil-under-tension creak (1–2 s, loopable) | looped; gain **+ pitch + brightness track how hard you pull** |
+| `pop` | the back seal lets go — "pong" | a tight **pop / snap** of a sealed pouch giving way | one-shot; gain scales with pull speed (falls back to `tear_snap`) |
 | `open_release` | the instant it pops open | a small **joyful release** — a bright chime/pop resolve (the satisfying "ah") | one-shot, layered over `open_burst` |
 | `scratch` | dragging the middle (no tear) | a light dry **surface scuff** on foil | gain scales with drag speed; round-robin |
 | `open_burst` | the pack bursts open | the **chest-thump open** — a punchy whump (foil pop + body) | gain ↑ with power, pitch ↓ for rarer pulls |
