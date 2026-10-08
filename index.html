@@ -1880,7 +1880,7 @@
           // pose — see getHandoffPose), let it start to breathe: the idle float eases in
           // from zero amplitude, so the landed still simply begins to drift (no snap)
           setTimeout(() => pack?.present?.(), 440);
-          sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up and play its INTRO, then HOLD at the intro's end until the pack fully opens
+          sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up; it plays + loops through the whole opening
         },
         // The entrance animation has finished — NOW arm the pack: its cards were painted
         // earlier (prefetchBooster — under the gate, or during the last haul), so what's

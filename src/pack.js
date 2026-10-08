@@ -656,7 +656,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const power = Math.min(1, 0.6 + peakSpeed / 4);
     sfx.tearEnd(true, power); // the fibrous snap
     sfx.burst(power, tellTier); // chest-thump under the open — body + crack + felt sub, deeper for a chase
-    sfx.resumeOpenTheme?.(); // FULLY OPEN — release the held intro so the rest of the theme pours in on the burst
+    sfx.resumeOpenTheme?.(); // FULLY OPEN — the open theme is already looping; this just makes sure it still is
     sfx.tearRelease(); // (a recorded release, if one is wired — no synth flourish)
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();

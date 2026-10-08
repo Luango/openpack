@@ -29,14 +29,13 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 //   • "carousel" — the MAIN background music: the upbeat "Fun Life" hip-hop track,
 //                  looping while the player browses the deck of packs.
 //   • "open"     — the upbeat funk breakbeat (alexguz, "Funk & Breakbeat Upbeat
-//                  Advertising"). Swells up the moment a pack is SELECTED, but only plays
-//                  its first 4-bar phrase and then HOLDS (see the intro-hold block below);
-//                  the rest pours in when the pack fully splits open.
+//                  Advertising"). Swells up the moment a pack is SELECTED and then just
+//                  plays and LOOPS through the whole opening (no hold, no pause).
 // Only one is audible at a time; switching scenes fades the other out under it.
 // Each bed plays NATIVELY from its own <audio> element — we do NOT route it through the
 // WebAudio graph. iOS/WebKit's createMediaElementSource silently drops ALL output (the bug
 // behind "music on Android but not iOS"), so the bed's level is driven by el.volume directly
-// (see rampElVolume). Volume/mute, scene cross-fades, the intro-hold, and the duck() below
+// (see rampElVolume). Volume/mute, scene cross-fades and the duck() below
 // all just tween el.volume — no GainNode, no AudioContext dependency. User volume + mute
 // apply to both beds (see musicTarget()).
 const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
@@ -386,63 +385,28 @@ export function setMusicScene(scene, seconds = 1.6) {
   }
 }
 
-// ---- open theme: intro-hold ------------------------------------------------
-// The open theme is split into two beats so the MUSIC lands with the gesture:
-//   1) startOpenTheme() — the pack is SELECTED (flown forward, ready to tear). Swell
-//      the theme up from the top, play just the short INTRO, then HOLD (pause) it right
-//      at the end of that intro. The music hangs there, charged, through the whole
-//      ready-to-tear + tearing window — it does NOT spill into the main body yet.
-//   2) resumeOpenTheme() — the pack FULLY splits open. Release the hold so the rest of
-//      the theme pours in on the burst. If the open happens mid-intro (a fast select →
-//      yank), this just cancels the pending hold so the music plays straight through.
-// The funk bed is 125 BPM (1.92s bars), downbeat at 0.50s; the groove thickens at bar 5
-// (8.18s). timeupdate fires every ~250ms and the fade-out takes ~0.3s, so 7.6 parks the
-// bed at ~7.9–8.2s: the open releases straight onto that bar-5 downbeat.
-const OPEN_INTRO_SEC = 7.6; // how much of the theme plays on select, before it holds for the open
-const OPEN_FADE = 0.25;     // the quick fade-out into the hold / fade-in out of it (seconds)
-let openHoldHandler = null; // the timeupdate listener that fades + pauses the open bed at the intro end
-let openPauseTimer = null;  // pending "pause at the bottom of the fade-out"
+// ---- open theme: play + loop ------------------------------------------------
+// The open theme simply PLAYS and LOOPS for the whole opening phase — no intro-hold,
+// no pause while the pack waits to be torn. (It used to play an intro, fade + park at
+// the end of it, and only resume on the open; the hold read as the music stopping.)
+//   1) startOpenTheme() — the pack is SELECTED: swell the theme up from the top
+//      (cross-fading out of the carousel bed). The element is loop=true, so it just
+//      keeps going through ready-to-tear, the tear, the burst and the reveal.
+//   2) resumeOpenTheme() — the pack FULLY opens. Kept as a safety net only: if the bed
+//      somehow isn't playing (a raced play()), nudge it back up; otherwise a no-op.
+// The big beats still DUCK the bed (duck() dips the volume, it never pauses).
 
-function clearOpenHold() {
-  const bed = beds.get("open");
-  if (bed?.el && openHoldHandler) bed.el.removeEventListener("timeupdate", openHoldHandler);
-  openHoldHandler = null;
-  if (openPauseTimer) { clearTimeout(openPauseTimer); openPauseTimer = null; }
-}
-
-// PACK SELECTED — swell the open theme up from the calm carousel bed, but only play its
-// intro: at the end of the intro QUICK-FADE the bed down and pause it, so the music holds
-// (silent + parked), charged, until the pack actually opens (resumeOpenTheme).
-export function startOpenTheme(introSec = OPEN_INTRO_SEC) {
+// PACK SELECTED — swell the open theme up from the calm carousel bed and let it loop.
+export function startOpenTheme() {
   setMusicScene("open", 0.9); // swell the open theme up from the top (restarts the bed)
-  const bed = beds.get("open");
-  if (!bed?.el) return; // music not started yet (no gesture) — nothing to hold
-  clearOpenHold(); // drop any stale handler from a prior pull
-  openHoldHandler = () => {
-    if (bed.el.currentTime < introSec) return;
-    clearOpenHold(); // stop watching (no pause timer pending yet)
-    // quick fade DOWN, then pause at the bottom so the hold lands without a click
-    rampElVolume(bed.el, 0, OPEN_FADE / 3);
-    openPauseTimer = setTimeout(() => {
-      openPauseTimer = null;
-      try { bed.el.pause(); } catch { /* ignore */ } // HOLD here — wait for the open
-    }, OPEN_FADE * 1000 + 60);
-  };
-  bed.el.addEventListener("timeupdate", openHoldHandler);
 }
 
-// THE OPEN — release the intro hold and let the rest of the open theme play through,
-// with a quick fade-IN so it eases back rather than slamming on. If the open landed
-// mid-intro (a fast select → yank), the bed is still playing, so this just keeps it
-// going (no forced dip); only a truly HELD bed gets reset to silent and faded up.
+// THE OPEN — the theme is already playing; just make sure it still is.
 export function resumeOpenTheme() {
-  const wasHeld = !!openPauseTimer || !!beds.get("open")?.el?.paused; // fading out / parked
-  clearOpenHold(); // cancel any pending hold + pending pause-timer
   const bed = beds.get("open");
   if (currentScene !== "open" || !bed?.el) return;
-  if (wasHeld) { try { bed.el.volume = 0; } catch { /* ignore */ } } // reset to silent so the resume is a real fade-IN
   if (bed.el.paused) bed.el.play().catch(() => {});
-  rampElVolume(bed.el, musicTarget("open"), OPEN_FADE / 3); // quick fade-in
+  rampElVolume(bed.el, musicTarget("open"), 0.3);
 }
 
 // Fade EVERY bed out to silence — the deliberately quiet ready-to-tear screen,
@@ -450,7 +414,6 @@ export function resumeOpenTheme() {
 // sentinel no real bed matches, so musicTarget() returns 0 for all of them; the
 // now-silent elements are parked so a hidden loop isn't burning cycles. Idempotent.
 export function silenceMusic(seconds = 1.2) {
-  clearOpenHold(); // a tear that never opened drops its pending intro-hold
   if (currentScene === "silent") return;
   currentScene = "silent";
   if (!musicStarted) return; // nothing playing yet — first gesture handles it
