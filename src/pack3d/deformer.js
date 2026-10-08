@@ -9,11 +9,15 @@
 //   from rest into the swept pose, so only released material opens. The body
 //   gets a small reaction: a press dent at the tip and a gaping mouth behind it.
 //
-//   BACK rip (the fin-seam peel) — the duplicated back-centre column releases
-//   from the top seal downward; each back-sheet vertex hinges about its side
-//   fold (left/right flap) by a weight that tapers to zero into the crimped
-//   seals, so the flaps swing open like doors while the seals crumple. The fin
-//   ribbon rides the right flap and its free edge lifts as the seam unglues.
+//   BACK pull (the fin-seam pop) — nothing tears. The hand hauls on the seam
+//   and the pack STRAINS by `state.strain` (0–1): the body inflates (pressure
+//   inside), the baked creases deepen, stress pleats converge on the gripped
+//   seam top, the pouch stretches lengthwise and narrows, and the seam gapes in
+//   a sliver just below the top crimp. At the limit the seal lets go all at
+//   once: both back halves hinge open about their side folds together (the
+//   spring-driven `flapOpen`, with overshoot), the strain RINGS back through
+//   zero (the recoil — sucks in, puffs out) and the fin ribbon rides the right
+//   flap with its free edge lifted.
 //
 // After deformation the normals are recomputed and the still-joined seam pairs
 // reconciled (averaged), so the pre-split topology shades as one closed surface.
@@ -24,7 +28,6 @@ import { createChain } from "./chain.js";
 import { OWNER, SHEET, smoothstep } from "./geometry.js";
 
 const TW_FRONT = 0.05; // release transition (fraction of the route) behind the tip
-const TW_BACK = 0.07;
 
 export function createDeformer(pack, cfg, { reduced = false } = {}) {
   const { geometry, rest, count, meta, seams, dims, cols, patches, idx } = pack;
@@ -39,6 +42,29 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
   const wox = new Float32Array(count);
   const woz = new Float32Array(count);
   for (let i = 0; i < count; i++) { wox[i] = rest[i * 3] - mx[i]; woz[i] = rest[i * 3 + 2] - mz[i]; }
+
+  // the back pull's strain fields, per vertex (baked once)
+  const { yBodyEnd } = dims;
+  const bodyW = new Float32Array(count); // 1 through the body → 0 into the shoulders/seals
+  const faceG = new Float32Array(count); // how much each sheet inflates (the pulled back most)
+  const gapeW = new Float32Array(count); // the seam's pre-pop sliver: a lens below the top crimp
+  const pleat = new Float32Array(count); // stress pleats fanning out from the gripped seam top
+  const yGrip = ySeal - 0.004; // where the hand holds the seam
+  for (let i = 0; i < count; i++) {
+    const x = mx[i], y = my[i], ay = Math.abs(y);
+    bodyW[i] = 1 - smoothstep(yBodyEnd - 0.004, yBodyEnd + 0.003, ay);
+    const sh = sheet[i];
+    faceG[i] = sh === SHEET.BACK ? 1 : sh === SHEET.FRONT ? 0.55 : sh === SHEET.FIN ? 0.3 : 0.4;
+    gapeW[i] = flap[i] ? Math.sin(Math.PI * Math.min(1, routeB[i] / 0.34)) : 0;
+    if (sh === SHEET.BACK || sh === SHEET.FIN) {
+      const dx = x, dy = yGrip - y;
+      const dist = Math.hypot(dx, dy);
+      const ang = Math.atan2(dx, Math.max(0.002, dy));
+      // pleats converge on the grip: tighter near it, fading down the back and into the seals
+      const fall = Math.exp(-dist / 0.034) * (1 - smoothstep(ySeal - 0.006, ySeal, ay)) * (1 - smoothstep(0, 0.006, Math.max(0, y - yGrip)));
+      pleat[i] = Math.sin(ang * 9 + dist * 260) * fall;
+    }
+  }
 
   const wCol = new Float32Array(cols); // front: per-column release weight
   const wRowB = new Map(); // back: per-row weight (by y) for the fin pairs
@@ -248,44 +274,56 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     }
   }
 
+  // the back PULL: the strain field, then the hinge (a sliver before the pop,
+  // the doors after it). `s` may ring negative after the pop (the recoil).
+  const THETA_OPEN = 1.5; // the flaps' open angle at flapOpen = 1 (~86°; the spring overshoots past it)
+  const GAPE = 0.075; // hinge angle of the pre-pop sliver at full strain (~4 mm at the seam)
   function evalBack(state) {
-    const p = state.p;
     const detached = state.phase === "detached" || state.phase === "revealed";
-    const thetaMax = 1.05 + 0.3 * state.pull; // ~60° doors at the widest, a little more when pulled sideways
-    wRowB.clear();
+    const s = Math.max(-1, Math.min(1, state.strain));
+    const sa = Math.abs(s);
+    const ss = s * sa; // signed square: inflates on the outward swing, sucks in on the inward one
+    const g = detached ? Math.max(0, s) : sa; // the sliver fades through the pop (the doors take over)
+    const g2 = g * g;
+    const open = Math.max(0, state.flapOpen);
+    const stretch = 1 + 0.08 * s; // lengthwise, along the seam
+    const narrow = 1 - 0.03 * s; // across (the foil gives in the pull's direction)
+    const puff = 0.0032 * ss; // inflation along the rest normal
+    const crease = 1.0 * sa; // the baked wrinkles deepen under tension
+    const pleatAmp = 0.0007 * sa * sa; // the stress pleats arrive late in the pull
+    const hinge = R_HINGE * narrow;
     for (let i = 0; i < count; i++) {
+      // 1) material strain
+      const bw = bodyW[i];
+      let d = puff * bw * faceG[i] + pleatAmp * pleat[i] * bw;
+      let px = P[i * 3] + nx[i] * d + wox[i] * crease;
+      let py = P[i * 3 + 1];
+      let pz = P[i * 3 + 2] + nz[i] * d + woz[i] * crease;
+      // 2) the pouch stretches toward the hand and narrows
+      px *= narrow;
+      py *= stretch;
+      // 3) the hinge: the sliver (pre-pop) + the doors (post-pop), about the side fold
       const side = flap[i];
-      if (!side) continue;
-      let w = detached ? 1 : smoothstep(0, TW_BACK, p - routeB[i]);
-      if (w <= 0) continue;
-      const tp = taper[i];
-      const wv = w * tp;
-      const theta = detached ? (state.flapOpen * 1.45 + (1 - state.flapOpen) * thetaMax) * tp : wv * thetaMax;
-      // fin free edge unglues: lift it off the flap before hinging
-      let rz = P[i * 3 + 2];
-      if (finK[i] > 0) rz -= wv * 0.0022 * (finK[i] / 2);
-      const hx = side * R_HINGE;
-      const dx = P[i * 3] - hx, dz = rz;
-      const cs = Math.cos(theta), sn = Math.sin(theta);
-      P[i * 3] = hx + dx * cs - side * dz * sn;
-      P[i * 3 + 2] = side * dx * sn + dz * cs;
-      // per-row weight for the fin ribbons (rows key by their nominal y)
-      if (col[i] === 0 || col[i] === cols - 1) {
-        const y = my[i];
-        if (!wRowB.has(y)) wRowB.set(y, w);
+      if (side) {
+        const theta = GAPE * g2 * gapeW[i] + open * THETA_OPEN * taper[i];
+        if (theta > 1e-5) {
+          // the fin's free edge unglues from the flap before hinging with it
+          if (finK[i] > 0) pz -= Math.min(1, open * 1.6 + g2 * gapeW[i]) * 0.0022 * (finK[i] / 2);
+          const hx = side * hinge;
+          const dx = px - hx, dz = pz;
+          const cs = Math.cos(theta), sn = Math.sin(theta);
+          px = hx + dx * cs - side * dz * sn;
+          pz = side * dx * sn + dz * cs;
+        }
       }
+      P[i * 3] = px; P[i * 3 + 1] = py; P[i * 3 + 2] = pz;
     }
-    // the ribbons key by patch rowY; map nearest rows
-    const keyed = new Map();
-    for (const pt of [patches.body, patches.header]) {
-      for (let r = 0; r < pt.rows; r++) {
-        const i = idx(pt, r, 0);
-        const w = detached ? 1 : smoothstep(0, TW_BACK, p - routeB[i]) * taper[i];
-        keyed.set(pt.rowY[r], w);
-      }
-    }
+    // the fin ribbons (the exposed seal edge) only exist once the seal has let go
     wRowB.clear();
-    for (const [k, v] of keyed) wRowB.set(k, v);
+    if (detached) {
+      const w = Math.min(1, open * 2.5);
+      for (const pt of [patches.body, patches.header]) for (let r = 0; r < pt.rows; r++) wRowB.set(pt.rowY[r], w);
+    }
   }
 
   // joined seam pairs share one normal (averaged); released ones keep their own
@@ -296,9 +334,9 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
       const joined = front ? (c < 0 ? wCol[0] : wCol[c]) < 0.5 : true;
       if (joined) avg(a, b);
     }
-    for (const [a, b, y] of seams.fin) {
-      const joined = front ? true : (wRowB.get(y) || 0) < 0.5;
-      if (joined) avg(a, b);
+    const popped = !front && (state.phase === "detached" || state.phase === "revealed");
+    for (const [a, b] of seams.fin) {
+      if (!popped) avg(a, b);
     }
   }
   function avg(a, b) {
@@ -344,6 +382,6 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     wRowB,
     tipLocal: (state) => (state.mode === "front"
       ? { x: -a0 + state.p * W, y: yT0, z: b0 }
-      : { x: 0, y: ySeal - state.p * 2 * ySeal, z: -b0 }),
+      : { x: 0.0015 + state.pullX * 0.2, y: ySeal - 0.004 + state.pullY * 0.2, z: -b0 }),
   };
 }
