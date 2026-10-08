@@ -8,6 +8,8 @@
 //   showGeometry  — a lighter, STATIC envelope at rest, rescaled so the pack is
 //                   1 unit wide and `aspect` tall (the carousel's convention),
 //                   one material group → one draw call per pack on the wheel
+//   showOutline   — that envelope's face-on silhouette as a closed loop, same
+//                   units, for the carousel's rim light (packOutline, geometry.js)
 //   buildTear()   — the full-density deformable envelope with its seam table,
 //                   in metres, for the tear stage
 //   map / normalMap / ormMap — shared textures (each renderer uploads its own copy);
@@ -19,7 +21,7 @@
 
 import * as THREE from "three";
 import { makeConfig, pickQuality } from "./config.js";
-import { buildPack } from "./geometry.js";
+import { buildPack, packOutline } from "./geometry.js";
 import { atlasLayout } from "./atlas.js";
 import { loadImage, paintAtlas, paintPrintMask, buildSurfaceMaps } from "./textures.js";
 
@@ -57,6 +59,10 @@ export function getPackAsset(overrides = {}) {
     showGeometry.scale(1 / cfg.widthM, 1 / cfg.widthM, 1 / cfg.widthM);
     showGeometry.computeBoundingSphere();
     showGeometry.computeBoundingBox();
+    // the pouch's own silhouette in the same local units (1 unit wide), for the
+    // carousel's rim light: traced from the loft's profile, not the art's alpha,
+    // so the 流光 runs the model's actual edge — shoulder flare, crimp ears and all
+    const showOutline = packOutline(show).map(([x, y, z]) => [x / cfg.widthM, y / cfg.widthM, z / cfg.widthM]);
 
     // plain art textures for the flat floor reflections
     const plain = (img) => { if (!img) return null; const t = new THREE.Texture(img); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; return t; };
@@ -66,6 +72,7 @@ export function getPackAsset(overrides = {}) {
       cfg, aspect, layout, front, back, cardBack, frontTex, backTex,
       map, normalMap: surface.normalMap, ormMap: surface.ormMap, surfaceReady: surface.whenReady,
       showGeometry,
+      showOutline,
       showStats: show.stats,
       buildTear: () => buildPack(cfg, aspect),
     };
