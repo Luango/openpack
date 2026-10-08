@@ -56,13 +56,17 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   mountEl.innerHTML = `
     <div class="pack3d-wrap">
       <div class="pack-glow" aria-hidden="true"></div>
-      <canvas class="pack3d-canvas" aria-label="Sealed pack — grab the corner and tear it open"></canvas>
+      <!-- .pack3d-body is what idle-floats (host CSS): the pack + its grip marker only.
+           The buttons and cue below are siblings so they stay put while the pack bobs. -->
+      <div class="pack3d-body">
+        <canvas class="pack3d-canvas" aria-label="Sealed pack — grab the corner and tear it open"></canvas>
+        <span class="pack3d-notch" aria-hidden="true"></span>
+      </div>
       <div class="pack3d-ui">
         <button type="button" class="pack3d-btn pack3d-flip" aria-label="Flip the pack over">Flip</button>
         <button type="button" class="pack3d-btn pack3d-open">Open pack</button>
       </div>
       <p class="pack3d-cue" aria-live="polite"></p>
-      <span class="pack3d-notch" aria-hidden="true"></span>
     </div>
     <canvas class="pack-fx"></canvas>`;
   const wrap = mountEl.querySelector(".pack3d-wrap");
@@ -709,7 +713,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const s = facing() === "front"
       ? screenOf({ x: -a0 + 0.003, y: yT0 + 0.0035, z: b0 })
       : screenOf({ x: 0.0015, y: ySeal - 0.004, z: -b0 });
-    const r = mountEl.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect(); // the notch shares the canvas's (floating) box
     notchEl.style.left = `${(s.x - r.left).toFixed(1)}px`;
     notchEl.style.top = `${(s.y - r.top).toFixed(1)}px`;
   }

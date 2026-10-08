@@ -170,9 +170,12 @@
       }
       .pack3d-wrap.ready { opacity: 1; }
       /* the idle float, only once the pack has settled into your hand (not during the
-         carousel hand-off, whose landed hero must match a still pack) */
-      .pack3d-wrap.settled { animation: float 5s ease-in-out infinite; }
-      .pack3d-wrap.tearing, .pack3d-wrap.opening { animation: none; }
+         carousel hand-off, whose landed hero must match a still pack). It rides
+         .pack3d-body — the canvas + grip dot — NOT the wrap, so the Flip / Open buttons
+         and the cue text underneath hold still while the pack bobs. */
+      .pack3d-body { position: absolute; inset: 0; }
+      .pack3d-wrap.settled .pack3d-body { animation: float 5s ease-in-out infinite; }
+      .pack3d-wrap.tearing .pack3d-body, .pack3d-wrap.opening .pack3d-body { animation: none; }
       .pack3d-canvas {
         display: block;
         width: 100%;
