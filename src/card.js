@@ -60,7 +60,7 @@ export function renderCard(card, { variant = "grid", index } = {}) {
       ? `<div class="card__shade" aria-hidden="true"></div><div class="card__glow" aria-hidden="true"></div>`
       : "";
     // the player photo's own material: the art again, through the player's
-    // silhouette (cardart.js), over the metal's glare/foil — lit by card.css
+    // silhouette (cardart.js), over the metal's glare/foil — matte, unlit (card.css)
     const player = card.playerMask
       ? `<div class="card__player" style="--player-art: url('${escapeAttr(card.image || src)}'); ` +
         `--player-mask: url('${escapeAttr(card.playerMask)}')" aria-hidden="true"></div>`
