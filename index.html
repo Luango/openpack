@@ -1553,14 +1553,64 @@
       /* the stage goes darker for a walkout than for a plain tell */
       .reveal.walkout .reveal__dim { opacity: 1; background: radial-gradient(120% 100% at 50% 44%, rgba(6, 4, 2, 0.35) 20%, rgba(6, 4, 2, 0.86) 80%); }
 
-      /* stacking order inside the reveal host: backdrop → rays → cards → sparkles
-         → shock → flash → stamp */
+      /* THE FILM (reveal.js cinema()) — a staged card's print has landed and, instead
+         of its player, the card ZOOMS up into the screen: the stage blacks out beneath
+         it (.reveal__veil — under the stack, so the card itself stays lit), the clip
+         fades in over everything (.reveal__cinema), plays, then fades back out as the
+         card pulls back to rest and the player comes out of the light. Opacity and the
+         slot's transform are driven by WAAPI in reveal.js; the layer only exists (and
+         takes the tap that cuts the clip short) while .reveal.cinema is on. */
+      .reveal__veil {
+        position: fixed;
+        inset: 0;
+        background: #050402;
+        opacity: 0;
+        pointer-events: none;
+        will-change: opacity;
+      }
+      .reveal__cinema {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        will-change: opacity;
+      }
+      .reveal.cinema .reveal__cinema { visibility: visible; pointer-events: auto; cursor: pointer; }
+      .cinema__video {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+        pointer-events: none;
+      }
+      /* the awards-night vignette over the clip: the warm black pools at the corners and
+         along the top and bottom edges (under the status bar / home indicator), so the
+         film sits in the same dark room as the card rather than cutting to raw footage */
+      .cinema__vignette {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(120% 100% at 50% 50%, transparent 52%, rgba(13, 11, 8, 0.55) 100%),
+          linear-gradient(to bottom, rgba(13, 11, 8, 0.55), transparent 16%, transparent 84%, rgba(13, 11, 8, 0.6));
+      }
+      .reveal.cinema .reveal__status { opacity: 0; } /* the teach line sits out the film */
+
+      /* stacking order inside the reveal host: backdrop → veil → rays → cards → sparkles
+         → shock → film → flash → stamp */
       .reveal__dim { z-index: 0; }
       .reveal__aura, .reveal__interior { z-index: 1; }
       .reveal__rays, .reveal__tell, .reveal__shadow { z-index: 2; }
+      .reveal__veil { z-index: 5; }   /* blacks out the stage under the zooming card */
       .reveal__stack { z-index: 10; }
       .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
       .reveal__shock { z-index: 160; } /* ring reads just in front of the sparkles */
+      .reveal__cinema { z-index: 250; } /* the clip, over the card */
       .reveal__flash { z-index: 300; }
       .reveal__stamp, .reveal__walkout { z-index: 320; }
 
@@ -1619,6 +1669,7 @@
       import { getPackAsset } from "./src/pack3d/asset.js";
       import { createReveal } from "./src/reveal.js";
       import { buildBooster } from "./src/booster.js";
+      import { FIRST_PACK, stagingEnabled } from "./src/staged.js";
       import { rarityToTier } from "./src/rarity.js";
       import { createSelector, DEFAULT_PACKS } from "./src/select3d.js";
       import * as sfx from "./src/sfx.js";
@@ -1763,9 +1814,14 @@
       }
       const whenCalm = () => new Promise((r) => requestAnimationFrame(() => (entranceBusy ? calmWaiters.push(r) : r())));
       let nextBooster = null; // Promise<cards> for the pack that loadNextPack will arm next
+      // The FIRST pack of the session is the staged set piece (src/staged.js: the hand
+      // that builds to Bellingham's Team of the Year card and its film); every pack
+      // after it is rolled. `?stage=0` rolls the first one too.
+      let packsBuilt = 0;
       function prefetchBooster() {
         if (!nextBooster) {
-          nextBooster = buildBooster(undefined, { pace: whenCalm }).then(async (cards) => {
+          const staged = packsBuilt++ === 0 && stagingEnabled() ? FIRST_PACK : null;
+          nextBooster = buildBooster(undefined, { pace: whenCalm, staged }).then(async (cards) => {
             const p = await packReady;
             p.setCards?.(cards); // prime the 3D pack's top-card face now (texture decode + upload)
             return cards;

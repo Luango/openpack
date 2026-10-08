@@ -479,6 +479,16 @@ export function duck(depth = 0.3, holdMs = 650, releaseMs = 800) {
   }, holdMs);
 }
 
+// Let a long duck go EARLY — a film held the bed down for its whole length and was
+// skipped mid-way: the bed swells back over `releaseMs` instead of waiting out the hold.
+export function releaseDuck(releaseMs = 900) {
+  if (duckTimer) clearTimeout(duckTimer);
+  duckTimer = null;
+  if (duckFactor === 1) return;
+  duckFactor = 1;
+  rampMusic(releaseMs / 1000 / 3);
+}
+
 // Let the UI / other modules toggle the music if needed.
 export function setMusicEnabled(on) {
   if (on) startMusic();

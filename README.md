@@ -6,6 +6,15 @@ and rip the top strip off, or flip it over and peel the back seam — and flip
 through five players, rarest last. The best pulls get a **walkout**:
 the nation, position and club are teased in the dark before the card drops.
 
+The **first pack** of a session is a set piece ([`src/staged.js`](src/staged.js)):
+a Real Madrid hand that builds to Jude Bellingham's Team of the Year card — and
+that card plays a **film**. Once its print has stamped on, the card zooms up into
+the screen, the empty portrait panel opens onto a full-screen clip
+([`assets/video/bellingham-toty.mp4`](assets/video/bellingham-toty.mp4)), and when
+it ends the camera pulls back out to the card and only then does the player's
+portrait appear (`cinema()` in [`src/reveal.js`](src/reveal.js)). A tap during the
+clip cuts to the pull-back. Every pack after the first is rolled from the pool.
+
 The look is an **awards night**: warm black and dark charcoal, one gold that
 behaves like a metal (bronze shadow → rich gold → champagne highlight), a soft
 amber glow behind whatever matters, engraved Roman capitals for the headings,
@@ -44,7 +53,10 @@ and on Windows the stdlib's default backlog of 5 refuses some of them.
 Handy URLs while working:
 
 - `/?hit=9` forces the pack's promo slot to a tier (4–9). Use it to preview a
-  walkout or a specific edition without waiting on luck.
+  walkout or a specific edition without waiting on luck. (The staged first pack
+  ignores it — see `?stage=0`.)
+- `/?stage=0` rolls the first pack instead of dealing the staged set piece
+  (Bellingham's film), to test the ordinary flow from a fresh load.
 - `/?noframe` keeps a desktop on the bare page instead of the iPhone frame
   (`/phone.html` is the frame; it passes its query through to the app).
 - `/?audiodebug` shows a live audio-status HUD.
