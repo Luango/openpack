@@ -196,8 +196,9 @@ emit("sparkle", "sparkle.wav", one_shot("shimmer_1.flac", -9))
 emit("spark", "spark.wav", one_shot("interface/**/glass_003.ogg", -12))
 # open_release — bright positive "ah" the instant it pops
 emit("open_release", "open-release.wav", one_shot("interface/**/confirmation_001.ogg", -7))
-# conclude — a soft positive resolve on the last card
-emit("conclude", "conclude.wav", one_shot("interface/**/confirmation_004.ogg", -8))
+# conclude — the whole haul is on screen ("that's the pack"). NOT built here: conclude.mp3
+# is a hand-placed recorded UI sound already in assets/sfx/ — keep it listed.
+out["conclude"] = ["conclude.mp3"]
 # pip — tiny UI tick per count pip
 emit("pip", "pip.wav", one_shot("interface/**/pluck_001.ogg", -12))
 # gulp — a card is sucked into the binder (engine pitches up per card). NOT built here:

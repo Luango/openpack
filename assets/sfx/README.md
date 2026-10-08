@@ -53,7 +53,7 @@ changes needed.
 | `spark` | idle edge glints on the sealed pack | a soft **high glint / shimmer** | round-robin + jitter (fires every few seconds) |
 | `reject` | a tear is voided (hooks back) | a dull descending **"nope" / blocked** stab | one-shot |
 | `reseal` | "Open another" / halves close | a descending **foil whoosh** | one-shot |
-| `conclude` | "that's the pack" (last card) | a gentle **resolving cadence / chord** | one-shot |
+| `conclude` | the whole haul is on screen ("that's the pack") | a short **resolving UI flourish** | one-shot |
 | `hover` | hovering a gallery card (desktop) | a soft **tick** | round-robin + jitter (optional — synth is fine here) |
 
 > Priority if you only do a few: the ones that sound most synthetic today are
@@ -100,9 +100,9 @@ needed. Provenance:
 - **Kenney** (https://kenney.nl) — CC0 — *Casino Audio* (card slide/place/fan, pack
   take-out & rip → `flick`, `setdown`, `cardtap`, `grab`, `tear_snap`), *Impact Sounds*
   (punch body for `open_burst`/`reveal_impact`), *Interface Sounds* (`scratch`, `spark`,
-  `pip`, `reject`, `reseal`, `open_release`, `conclude`, `hover`).
-- **`collect.mp3`** (`gulp`) — a recorded UI sound supplied by the project owner
-  (2026-10-08); hand-placed, not rebuilt by `tools/build_sfx.py`.
+  `pip`, `reject`, `reseal`, `open_release`, `hover`).
+- **`collect.mp3`** (`gulp`) and **`conclude.mp3`** (`conclude`) — recorded UI sounds
+  supplied by the project owner (2026-10-08); hand-placed, not rebuilt by `tools/build_sfx.py`.
 - **"Various Paper Sound Effects"**, OpenGameArt — CC0 — the foil `tear_loop`/`tear_snap`.
 - **"100 CC0 SFX"**, OpenGameArt — CC0 — gong/explosion/glass for `reveal_impact` &
   `riser`, the bell for `chime`, metal/glass for the `tear_snap` crackle.
