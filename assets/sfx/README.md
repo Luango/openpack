@@ -33,6 +33,7 @@ changes needed.
 |---|---|---|---|
 | `grab` | you first touch the pack | a short muffled **foil crinkle / handle** (~80–150 ms) | round-robin + pitch jitter |
 | `tear_loop` | dragging the rip open | a **seamless looping** foil/paper tear crackle (1–2 s, loopable) | looped; gain **+ brightness + speed track your pull velocity** |
+| `tear_rip` | the top rip, start to finish | one **long wrapper crinkle / tear** recording (several seconds, not a loop) | **scrubbed by the rip**: the playhead advances only while the tear advances — faster for a quick haul, frozen when the hand stops, resumed where it left off (when loaded, replaces `tear_loop` for the front rip) |
 | `tear_snap` | the rip completes | the **fibrous final snap** as it gives way | one-shot; gain scales with tear speed |
 | `strain_loop` | hauling on the back seam (the pull) | a **seamless looping** foil-under-tension creak (1–2 s, loopable) | looped; gain **+ pitch + brightness track how hard you pull** |
 | `pop` | the back seal lets go — "pong" | a tight **pop / snap** of a sealed pouch giving way | one-shot; gain scales with pull speed (falls back to `tear_snap`) |
