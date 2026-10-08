@@ -101,8 +101,11 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     }
   }
   const ribbonJitter = (k) => 0.00028 + 0.00034 * Math.abs((Math.sin(k * 33.7 + 1.1) * 5417) % 1);
-  // all four strips live in ONE geometry (one draw call): each owns a slice of it
+  // all four strips live in ONE geometry (one draw call): each owns a slice of it.
+  // Vertex colours carry the light: silver laminate that runs hot where the torn
+  // edge sits next to the light escaping at the tip.
   const ribbonGeo = new THREE.BufferGeometry();
+  let ribbonCol = null, ribbonColAttr = null;
   {
     let total = 0;
     for (const s of Object.values(strips)) { s.offset = total; total += s.entries.length; }
@@ -110,6 +113,11 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     const at = new THREE.BufferAttribute(arr, 3);
     at.setUsage(THREE.DynamicDrawUsage);
     ribbonGeo.setAttribute("position", at);
+    ribbonCol = new Float32Array(total * 2 * 3);
+    ribbonCol.fill(0.95);
+    ribbonColAttr = new THREE.BufferAttribute(ribbonCol, 3);
+    ribbonColAttr.setUsage(THREE.DynamicDrawUsage);
+    ribbonGeo.setAttribute("color", ribbonColAttr);
     const ind = [];
     for (const s of Object.values(strips)) {
       const n = s.entries.length, o = s.offset * 2;
@@ -122,12 +130,19 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     ribbonGeo.setIndex(ind);
   }
   const normals = geometry.attributes.normal.array;
-  function writeStrip(s, weightOf) {
+  const SILVER = [0.93, 0.95, 0.98], HOT = [1.0, 0.93, 0.76];
+  function writeStrip(s, weightOf, heatOf = null) {
     const { entries, arr } = s;
     let any = false;
     for (let i = 0; i < entries.length; i++) {
       const [e, inner, key] = entries[i];
       const w = weightOf(key);
+      const heat = heatOf ? Math.min(1, heatOf(key)) : 0;
+      const co = (s.offset + i) * 6;
+      for (let k = 0; k < 3; k++) {
+        const v = SILVER[k] + (HOT[k] - SILVER[k]) * heat;
+        ribbonCol[co + k] = v; ribbonCol[co + 3 + k] = v;
+      }
       const ex = P[e * 3], ey = P[e * 3 + 1], ez = P[e * 3 + 2];
       let ux = P[inner * 3] - ex, uy = P[inner * 3 + 1] - ey, uz = P[inner * 3 + 2] - ez;
       const L = Math.hypot(ux, uy, uz) || 1;
@@ -139,12 +154,14 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
       arr[o + 3] = ex + ox + (ux / L) * h; arr[o + 4] = ey + oy + (uy / L) * h; arr[o + 5] = ez + oz + (uz / L) * h;
     }
     s.attr.needsUpdate = true;
+    ribbonColAttr.needsUpdate = true;
     return any;
   }
 
   // ---- evaluation ---------------------------------------------------------------
   // state: { mode, phase, p, grip, pull, press, open, flapOpen, capMatrix }
-  function evaluate(state, dt) {
+  // light (optional): { heat (0..1, the light inside), tipX, tipY } — heats the torn edges
+  function evaluate(state, dt, light = null) {
     P.set(rest);
     if (state.mode === "front") evalFront(state, dt);
     else evalBack(state, dt);
@@ -152,19 +169,22 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     geometry.computeVertexNormals();
     reconcile(state);
     geometry.attributes.normal.needsUpdate = true;
-    // ribbons
+    // ribbons (+ their heat: the edge nearest the light runs hot, the rest warms a little)
+    const heat = light?.heat || 0;
     if (state.mode === "front") {
       const wf = (c) => (c < 0 ? 0 : wCol[c]);
-      writeStrip(strips.tearBody, wf);
-      writeStrip(strips.tearHeader, wf);
+      const hf = heat > 0 ? (c) => { const d = (pack.colX0[c < 0 ? 0 : c] - light.tipX) / 0.013; return heat * (0.3 + 0.7 * Math.exp(-d * d)); } : null;
+      writeStrip(strips.tearBody, wf, hf);
+      writeStrip(strips.tearHeader, wf, hf);
       writeStrip(strips.finL, () => 0);
       writeStrip(strips.finR, () => 0);
     } else {
       writeStrip(strips.tearBody, () => 0);
       writeStrip(strips.tearHeader, () => 0);
       const wb = (y) => wRowB.get(y) || 0;
-      writeStrip(strips.finL, wb);
-      writeStrip(strips.finR, wb);
+      const hb = heat > 0 ? (y) => { const d = (y - light.tipY) / 0.013; return heat * (0.3 + 0.7 * Math.exp(-d * d)); } : null;
+      writeStrip(strips.finL, wb, hb);
+      writeStrip(strips.finR, wb, hb);
     }
   }
 
@@ -359,6 +379,7 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     strips,
     ribbonGeo,
     wCol,
+    wRowB,
     tipLocal: (state) => (state.mode === "front"
       ? { x: -a0 + state.p * W, y: yT0, z: b0 }
       : { x: 0.0015 + state.pullX * 0.2, y: ySeal - 0.004 + state.pullY * 0.2, z: -b0 }),

@@ -91,7 +91,8 @@ export function createController({ dims, reduced = false, emit = () => {} }) {
     const across = Math.max(0, local.y - yT0);
     if (!broke) {
       const moved = Math.hypot(local.x - origin.x, local.y - origin.y);
-      if (moved < BREAK_DIST) return;
+      // the foil straining before it gives: 0 → 1 over the pull to the first break
+      if (moved < BREAK_DIST) { emit("strain", { k: moved / BREAK_DIST }); return; }
       broke = true;
       origin = { x: local.x, y: local.y }; // the break resets the drag origin: no jump
       p0 = state.p;
@@ -122,12 +123,12 @@ export function createController({ dims, reduced = false, emit = () => {} }) {
     if (state.phase === "gripping") {
       if (d < BREAK_DIST) return;
       state.phase = "tearing";
-      emit("strainStart", {});
+      emit("pullStart", {});
     }
     state.pullX = dx; state.pullY = dy;
     const prev = state.strainT;
     state.strainT = Math.min(1, d / PULL_LIMIT);
-    emit("strain", { s: state.strainT, ds: state.strainT - prev, vel: state.pullVel });
+    emit("pull", { s: state.strainT, ds: state.strainT - prev, vel: state.pullVel });
     if (state.strainT >= 1) complete();
   }
 

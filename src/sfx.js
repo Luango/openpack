@@ -983,6 +983,48 @@ export function scratch(intensity = 0.4) {
   src.stop(t + dur);
 }
 
+// FOIL UNDER TENSION — the held, straining creak between gripping the corner and
+// the first break: the recorded rip loop slowed right down and darkened (no real
+// tear yet, just the laminate stretching), creeping up in level and pitch with the
+// pull. Stopped by the break (tearStart takes over) or by letting go.
+let stretch = null;
+export function foilStretch(on, amount = 0.5) {
+  const c = live();
+  if (!c) return;
+  const t = c.currentTime;
+  if (!on) {
+    if (!stretch) return;
+    const { src, g } = stretch;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(Math.max(0.0002, g.gain.value), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    try { src.stop(t + 0.12); } catch { /* already stopped */ }
+    stretch = null;
+    return;
+  }
+  const a = Math.max(0, Math.min(1, amount));
+  if (!stretch) {
+    const buf = pickBuffer("tear_loop");
+    const src = c.createBufferSource();
+    src.buffer = buf || noiseBuffer(c);
+    src.loop = true;
+    if (buf) src.playbackRate.value = 0.42;
+    const bp = c.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1500;
+    bp.Q.value = 1.1;
+    const g = c.createGain();
+    g.gain.value = 0.0001;
+    src.connect(bp).connect(g).connect(master);
+    send(g, 0.08);
+    src.start();
+    stretch = { src, g, bp, sample: !!buf };
+  }
+  stretch.g.gain.setTargetAtTime((stretch.sample ? 0.03 : 0.012) + a * (stretch.sample ? 0.1 : 0.035), t, 0.045);
+  stretch.bp.frequency.setTargetAtTime(1500 + a * 1700, t, 0.05);
+  if (stretch.sample) stretch.src.playbackRate.setTargetAtTime(0.42 + a * 0.32, t, 0.06);
+}
+
 export function tearStart(tier = 0) {
   let c;
   try {
@@ -1791,6 +1833,19 @@ export function stamp(weight = 0.5) {
   const w = Math.max(0, Math.min(1, weight));
   if (playSample("setdown", { gain: 0.45 + w * 0.6, rate: 1.18 - w * 0.32, jitterRate: 0.06, send: 0.08 + w * 0.14 })) return;
   setDown();
+}
+
+// THE PLAYER APPEARS — the last beat of a revealed card (reveal.js playerIn),
+// coming straight out of the riser: the reveal impact, gentler for the base
+// metals, under a scatter of glitter that thickens with the tier.
+export function playerReveal(tier = 0) {
+  const p = Math.max(0, Math.min(1, tier / 9));
+  if (playSample("reveal_impact", { gain: 0.5 + p * 0.8, rate: 1.06 - p * 0.12, send: 0.3 + p * 0.15 })) {
+    duck(0.3 - p * 0.08, 700 + p * 400, 800);
+  } else {
+    revealImpact(tier);
+  }
+  sparkleDust(6 + tier * 3, 0.35 + p * 0.25);
 }
 
 // One click of the rating COUNTING UP onto its number — a short pip whose pitch

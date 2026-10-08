@@ -10,7 +10,9 @@ How the sealed pack is built, lit and torn open in 3D — the implementation of 
   printed atlas, one set of surface maps, one reflection room), so the pack you spin, the
   one that lands on the stage and the one you tear are one object.
 - **Bench:** [`tools/pack-lab.html`](../tools/pack-lab.html) — the pack alone, armed, with the
-  developer panel (route, progress scrubber, yaw/pitch, auto open). `?quality=low|standard|high`.
+  developer panel (route, progress scrubber, yaw/pitch, auto open). `?quality=low|standard|high`,
+  `?tell=N` sets the tier the light and the hold scale with. Scrubbing the progress shows the
+  trapped light at that point of the tear.
 - **In the app:** `?packdebug` adds the same panel over the live flow; `?pack=svg` forces the
   old flat SVG tear-pack ([`src/pack.js`](../src/pack.js)), which is also the automatic
   fallback when WebGL is unavailable.
@@ -158,28 +160,50 @@ rides the right flap, and the torn-edge ribbons appear along the whole seam at o
 
 ## Feedback ([`view.js`](../src/pack3d/view.js))
 
-The existing sound engine's cues are reused unchanged on the front route: `grab` on grip,
-`tearStart` at the first break, `tearMove` driven by pull velocity and progress,
-`tearEnd(false)` on pause, and at completion `tearEnd(true)` + `burst` + `tearRelease` +
-the open theme resuming. Haptics ratchet by tear distance (one tick per ~2.8 mm); foil
-flecks spray at the projected tip. The back route has its own cues (sample-first, keys
-`strain_loop` and `pop` in the manifest; synth fallbacks): `strainStart` once the slack is
-taken up, `strain(level)` every move — a creak that thickens and brightens with the pull, a
-low tense body tone whose pitch and tremolo climb with it, and the same chime-up ladder the
-tear uses, climbing with the power — `strainEnd(false)` on an early release (it slackens),
-and at the limit `strainEnd(true)` + `pop` (the snap) + `burst` + `tearRelease`. Haptics
-ratchet by strain (a stronger tick every 8 %), the pop kicks harder, and the cards leap out
-drawn in front of the opening light (so they pop *out of* the glow, not under it). The opening light (additive bloom + ray sprites at the mouth) shoots out, **holds and
-breathes** for 760 ms + 70 ms per tier (a chase lingers), then fades — only then does the
-body drop (`onOpen`), with a safety-net timer so the flow can never stall. Reduced motion
-shortens the hold, damps the strip and skips the screen kick.
+The existing sound engine's cues are reused on the front route: `grab` on grip, a
+`foilStretch` creak (the recorded rip loop slowed and darkened) while the foil strains
+before the first break, `tearStart` at the break, `tearMove` driven by pull velocity and
+progress, `tearEnd(false)` on pause, and at completion `tearEnd(true)` (the sharp rip) +
+`burst` (the bass impact) + `tearRelease` + the open theme resuming, with a sparse
+`sparkleDust` shimmer a beat later. Haptics ratchet by tear distance (one tick per ~2.8 mm);
+foil flecks spray at the projected tip.
+
+The back route has its own cues (sample-first, keys `strain_loop` and `pop` in the manifest;
+synth fallbacks): `strainStart` once the slack is taken up, `strain(level)` every move — a
+creak that thickens and brightens with the pull, a low tense body tone whose pitch and
+tremolo climb with it, and the same chime-up ladder the tear uses, climbing with the power
+— `strainEnd(false)` on an early release (it slackens), and at the limit `strainEnd(true)`
++ `pop` (the snap) + `burst` + `tearRelease`. Haptics ratchet by strain (a stronger tick
+every 8 %), and the pop's camera impact is a touch harder. The light below is shared: on
+the back route the thin seam brightens and the light inside builds with the pull (it sits
+at the sliver that is about to give), and the pop is the release.
+
+### The light
+
+The light is **trapped inside the pack and let out through the tear**, and it is at its
+brightest for the one instant the seal breaks. Nothing covers the pack's front; its lower
+half stays in shadow throughout.
+
+| Beat | Inside the pack (`view.js`, `glow.js`) | Outside it (`src/openlight.js`) |
+|---|---|---|
+| **Gripped** (anticipation) | a hair-thin gold seam appears along the prepared tear line and brightens as the foil strains (the controller's `strain` event on the front; the `pull` level on the back); the pack bends a touch toward the hand; the pack's own reflections and key light dim with the room | the surroundings go almost black (a dim layer under the pack and the cards); a faint gold pool is reflected beneath the pack |
+| **Tearing** | a point light at the tear tip (1/d², so bright at the mouth and dark by the lower half — `materials.js` lifts three's 10 cm falloff floor), a near-white core sprite just inside the foil (depth-tested: only the gap shows it), a slab of light along the lip behind the tip, hot vertex colours on the torn-edge ribbons, the inner foil glowing warm | sparse lit motes escape at the tip; the pool brightens with progress |
+| **Release** (the seal breaks) | the light spikes (`impulse`), the whole mouth burns | one brief warm-white flash centred on the mouth, a small camera impact (a push-in, not a shake), a tight burst of dust |
+| **Hold** 760 ms + 70 ms per tier | the inner light settles and breathes twice | 3–5 broad soft beams (3 for a common, 5 for a chase) escape upward from the mouth, each a different width and angle, fading before the screen edges; a slow drift of dust |
+| **Hand-off** (`onOpen`) | the light inside goes out quickly so nothing rides the dropping body | the beams keep burning ~1 s while the card rises through them, the dark lifts over ~1.4 s |
+
+The light layer is one fixed element behind the pack and the cards (`.open-light`, z 0)
+plus a flash plane in front of everything; the beams and dust are drawn on a 2D canvas
+from pre-baked sprites (no blur filters). Letting go before anything has torn brings the
+room back. Reduced motion softens the flash, shortens the hold, damps the strip and skips
+the camera impact.
 
 ## Verification done
 
 - Both routes inspected at 0 / 30 / 50 / 62 / 90 / 100 % in the lab (front: strip lifts,
   curls, travels, cap flies; back: the strain builds — hauled, bulged, pleated, stretched,
   the seam sliver opens — then the pop: doors overshoot to the almond, fin rides the right
-  flap, the stack leaps out in front of the light and lands face-up).
+  flap, the stack leaps out through the released light and lands face-up).
 - Full app flow on desktop (`?noframe`) and a 375 × 812 phone viewport: gate → carousel →
   hand-off (face-on landing, then settle) → front tear by pointer drag → light beat →
   reveal; and flip → back pull by pointer drag (an early release slackens back) → pop →

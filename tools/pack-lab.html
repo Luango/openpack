@@ -14,7 +14,8 @@
     <script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
     <style>
       html, body { height: 100%; overflow: hidden; background: #0a1018; }
-      #pack-stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; touch-action: none; --tell: #ffd49e; --idle-heat: 0; }
+      #pack-stage { position: fixed; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; touch-action: none; --tell: #ffd49e; --idle-heat: 0; }
+      .pack3d-wrap.lit .pack-glow { opacity: 0; transition: opacity .6s ease; }
       .pack3d-wrap { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; }
       .pack3d-wrap.ready { opacity: 1; }
       .pack3d-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }

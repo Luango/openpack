@@ -21,6 +21,7 @@ import { createParticles } from "./particles.js";
 import { TIER_HEX } from "./rarity.js";
 import * as sfx from "./sfx.js";
 import { createFlowLight } from "./flowlight.js";
+import { getOpenLight } from "./openlight.js";
 
 // Honour the OS "reduce motion" setting — the commit screen-shake (the one new
 // motion below that isn't already gated in CSS) is skipped when it's on.
@@ -215,6 +216,9 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     <canvas class="pack-fx"></canvas>`;
 
   const svg = mountEl.querySelector(".pack");
+  // the light outside the pack (shared with the 3D pack): the room going dark on the
+  // grab, the flash + beams + dust on the open — the fan of shafts is no longer used
+  const room = getOpenLight();
   const wrap = mountEl.querySelector(".pack-wrap");
   const glossEl = mountEl.querySelector(".pack-gloss");
   const sceneFx = document.querySelector(".scene-fx"); // paused during the tear to free the compositor
@@ -343,7 +347,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         // re-asserting full brightness — the fade owns the opacity from here
         if (!lightClosing) {
           openBloom.style.opacity = Math.min(0.9, c.sep * 1.15).toFixed(3);
-          lightRays.style.opacity = Math.min(0.95, c.sep * 1.3).toFixed(3);
+          lightRays.style.opacity = "0"; // the fan of shafts is retired: the beams live in the light layer (openlight.js)
         }
       } else if (tearPath) {
         // draw the rip along the traced path — a thin dark slit OVER the foil
@@ -502,6 +506,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     wrap.classList.remove("guide"); // they've engaged — drop the gesture hint
     sfx.grab(); // a muffled foil crinkle — the tactile "handle" the moment you grab it
     onGrab?.(); // pack grabbed (sealed, covering) → safe to bring the card stack in behind it
+    if (!scratchOnly) { room.dim(1, 450); room.floor(svg.getBoundingClientRect(), 0.14, 450); } // the room goes dark
     dragging = true;
     tearing = false;
     crossed = false;
@@ -656,6 +661,19 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (navigator.vibrate) navigator.vibrate([18, 30, 14]);
     burstAlongTear();
     kick(power); // a short screen-kick — the foil giving way lands with weight
+    // the released light: one flash at the mouth, then soft beams + dust escaping the
+    // way the torn piece flies, held while the pieces part (openlight.js)
+    {
+      const m = ctm || svg.getScreenCTM();
+      const c = new DOMPoint(mid.x, mid.y).matrixTransform(m);
+      const rect = svg.getBoundingClientRect();
+      const up = moverDir ? Math.atan2(moverDir.y, moverDir.x) : -Math.PI / 2;
+      room.flash(power, c.x, c.y);
+      room.floor(null, 0.62, 100);
+      setTimeout(() => { if (opened) room.release({ x: c.x, y: c.y, width: rect.width, tier: tellTier, up }); }, 70);
+      setTimeout(() => { if (opened) sfx.sparkleDust(5 + Math.round(tellTier * 0.5), 0.9); }, 130);
+      setTimeout(() => { if (opened) room.floor(null, 0.42, 500); }, 340);
+    }
     // The opening light is the card's glow leaking out the tear — the single most
     // loaded beat of the whole open. Rather than snuff it instantly, let it SHOOT
     // out, then HOLD and breathe (two surges of gathering energy) so the player gets
@@ -672,6 +690,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     const handOff = () => {
       if (handedOff) return;
       handedOff = true;
+      room.settle(); // the beams linger while the card rises; the dark lifts
       onOpen?.(); // drop the pack body + spring the cards up
     };
     const dropAfter = (ms) => {
@@ -691,14 +710,12 @@ export function createPack({ mountEl, onOpen, onGrab }) {
         { opacity: "0", offset: 1 }, // crossfade out into the reveal's afterglow
       ];
       const bloomCur = parseFloat(openBloom.style.opacity) || 0.6;
-      const raysCur = parseFloat(lightRays.style.opacity) || 0.6;
       if (openBloom.animate) {
         const opts = { duration: dur, easing: "ease-in-out", fill: "forwards" };
         const bloomA = openBloom.animate(breathe(bloomCur, 0.92), opts);
-        const raysA = lightRays.animate(breathe(raysCur, 0.98), opts);
-        lightAnims = [bloomA, raysA];
+        lightAnims = [bloomA];
         // ONLY drop the pack once the light has actually finished fading
-        raysA.addEventListener("finish", () => dropAfter(dropBeat));
+        bloomA.addEventListener("finish", () => dropAfter(dropBeat));
         // safety net: if the finish event is ever missed (e.g. backgrounded tab), still
         // hand off so the reveal can never stall (handedOff makes whichever fires win)
         handoffTimer = setTimeout(handOff, dur + dropBeat + 400);
@@ -744,6 +761,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     if (crossed && !invalid) {
       commitOpen(); // crossed right as the finger lifted
     } else {
+      room.dim(0, 700); room.floor(null, 0, 500); // nothing opened — the room comes back
       if (!invalid) sfx.tearEnd(false); // (a void tear already cut its sound)
       spring.set({ w: 0 }); // didn't cross (or was voided) — the crack eases shut
       // leave the open theme HELD at its intro — the pack is still selected + ready to
@@ -801,6 +819,7 @@ export function createPack({ mountEl, onOpen, onGrab }) {
     clearTimeout(handoffTimer); // a reset mid-hold must not later drop the pack
     lightAnims.forEach((a) => a.cancel()); // drop the breathe→fade so it can't pin opacity
     lightAnims = [];
+    room.reset(); // the light layer goes dark with the rest
     lightRays.style.transition = openBloom.style.transition = ""; // instant reset, no carry-over fade
     openBloom.style.opacity = 0;
     openBloom.setAttribute("rx", 0);
