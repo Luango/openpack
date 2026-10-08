@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dissolve Lab</title>
+<!-- The bench for the player's dissolve (src/dissolve.js): one card per edition
+     (or ?f=<edition> / ?ids=p01,p02), each the BARE card with the player's piece
+     laid over it exactly as the reveal does, frozen at a point of the dissolve.
+       ?t=0.4          the front's position, 0 (all foil) → 1 (all photo); default plays it
+       ?w=240          card width (px)
+     window.lab.frame(t) re-freezes every card at t; window.lab.play() runs the
+     reveal's 1.3 s pass; window.labReady once the cards are painted (tools/cdp.mjs). -->
+<link id="font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Cinzel:wght@500;700;800&display=swap" onload="this.dataset.ready=1" />
+<style>
+  body { margin: 0; background: #0d0b08; color: #e9dcbf; font: 13px/1.4 system-ui, sans-serif; }
+  header { padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .grid { display: flex; flex-wrap: wrap; gap: 18px; padding: 16px; }
+  figure { margin: 0; width: var(--w, 240px); }
+  .slot { position: relative; width: 100%; aspect-ratio: 63 / 88; }
+  .slot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  figcaption { margin-top: 6px; color: #8a7a5a; font-size: 12px; }
+  input { font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Dissolve Lab</strong>
+  <label>t <input id="t" type="range" min="0" max="1" step="0.005" value="0" /></label>
+  <button id="play">play</button>
+  <span id="info"></span>
+</header>
+<div class="grid" id="grid"></div>
+<script type="module">
+  import { POOL } from "../src/pool.js";
+  import { cardArt, cardPrint, foilOf, ensureFonts, ART_W, ART_H } from "../src/cardart.js";
+  import { prepareDissolve } from "../src/dissolve.js";
+  import { TIER_HEX, rarityToTier } from "../src/rarity.js";
+
+  const params = new URLSearchParams(location.search);
+  const grid = document.getElementById("grid");
+  const slider = document.getElementById("t");
+  document.documentElement.style.setProperty("--w", (params.get("w") || 240) + "px");
+
+  const order = ["bronze", "silver", "gold", "raregold", "totw", "potm", "future", "tots", "toty", "legend"];
+  let list;
+  if (params.get("ids")) list = POOL.filter((c) => params.get("ids").split(",").includes(c.playerId));
+  else if (params.get("f")) list = POOL.filter((c) => c.edition === params.get("f"));
+  else {
+    const seen = new Set();
+    list = POOL.filter((c) => !seen.has(c.edition) && seen.add(c.edition));
+  }
+  list.sort((a, b) => order.indexOf(a.edition) - order.indexOf(b.edition));
+
+  const cards = [];
+  await ensureFonts();
+  for (const card of list) {
+    const fig = document.createElement("figure");
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    const bare = document.createElement("canvas");
+    bare.width = ART_W; bare.height = ART_H;
+    slot.append(bare);
+    fig.append(slot);
+    const cap = document.createElement("figcaption");
+    cap.textContent = `${card.edition} · ${card.name}`;
+    fig.append(cap);
+    grid.append(fig);
+    const [{ bare: bareURL }, pieces] = await Promise.all([cardArt(card), cardPrint(card)]);
+    await new Promise((res) => { const im = new Image(); im.onload = () => { bare.getContext("2d").drawImage(im, 0, 0); res(); }; im.src = bareURL; });
+    const pc = pieces.find((p) => p.key === "player");
+    slot.append(pc.canvas);
+    const tier = rarityToTier(card);
+    const dz = prepareDissolve(pc.canvas, { focus: pc.focus, color: TIER_HEX[tier] || TIER_HEX[0], foil: foilOf(card.edition) });
+    cards.push({ card, pc, dz });
+  }
+
+  function frame(t) {
+    for (const { dz } of cards) dz && dz.frame(t * dz.end);
+    slider.value = t;
+  }
+  let raf = 0;
+  function play(ms = 1300) {
+    cancelAnimationFrame(raf);
+    const t0 = performance.now();
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / ms);
+      const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+      frame(e);
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  }
+  slider.oninput = () => { cancelAnimationFrame(raf); frame(+slider.value); };
+  document.getElementById("play").onclick = () => play();
+  window.lab = { frame, play, cards };
+  if (params.has("t")) frame(+params.get("t")); else play();
+  document.getElementById("info").textContent = `${cards.length} cards`;
+  window.labReady = true;
+</script>
+</body>
+</html>
