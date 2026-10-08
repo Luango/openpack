@@ -26,7 +26,8 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 
 // ---- background music (BGM) ------------------------------------------------
 // TWO looping music beds that CROSS-FADE as the player moves between scenes:
-//   • "carousel" — the calm Moonlit Drift loop while browsing the deck of packs.
+//   • "carousel" — the MAIN background music: the upbeat "Fun Life" hip-hop track,
+//                  looping while the player browses the deck of packs.
 //   • "open"     — the energetic Starlight Symphony theme. Swells up the moment a pack
 //                  is SELECTED, but only plays its INTRO and then HOLDS (see the intro-
 //                  hold block below); the rest pours in when the pack fully splits open.
@@ -39,7 +40,7 @@ let reverbIn; // feed a voice in here (via send) for the wet tail
 // apply to both beds (see musicTarget()).
 const MUSIC_BASE = 0.5; // bed sits well under the SFX — it's ambience, not the show
 const MUSIC_SRC = {
-  carousel: new URL("../assets/bgm-moonlit-drift.mp3", import.meta.url),
+  carousel: new URL("../assets/bgm-fun-life.mp3", import.meta.url),
   open: new URL("../assets/bgm-starlight-symphony.mp3", import.meta.url),
 };
 const beds = new Map(); // scene name -> { el }
