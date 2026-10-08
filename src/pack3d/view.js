@@ -27,7 +27,7 @@ import { makeConfig, pickQuality } from "./config.js";
 import { buildCardStack, buildBurstCard } from "./geometry.js";
 import { makeEdgeTexture, makeCoreTexture } from "./textures.js";
 import { getPackAsset } from "./asset.js";
-import { makeMaterials, makeCardMaterials, EXT_ENV, EXT_EMI, INT_GOLD } from "./materials.js";
+import { makeMaterials, makeCardMaterials, setFoil, EXT_ENV, EXT_EMI, INT_GOLD } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
 import { createController, P_NOTCH, PULL_LIMIT } from "./controller.js";
@@ -221,7 +221,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     // the card stack inside
     const cb = cardBack ? new THREE.Texture(cardBack) : null;
     if (cb) { cb.colorSpace = THREE.SRGBColorSpace; cb.needsUpdate = true; }
-    cardMats = makeCardMaterials({ cardBack: cb, edge: makeEdgeTexture() });
+    // …and its relief (the raised brand, the foil's ripples): linear data, not colour
+    const cbn = asset.cardBackNormal ? new THREE.Texture(asset.cardBackNormal) : null;
+    if (cbn) { cbn.colorSpace = THREE.NoColorSpace; cbn.anisotropy = 4; cbn.needsUpdate = true; }
+    cardMats = makeCardMaterials({ cardBack: cb, cardBackNormal: cbn, edge: makeEdgeTexture() });
     const cs = buildCardStack(cfg);
     stack = new THREE.Group();
     deckMesh = new THREE.Mesh(cs.deck, [cardMats.deckTop, cardMats.back, cardMats.rim]);
@@ -236,7 +239,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     {
       const bc = buildBurstCard(cfg, BURST_N);
       burstGeo = bc.geometry;
-      burstMats = makeCardMaterials({ cardBack: cb, edge: makeEdgeTexture() });
+      // (`foil`: in flight the back is a metal with a holographic band — setFoil, stepBurst)
+      burstMats = makeCardMaterials({ cardBack: cb, cardBackNormal: cbn, edge: makeEdgeTexture(), foil: true });
       burstMats.rim.visible = false; // the back is SHAPED (the frame's silhouette) — a rectangular paper edge would outline it
       burstCards = [];
       for (let i = 0; i < BURST_N; i++) {
@@ -825,6 +829,20 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       };
     });
     burst = { t: 0, cards, settled: false, settledAt: 0, gathered: false, handOffPending: false, fade: null, power };
+    setFoil(burstMats.back, 1); // foil in flight: the backs mirror the room and flash their band as they tumble
+  }
+  // the foil eases back to the DOM back's matte look over the gather, so the cards land
+  // on the deck looking exactly like the `.slot__back`s that take over at the hand-off
+  function stepFoil() {
+    if (!burst) return;
+    let f = 1;
+    if (burst.settled) {
+      let gEnd = 0;
+      for (const c of burst.cards) gEnd = Math.max(gEnd, c.gDelay + c.gDur);
+      const k = Math.min(1, Math.max(0, (burst.t - burst.settledAt - GATHER_HOLD) / Math.max(0.01, gEnd - GATHER_HOLD)));
+      f = 1 - k * k * (3 - 2 * k);
+    }
+    if (f !== burstMats.back.userData.foil?.value) setFoil(burstMats.back, f);
   }
   function stepBurst(dt) {
     if (!burst) return;
@@ -863,6 +881,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     }
     if (all && !burst.settled) { burst.settled = true; burst.settledAt = burst.t; }
     if (burst.settled && !burst.gathered) stepGather();
+    stepFoil();
     if (burst.fade) {
       // the hand-off: the DOM backs fade in over these at the same rects as they fade out
       // (the back is alpha-shaped: its cut-out threshold must follow the opacity down)
@@ -906,6 +925,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (!burst) return;
     for (const c of burst.cards) c.mesh.visible = false;
     for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = false; mt.opacity = 1; mt.alphaTest = 0.5; mt.depthWrite = true; }
+    setFoil(burstMats.back, 0);
     burst = null;
   }
   // where each settled card is on screen: centre, size and tilt — the DOM slot's pose.

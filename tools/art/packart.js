@@ -481,12 +481,69 @@ export async function drawCardBack(ctx) {
   ctx.restore();
 }
 
+// The card back's RELIEF (card-back-normal.png): a tangent-space normal map the 3D
+// cards carry (src/pack3d materials.js) so the brand stands OFF the gold — a raised
+// plate with a soft bevel at every edge, the lockup's own smooth top — over a foil
+// that isn't dead flat: a few long, shallow ripples, so a card turning in the light
+// shows BANDS of reflection sliding across it rather than one flat flash. Flat
+// (128, 128, 255) everywhere else; the colour art above is untouched.
+export async function drawCardBackNormal(ctx) {
+  await ensureFonts();
+  const W = CARD_BACK_W, H = CARD_BACK_H, cx = W / 2, cy = H / 2;
+  const LW = 400; // (the lockup's width on the card — keep equal to drawCardBack's)
+  // the height field, in a scratch canvas: the lockup as a soft-edged plateau
+  const hc = document.createElement("canvas");
+  hc.width = W; hc.height = H;
+  const h = hc.getContext("2d");
+  h.fillStyle = "#000";
+  h.fillRect(0, 0, W, H);
+  h.filter = "blur(2.2px)"; // the bevel: ~4 px wide at 12 px/mm → a third of a millimetre
+  brand(h, cx, cy, LW, "#fff");
+  h.filter = "none";
+  const plate = h.getImageData(0, 0, W, H).data;
+  // height: the plateau (0..1, with the bevel's ramp) plus the foil's long ripples
+  const hf = new Float32Array(W * H);
+  const RIPPLE = 0.055; // relative to the plate's height — shallow, long
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const p = plate[i * 4] / 255;
+      const u = x / W, v = y / H;
+      const r = Math.sin((u * 1.9 + v * 3.1) * Math.PI * 2 + 0.7) * 0.5
+        + Math.sin((u * -1.1 + v * 2.2) * Math.PI * 2 + 2.1) * 0.3
+        + Math.sin((u * 3.4 + v * 0.6) * Math.PI * 2 + 4.0) * 0.2;
+      hf[i] = p * p * (3 - 2 * p) + RIPPLE * r; // smoothstep: a rounded shoulder on the bevel
+    }
+  }
+  // finite differences → the normal (OpenGL / three convention: green = +v, v up —
+  // canvas rows run DOWN, so the v slope is the negated row difference)
+  const out = ctx.createImageData(W, H);
+  const d = out.data;
+  const S = 14; // the relief's strength: how steep the bevel reads
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const xl = hf[y * W + Math.max(0, x - 1)], xr = hf[y * W + Math.min(W - 1, x + 1)];
+      const yu = hf[Math.max(0, y - 1) * W + x], yd = hf[Math.min(H - 1, y + 1) * W + x];
+      let nx = -(xr - xl) * 0.5 * S, ny = (yd - yu) * 0.5 * S, nz = 1;
+      const l = Math.hypot(nx, ny, nz);
+      nx /= l; ny /= l; nz /= l;
+      d[i * 4] = Math.round(128 + nx * 127);
+      d[i * 4 + 1] = Math.round(128 + ny * 127);
+      d[i * 4 + 2] = Math.round(128 + nz * 127);
+      d[i * 4 + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
 export const PIECES = {
   "pack-front": { w: PACK_W, h: PACK_H, draw: drawPackFront },
   "pack-back": { w: PACK_W, h: PACK_H, draw: drawPackBack },
   "pack-front-print": { w: PACK_W, h: PACK_H, draw: drawPackFrontPrint },
   "pack-back-print": { w: PACK_W, h: PACK_H, draw: drawPackBackPrint },
   "card-back": { w: CARD_BACK_W, h: CARD_BACK_H, draw: drawCardBack },
+  "card-back-normal": { w: CARD_BACK_W, h: CARD_BACK_H, draw: drawCardBackNormal },
 };
 
 export { INK, shade, outlined, sparkle };
