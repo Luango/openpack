@@ -183,21 +183,19 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // The canvas is transparent, so the carousel used to sit on the page's near-black
   // bg → "太黑太暗". This fills the frame FIRST with the stage: two warm spotlights
   // at the top corners sweeping slow beams across it, an overhead shaft onto the front
-  // pack, the gallery twinkling with camera flashes, an amber pool behind the front pack
+  // pack, a quiet gallery tier, an amber pool behind the front pack
   // and a polished black floor the packs (and that light) reflect in. It's ONE fullscreen quad drawn in clip space (camera-independent, no fog/
   // projection) with a loop-free fragment shader — the whole lit stage at almost no
-  // GPU cost. Quieter on phones (uMobile) to keep fill-rate down.
+  // GPU cost.
   const backdrop = makeBackground();
   scene.add(backdrop.mesh);
 
   // --- ambiance: light + gold dust (no objects — the packs are the only things) ---
-  // twinkling gold dust drifting up through the whole stage
+  // twinkling gold dust drifting up through the whole stage. This is the ONLY floating
+  // light: the bokeh orbs and the gallery's camera flashes were cut (the user read them
+  // as lights blinking in front of the packs) — the dust alone carries the air.
   const particles = makeParticles(renderer);
   scene.add(particles.points);
-  // soft out-of-focus gold BOKEH BEHIND the wheel — points of light rising through the
-  // haze, so the scene has depth rather than a flat backdrop
-  const bokeh = makeBokeh();
-  scene.add(bokeh.group);
 
   // --- build a pack mesh per roster entry ----------------------------------
   const group = new THREE.Group();
@@ -515,8 +513,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     }
 
     particles.update(dt);
-    bokeh.update(dt, camera.aspect);
-    backdrop.update(t);                                   // the stadium lives: camera flashes, beam shimmer
+    backdrop.update(t);                                   // the stadium lives: beam sweep + shimmer
     for (const m of rimMats) m.uniforms.uTime.value = t; // one clock; each beam's own phase/speed offsets it
     // While dissolving we hold the hero frozen on its landed frame — running layout()
     // here would snap every pack (incl. the hero) back to the idle ring, so skip it.
@@ -975,7 +972,7 @@ function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - 
 function rimFade(cosFacing) { return smoothstep(-0.55, -0.15, cosFacing); }
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
-// The ambient fields (dust, bokeh) are laid out for a landscape view; a portrait phone
+// The ambient dust field is laid out for a landscape view; a portrait phone
 // sees a far narrower slice of the stage, so squeeze their width to it (1 = as laid out).
 function viewSpread(aspect) { return Math.max(0.32, Math.min(1, (aspect || 1) / 1.4)); }
 
@@ -1214,11 +1211,11 @@ function setFaceFlash(mesh, v) {
 // directly from a 2×2 plane's xy, so it ignores the camera, fog and projection and
 // always fills the frame). The fragment shader is loop-free — a vertical palette,
 // two warm spotlights with slowly sweeping beams, an overhead shaft onto the hero, the
-// gallery (a darker band salted with camera flashes), an amber pool behind the front
+// gallery (a quiet darker band — no camera flashes), an amber pool behind the front
 // pack, a polished black floor with a gold horizon and the hero's light streaked across
 // it, and a soft vignette — so the whole lit stage costs one cheap fullscreen pass. The
 // quad is drawn first (renderOrder −1000, depthTest off, no depthWrite) so every
-// pack and reflection lands on top of it. uMobile calms it on phones.
+// pack and reflection lands on top of it.
 const BG_VERT = `
   varying vec2 vUv;
   void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }`;
@@ -1227,9 +1224,7 @@ const BG_FRAG = `
   varying vec2 vUv;
   uniform float uTime;
   uniform float uAspect;  // viewport w/h → keeps the radial glows round
-  uniform float uMobile;  // 1 on phones → calmer stands
   uniform float uSweep;   // 1 → the corner spotlights sweep; 0 (reduced motion) → held still
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   void main() {
     vec2 uv = vUv;
     vec2 p = vec2(uv.x * uAspect, uv.y);
@@ -1242,16 +1237,11 @@ const BG_FRAG = `
     vec3 col = mix(base, mid, smoothstep(0.0, 0.5, uv.y));
     col = mix(col, top, smoothstep(0.45, 1.0, uv.y));
 
-    // the gallery — a darker tier across the upper middle, with camera flashes
+    // the gallery — a darker tier across the upper middle. It used to twinkle with
+    // camera flashes; those are gone (no blinking lights — the gold dust is the only
+    // thing that floats), so the band is just a quiet step in the palette now.
     float stands = smoothstep(0.55, 0.63, uv.y) * (1.0 - smoothstep(0.80, 0.88, uv.y));
     col *= 1.0 - stands * 0.22;
-    vec2 g = p * vec2(64.0, 64.0);
-    vec2 cell = floor(g);
-    float h = hash(cell);
-    float blink = smoothstep(0.93, 1.0, fract(h * 17.0 + uTime * (0.22 + 0.5 * h)));
-    float dotm = smoothstep(0.42, 0.0, length(fract(g) - 0.5));
-    float live = step(0.9 + 0.05 * uMobile, h);
-    col += vec3(1.0, 0.95, 0.84) * dotm * blink * live * stands * 0.95;
 
     // two warm spotlights at the top corners whose soft beams SWEEP slowly across the
     // stage, out of phase, so now and then they cross behind the wheel — the awards-night
@@ -1295,7 +1285,6 @@ function makeBackground() {
     uniforms: {
       uTime: { value: 0 },
       uAspect: { value: 1 },
-      uMobile: { value: COARSE ? 1 : 0 },
       uSweep: { value: REDUCED ? 0 : 1 },
     },
     vertexShader: BG_VERT,
@@ -1354,80 +1343,6 @@ function makeReflectionMaterial(faceTex) {
     side: THREE.DoubleSide, // negative-y scale flips winding
     fog: false,
   });
-}
-
-// Soft gold BOKEH drifting slowly UPWARD behind the wheel: out-of-focus points of light
-// rising through the haze, so the stage has depth without any objects in it (the packs
-// stay the only things in frame). Additive glows in the 3D scene, so they depth-sort
-// with the packs; each breathes on its own phase and fades in/out at the wrap.
-function makeBokeh() {
-  const tex = glowTexture();
-  const COUNT = COARSE ? 8 : 16;
-  const group = new THREE.Group();
-  const geo = new THREE.PlaneGeometry(1, 1);
-  const orbs = [];
-  const rand = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 0..1, seeded by index
-  const tints = [0xffe2a0, 0xf7c766, 0xffd98a, 0xe8b04a]; // champagne → rich gold
-  for (let i = 0; i < COUNT; i++) {
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex, color: tints[i % tints.length], transparent: true, opacity: 0,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    });
-    const m = new THREE.Mesh(geo, mat);
-    const u = {
-      x: (rand(i, 1) - 0.5) * 11,         // spread across (and a little past) the wheel
-      z: -3.4 - rand(i, 2) * 5,           // ALWAYS behind the ring (−3.4 … −8.4) so they never cross a pack
-      speed: 0.10 + rand(i, 3) * 0.22,    // rise speed (units/sec) — a slow, weightless drift
-      scale: 0.35 + rand(i, 4) * 1.1,     // pinpoint → broad soft disc
-      peak: 0.22 + rand(i, 5) * 0.26,     // its brightest — soft enough never to upstage the wheel
-      phase: rand(i, 6) * Math.PI * 2,
-      rate: 0.25 + rand(i, 7) * 0.45,     // breathing speed
-      sway: 0.15 + rand(i, 8) * 0.35,     // lateral drift amplitude
-      y: -8 + i * (16 / COUNT),           // staggered start heights
-    };
-    m.userData = u;
-    m.position.set(u.x, u.y, u.z);
-    m.scale.setScalar(u.scale);
-    m.renderOrder = -1; // behind the packs; depth test still occludes
-    group.add(m); orbs.push(m);
-  }
-  let t = 0;
-  return {
-    group,
-    update(dt, aspect) {
-      t += dt;
-      const spread = viewSpread(aspect);
-      for (const m of orbs) {
-        const u = m.userData;
-        u.y += u.speed * dt;
-        if (u.y > 8) u.y -= 16; // wrap back to the bottom
-        m.position.set(u.x * spread + Math.sin(t * 0.17 + u.phase) * u.sway, u.y, u.z);
-        const edge = smoothstep(-8, -6, u.y) * (1 - smoothstep(6, 8, u.y)); // fade at the wrap
-        m.material.opacity = u.peak * (0.55 + 0.45 * Math.sin(t * u.rate + u.phase)) * edge;
-      }
-    },
-  };
-}
-
-// A soft round light — a bright core easing out to nothing, with a faint lift toward
-// the rim like a lens's bokeh disc. Shared by every bokeh orb.
-let _glowTex = null;
-function glowTexture() {
-  if (_glowTex) return _glowTex;
-  const S = 128, c = document.createElement("canvas"); c.width = c.height = S;
-  const x = c.getContext("2d");
-  const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.35, "rgba(255,255,255,0.62)");
-  g.addColorStop(0.62, "rgba(255,255,255,0.42)");
-  g.addColorStop(0.78, "rgba(255,255,255,0.16)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  x.fillStyle = g;
-  x.fillRect(0, 0, S, S);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  _glowTex = tex;
-  return tex;
 }
 
 // A field of slow-drifting, TWINKLING gold dust through the whole stage. All the motion

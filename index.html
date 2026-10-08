@@ -441,12 +441,10 @@
       .pack-wrap.tearing .pack-sheen,
       .pack-wrap.tearing .pack-glow,
       .pack-wrap.tearing .crimp-streak .cs-beam { animation-play-state: paused; }
-      .scene-fx.paused .float-card,
       .scene-fx.paused .float-dust { animation-play-state: paused; visibility: hidden; }
-      /* once the pack opens, the reveal stage covers the backdrop — freeze the 6
-         blurred drifting lights so the compositor isn't recompositing them behind it
-         every frame during the (already busy) reveal. They resume on "Open another". */
-      body.revealing .scene-fx .float-card,
+      /* once the pack opens, the reveal stage covers the backdrop — freeze the drifting
+         dust so the compositor isn't recompositing it behind the (already busy) reveal
+         every frame. It resumes on "Open another". */
       body.revealing .scene-fx .float-dust { animation-play-state: paused; visibility: hidden; }
       /* the OPEN burst: kill the rim animation AND the drop-shadow filter on the
          foil, so the two pieces flinging apart don't re-raster the whole foil
@@ -653,7 +651,7 @@
       #scene-bg {
         position: fixed;
         inset: 0;
-        z-index: 0; /* behind the floating balls (also z0; placed before them in DOM), the pack and the reveal */
+        z-index: 0; /* behind the floating dust (also z0; placed before it in DOM), the pack and the reveal */
         pointer-events: none;
         opacity: 0;
         /* leaving the picker (body.picking removed): hold lit THROUGH the ~0.4s canvas
@@ -676,31 +674,13 @@
          to match — a gentle dark→bright ramp on the way back, not a 0.4s pop. */
       body.picking #scene-bg { opacity: 1; transition: opacity 0.8s ease-in-out; }
 
-      /* Floating gold bokeh — soft out-of-focus points of light drifting up through the
-         dark at different depths behind the pack and the reveal, with a few motes of
-         gold dust between them. Ambient backdrop; matches the bokeh rising behind the
-         3D carousel. Kept dim so the pack stays the one bright object. */
-      .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-      .float-card {
-        position: absolute; bottom: -32%;
-        width: 132px; aspect-ratio: 1;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 246, 220, 0.95) 0%, rgba(247, 228, 170, 0.55) 30%,
-                    rgba(212, 166, 58, 0.22) 55%, rgba(212, 166, 58, 0) 72%);
-        opacity: 0;
-        filter: blur(var(--b, 0px)); /* far lights = blurrier (depth of field) */
-        will-change: transform, opacity;
-        animation: floatcard linear infinite;
-      }
-      @keyframes floatcard {
-        0%   { transform: translateY(40px) rotate(var(--r, 0deg)) scale(var(--s, .5)); opacity: 0; }
-        14%  { opacity: var(--o, .4); }
-        86%  { opacity: var(--o, .4); }
-        100% { transform: translateY(-132vh) rotate(var(--r, 0deg)) scale(var(--s, .5)); opacity: 0; }
-      }
-      /* gold dust: tiny champagne motes that rise slowly and sway — transform + opacity
+      /* Floating gold dust — tiny champagne motes drifting up through the dark behind
+         the pack and the reveal. The ONLY ambient light here (the big blurred bokeh
+         discs that used to rise with them were cut — they read as lights blinking in
+         front of the pack); matches the dust in the 3D carousel. Transform + opacity
          only (the blur is static), a handful of elements, so it costs the compositor
-         next to nothing */
+         next to nothing. Kept dim so the pack stays the one bright object. */
+      .scene-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
       .float-dust {
         position: absolute; bottom: -6%;
         width: 10px; aspect-ratio: 1;
@@ -868,8 +848,8 @@
          cross-dissolve, so the tear-pack is there to fade into). */
       body.picking #pack-stage { visibility: hidden; }
       body.picking .hint { opacity: 0; } /* pre-arming sets the tear hint — keep it hidden behind the picker */
-      /* in the carousel, the bokeh + gold dust live INSIDE the 3D scene (select3d.js,
-         behind the wheel) — hide the flat CSS backdrop ones so they don't double up */
+      /* in the carousel, the gold dust lives INSIDE the 3D scene (select3d.js) — hide
+         the flat CSS backdrop motes so they don't double up */
       body.picking .scene-fx { visibility: hidden; }
 
       /* ---- card-stack reveal (see src/reveal.js) -------------------------
@@ -1536,12 +1516,6 @@
     <!-- lit backdrop that bridges the picker → rip light change (see #scene-bg CSS) -->
     <div id="scene-bg" aria-hidden="true"></div>
     <div class="scene-fx" aria-hidden="true">
-      <div class="float-card" style="left:4%;  --s:.30; --r:-15deg; --o:.14; --b:3px;   animation-duration:36s; animation-delay:0s"></div>
-      <div class="float-card" style="left:23%; --s:.52; --r:7deg;   --o:.30; --b:.4px;  animation-duration:27s; animation-delay:9s"></div>
-      <div class="float-card" style="left:42%; --s:.36; --r:-6deg;  --o:.20; --b:1.6px; animation-duration:31s; animation-delay:4s"></div>
-      <div class="float-card" style="left:64%; --s:.58; --r:13deg;  --o:.32; --b:0px;   animation-duration:24s; animation-delay:14s"></div>
-      <div class="float-card" style="left:84%; --s:.33; --r:-19deg; --o:.16; --b:2.3px; animation-duration:34s; animation-delay:6s"></div>
-      <div class="float-card" style="left:52%; --s:.44; --r:20deg;  --o:.24; --b:1px;   animation-duration:29s; animation-delay:19s"></div>
       <span class="float-dust" style="left:8%;  --s:.7;  --o:.55; --dx:14px;  --b:.6px;  animation-duration:19s; animation-delay:1s"></span>
       <span class="float-dust" style="left:18%; --s:.45; --o:.4;  --dx:-12px; --b:1.2px; animation-duration:26s; animation-delay:7s"></span>
       <span class="float-dust" style="left:31%; --s:.9;  --o:.6;  --dx:20px;  --b:.3px;  animation-duration:17s; animation-delay:3s"></span>
