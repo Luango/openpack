@@ -1953,12 +1953,14 @@ export function countTick(progress = 0) {
   osc.stop(t + 0.06);
 }
 
-// A juicy "absorb / gulp" pop for sucking a card into the binder — a soft round body
-// blip that bends UP (the swallow) plus a little squish transient, its pitch RISING
-// with each card so collecting a pack reads as an escalating, satisfying munch — à la
-// Cult of the Lamb chowing down. index = which card (0-based), total = pack size.
+// The "collect" cue: a card is sucked into the binder. The shipped sample
+// (assets/sfx/collect.mp3, a recorded UI sound) peaks ~4 dB under the rest of the
+// set, so it gets a little makeup gain; its pitch still RISES with each card so
+// collecting a pack reads as an escalating, satisfying munch. Synth fallback: a soft
+// round body blip that bends UP (the swallow) plus a little squish transient.
+// index = which card (0-based), total = pack size.
 export function gulp(index = 0, total = 5) {
-  if (playSample("gulp", { rate: 1 + index * 0.05, send: 0.12 })) return;
+  if (playSample("gulp", { gain: 1.5, rate: 1 + index * 0.05, send: 0.12 })) return;
   const c = live();
   if (!c) return;
   const t = c.currentTime;

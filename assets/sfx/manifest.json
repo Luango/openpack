@@ -69,8 +69,7 @@
     "pip.wav"
   ],
   "gulp": [
-    "gulp-1.wav",
-    "gulp-2.wav"
+    "collect.mp3"
   ],
   "reject": [
     "reject.wav"
