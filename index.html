@@ -188,6 +188,9 @@
       .pack3d-wrap .pack-glow { left: 50%; top: 50%; width: 40vmin; height: 60vmin; }
       .pack3d-wrap.ready .pack-glow { animation: heartbeat 4.6s ease-in-out infinite; }
       #pack-stage.chase .pack3d-wrap.ready .pack-glow { animation-duration: 3.1s; }
+      /* gripped: the room goes dark (src/openlight.js) and the halo goes with it — the
+         only light left is the seam, and then what escapes through the tear */
+      .pack3d-wrap.lit .pack-glow { animation: none; opacity: 0; transition: opacity 0.6s ease; }
       .pack3d-wrap.opening .pack-glow { animation: none; opacity: 0; }
       /* the grip marker: a pulsing dot at the notch (front) / the seam top (back),
          positioned from the projected 3D point. Stronger on a first-ever pack. */
