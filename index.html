@@ -1003,27 +1003,40 @@
         display: none;
       }
       /* THE SCATTER (reveal.js scatter / pick) — the back pop blew the cards out of the
-         3D pack and they lie FACE DOWN round the stage at the rects pack3d/view.js
-         reports. The reveal flattens the card component and drops its own back face
-         (above), so each slot carries a back of its own: the card back art, shown
-         while the slot is .facedown, over the hidden card. Poses are inline (from
-         reveal.js); --shy lets the CSS shrink the waiting cards while one is up. */
+         3D pack; they land FACE DOWN and re-form a STACK (pack3d/view.js' burst + gather),
+         which the DOM takes over at the rects it reports (.stacked: the poses ARE the
+         deck's rest, so the CSS stack owns them from there and only the TOP card takes a
+         tap). The reveal flattens the card component and drops its own back face
+         (above), so each slot carries a back of its own: the card back art — the gold
+         frame dimmed, SHAPED like the front — shown while the slot is .facedown, over
+         the hidden card, with the frame's pre-blurred silhouette for its shadow (as
+         .card__shade). Poses are inline (from reveal.js) until the stack settles. */
       .reveal__slot .slot__back {
         position: absolute;
         inset: 0;
         display: none;
-        border-radius: calc(var(--stackw) * 0.055);
-        background: #0d0b08 url("assets/card-back.jpg") center / cover no-repeat;
-        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(212, 166, 58, 0.18);
+        background: url("assets/card-back.webp") center / 100% 100% no-repeat;
         backface-visibility: hidden;
+      }
+      .reveal__slot .slot__back::before {
+        content: "";
+        position: absolute;
+        inset: -10%;
+        z-index: -1;
+        background: rgba(0, 0, 0, 0.6);
+        -webkit-mask: url("assets/frames/shade-gold.png") center / 100% 100% no-repeat;
+        mask: url("assets/frames/shade-gold.png") center / 100% 100% no-repeat;
+        transform: translateY(4%);
+        pointer-events: none;
       }
       .reveal__slot.facedown .slot__back { display: block; }
       .reveal__slot.facedown .card { visibility: hidden; }
       .reveal.scatter .reveal__slot.facedown { cursor: pointer; }
-      /* a card is up at the centre: the rest wait aside, smaller and dimmer */
-      .reveal.scatter.picked .reveal__slot.facedown:not(.picking) { --shy: 0.86; opacity: 0.5; }
+      /* (a loose spread only) a card is up at the centre: the rest wait aside, smaller
+         and dimmer — in the stack they stay put behind it, as the deck */
+      .reveal.scatter:not(.stacked).picked .reveal__slot.facedown:not(.picking) { --shy: 0.86; opacity: 0.5; }
       @media (hover: hover) {
-        .reveal.scatter:not(.picked) .reveal__slot.facedown:hover { --shy: 1.05; }
+        .reveal.scatter:not(.stacked):not(.picked) .reveal__slot.facedown:hover { --shy: 1.05; }
       }
 
       /* the PRINT being stamped onto a fresh card (reveal.js stampIn): loose pieces

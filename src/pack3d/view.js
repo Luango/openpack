@@ -235,6 +235,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       const bc = buildBurstCard(cfg, BURST_N);
       burstGeo = bc.geometry;
       burstMats = makeCardMaterials({ cardBack: cb, edge: makeEdgeTexture() });
+      burstMats.rim.visible = false; // the back is SHAPED (the frame's silhouette) — a rectangular paper edge would outline it
       burstCards = [];
       for (let i = 0; i < BURST_N; i++) {
         const m = new THREE.Mesh(burstGeo, [burstMats.back, burstMats.back, burstMats.rim]);
@@ -620,6 +621,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   let handedOff = false;
   function handOff() {
     if (handedOff) return;
+    // the back pop: the cards are still re-forming the stack (the gather) — the DOM takes
+    // over the moment the last one is down (stepGather calls back in)
+    if (burst && !burst.gathered) { burst.handOffPending = true; requestRender(); return; }
     handedOff = true;
     light.handedAt = performance.now();
     // the beams snuff out ahead of the drop, the dark room lifts behind the card; the
@@ -639,7 +643,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const scatter = back && burst ? scatterLayout() : null;
     if (burst) burst.fade = { t: 0, dur: 0.4 };
     ctl.reveal();
-    onOpen?.({ mode: ctl.state.mode, scatter });
+    onOpen?.({ mode: ctl.state.mode, scatter, stacked: !!scatter }); // (the scatter's poses are the re-formed stack)
     requestRender();
   }
 
@@ -731,6 +735,16 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   // camera is fitted so a card projects to exactly the DOM card's width: a settled card's
   // on-screen rect is therefore an exact translate/rotate/scale of the DOM slot, which is
   // what lets the DOM take over at the hand-off without a seam (scatterLayout).
+  //
+  // THE GATHER — once the spread has been seen (GATHER_HOLD), the cards glide back and
+  // RE-FORM THE STACK, still face down, deepest first and the top card last, arcing over
+  // the ones already down: each lands on the DOM deck's own rest pose for its depth (the
+  // 5px step + 1% shrink per card behind — index.html's .reveal__slot rest, corrected
+  // for the card's z so it projects exactly), so at the hand-off the DOM stack can own
+  // them with no visible change and the player turns the TOP card over (reveal.js
+  // stacked mode). The hand-off waits for the gather (handOff / handOffPending).
+  const GATHER_HOLD = REDUCED ? 0.15 : 0.32; // s the spread holds before the cards come back
+  const DEPTH_STEP_PX = 5, DEPTH_SHRINK = 0.01; // the DOM deck's rest (keep in sync with index.html / reveal.js)
   function scatterSpots(n) {
     const vw = mountEl.clientWidth || window.innerWidth, vh = mountEl.clientHeight || window.innerHeight;
     const cw = cardPx(), ch = cw * (cfg.cardHM / cfg.cardWM);
@@ -766,6 +780,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const q0 = new THREE.Quaternion(), p0 = new THREE.Vector3();
     stack.getWorldQuaternion(q0);
     const halfTurn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI); // back to the lens
+    const n = burstCards.length, D = camera.position.z; // (a card at z draws D / (D − z) larger than one on the plane)
     const cards = burstCards.map((mesh, i) => {
       // card i sits at its depth in the stack (0 = the top card)
       _v.set(0, 0, cfg.stackDepthM / 2 - thick / 2 - i * thick);
@@ -775,6 +790,11 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       const pT = new THREE.Vector3(sp.x / ppm, -sp.y / ppm, 0.0005 * (burstCards.length - i));
       const qT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -sp.rot).multiply(halfTurn);
       const phi = Math.random() * Math.PI * 2; // the tumble axis: in the card's own plane → end over end
+      // the gather's target: this card's depth in the re-formed stack (card 0 on top,
+      // nearest the lens), on the DOM deck's rest pose for that depth
+      const zG = 0.0004 * (n - i), mag = (D - zG) / D;
+      const pG = new THREE.Vector3(0, -(DEPTH_STEP_PX * i / ppm) * mag, zG);
+      const sG = (1 - DEPTH_SHRINK * i) * mag;
       mesh.position.copy(p0); mesh.quaternion.copy(q0); mesh.scale.setScalar(1);
       mesh.visible = true;
       return {
@@ -783,9 +803,14 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         delay: 0.03 + i * (REDUCED ? 0.012 : 0.028) + Math.random() * 0.02,
         dur: REDUCED ? 0.4 : 0.66 + Math.random() * 0.12,
         done: false,
+        pG, qG: halfTurn.clone(), sG, // (straight: the deck squares up)
+        gDelay: GATHER_HOLD + (n - 1 - i) * (REDUCED ? 0.02 : 0.05), // deepest first, the top card last
+        gDur: REDUCED ? 0.3 : 0.56,
+        lift: REDUCED ? 0 : 0.012 + 0.028 * (n > 1 ? 1 - i / (n - 1) : 1), // the later a card, the higher it arcs over the ones down
+        gathered: false,
       };
     });
-    burst = { t: 0, cards, settled: false, fade: null, power };
+    burst = { t: 0, cards, settled: false, settledAt: 0, gathered: false, handOffPending: false, fade: null, power };
   }
   function stepBurst(dt) {
     if (!burst) return;
@@ -822,19 +847,51 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         sfx.cardTap?.(burst.cards.indexOf(c)); // a soft tap as each lands
       } else all = false;
     }
-    if (all && !burst.settled) burst.settled = true;
+    if (all && !burst.settled) { burst.settled = true; burst.settledAt = burst.t; }
+    if (burst.settled && !burst.gathered) stepGather();
     if (burst.fade) {
       // the hand-off: the DOM backs fade in over these at the same rects as they fade out
+      // (the back is alpha-shaped: its cut-out threshold must follow the opacity down)
       burst.fade.t += dt;
       const k = Math.min(1, burst.fade.t / burst.fade.dur);
-      for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = true; mt.opacity = 1 - k; mt.depthWrite = k < 1; }
+      for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = true; mt.opacity = 1 - k; mt.alphaTest = 0.5 * (1 - k); mt.depthWrite = k < 1; }
       if (k >= 1) endBurst();
+    }
+  }
+  // the gather (see scatterSpots): each card glides from its spot to its place in the
+  // stack — ease-in-out, a lift toward the lens on the way so it passes OVER the cards
+  // already down — and squares up as it lands (a soft tap each). The last one down
+  // releases the hand-off if it's waiting.
+  function stepGather() {
+    let allG = true;
+    const n = burst.cards.length;
+    for (let i = 0; i < n; i++) {
+      const c = burst.cards[i];
+      if (c.gathered) continue;
+      const u = Math.max(0, Math.min(1, (burst.t - burst.settledAt - c.gDelay) / c.gDur));
+      if (u <= 0) { allG = false; continue; }
+      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; // ease-in-out: leaves and arrives softly
+      const m = c.mesh;
+      m.position.lerpVectors(c.pT, c.pG, e);
+      m.position.z += c.lift * Math.sin(Math.PI * u);
+      m.quaternion.slerpQuaternions(c.qT, c.qG, e);
+      m.scale.setScalar(c.s + (c.sG - c.s) * e);
+      if (u >= 1) {
+        c.gathered = true;
+        c.pT.copy(c.pG); c.qT.copy(c.qG); c.s = c.sG; // its settled pose is now its place in the stack (scatterLayout reads these)
+        m.position.copy(c.pT); m.quaternion.copy(c.qT); m.scale.setScalar(c.s);
+        sfx.cardTap?.(n - 1 - i); // a soft tap as it lands on the deck
+      } else allG = false;
+    }
+    if (allG) {
+      burst.gathered = true;
+      if (burst.handOffPending) { burst.handOffPending = false; handOff(); }
     }
   }
   function endBurst() {
     if (!burst) return;
     for (const c of burst.cards) c.mesh.visible = false;
-    for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = false; mt.opacity = 1; mt.depthWrite = true; }
+    for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = false; mt.opacity = 1; mt.alphaTest = 0.5; mt.depthWrite = true; }
     burst = null;
   }
   // where each settled card is on screen: centre, size and tilt — the DOM slot's pose.
@@ -934,7 +991,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (!built) return false;
     const st = ctl.state;
     if (drag || st.auto || fly) return true;
-    if (burst && (!burst.settled || burst.fade)) return true;
+    if (burst && (!burst.gathered || burst.fade)) return true;
     if (st.phase === "gripping" || st.phase === "tearing") return true;
     if (lightMoving()) return true;
     if (poseMoving()) return true;

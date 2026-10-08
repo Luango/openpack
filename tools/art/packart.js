@@ -17,7 +17,7 @@
 // a different finish — raised gloss ink with its own normal map, not the foil's.
 //
 // Build-time sources: tools/render_art.mjs renders them in headless Chrome and
-// writes the shipped files (assets/pack*.webp, assets/card-back.jpg). Preview them
+// writes the shipped files (assets/pack*.webp, assets/card-back.webp). Preview them
 // live at /tools/art/ while tuning.
 
 import { P, lin, rad, rgba, shade, rng, font, serif, spacedText, grainTile, starPath, poly, roundRect } from "../../src/paint.js";
@@ -29,7 +29,7 @@ import { POOL } from "../../src/pool.js";
 import { BETFAIR_LOGO } from "./betfair-logo.js";
 
 export const PACK_W = 1083, PACK_H = 1794; // the pouch art box the carousel + tear-pack were tuned on
-export const CARD_BACK_W = 660, CARD_BACK_H = 921;
+export const CARD_BACK_W = ART_W, CARD_BACK_H = ART_H; // the card's own size: the back is the gold FRONT frame, dimmed (alpha, shaped)
 
 const SEAL = 168; // crimped seal depth, top and bottom (~9.4% — under the 3D pack's 9% tear line)
 // the gold material as three stops: champagne highlight / rich gold / bronze shadow
@@ -464,63 +464,45 @@ function sparkle(ctx, x, y, r, col = "#fff6d8") {
 export async function drawCardBack(ctx) {
   await ensureFonts();
   const W = CARD_BACK_W, H = CARD_BACK_H, cx = W / 2, cy = H / 2;
-  // an EMPTY card: the warm black foil, a faint sunburst and pinstripe, the gold frame,
-  // and the brand lockup alone at its heart — no crest, no ball, no words
-  ctx.fillStyle = rad(ctx, cx, cy, H * 0.7, [[0, "#2a2016"], [0.55, "#120e09"], [1, "#0a0806"]]);
-  ctx.fillRect(0, 0, W, H);
-  // sunburst
+  // THE BACK IS THE FRONT, DIMMED: the gold edition frame the player cards are painted
+  // on (assets/frames/gold.webp — the same shaped silhouette, so a card turning over
+  // keeps its outline), pulled down to a dusk gold with the lit heart left at the
+  // centre, and the brand lockup alone on it — no crest, no ball, no words. Shipped
+  // with alpha (card-back.webp): everything outside the frame stays transparent.
+  ctx.clearRect(0, 0, W, H);
+  const frame = await frameImage("gold");
+  if (frame) {
+    ctx.save();
+    ctx.filter = "saturate(0.8)"; // a touch less lively than a live front
+    ctx.drawImage(frame, 0, 0, W, H);
+    ctx.restore();
+  }
+  // the dim, within the silhouette only: an even shadow over the whole card, deeper
+  // toward the edges so the middle (where the lockup sits) stays the lit part
   ctx.save();
-  ctx.translate(cx, cy);
-  for (let i = 0; i < 48; i++) {
-    const a0 = (i / 48) * Math.PI * 2, a1 = a0 + Math.PI / 48;
-    ctx.fillStyle = rgba(GOLD[1], 0.055);
-    ctx.fill(poly([[0, 0], [Math.cos(a0) * 900, Math.sin(a0) * 900], [Math.cos(a1) * 900, Math.sin(a1) * 900]]));
-  }
-  ctx.restore();
-  // pinstripes
-  ctx.strokeStyle = rgba(GOLD[1], 0.05);
-  ctx.lineWidth = 2;
-  for (let i = -30; i < 40; i++) {
-    ctx.beginPath(); ctx.moveTo(i * 26, 0); ctx.lineTo(i * 26 + H, H); ctx.stroke();
-  }
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.fillStyle = "rgba(22, 14, 5, 0.56)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = rad(ctx, cx, cy * 0.96, H * 0.64, [[0, "rgba(0,0,0,0)"], [0.55, "rgba(0,0,0,0.1)"], [1, "rgba(0,0,0,0.42)"]]);
+  ctx.fillRect(0, 0, W, H);
   // the amber pool behind the lockup
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = rad(ctx, cx, cy, 330, [[0, rgba(AMBER, 0.26)], [0.5, rgba(AMBER, 0.08)], [1, rgba(AMBER, 0)]]);
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.fillStyle = rad(ctx, cx, cy, 300, [[0, rgba(AMBER, 0.2)], [0.5, rgba(AMBER, 0.06)], [1, rgba(AMBER, 0)]]);
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
-  // frame
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = lin(ctx, 0, 0, W, H, [[0, GOLD[0]], [0.4, GOLD[1]], [0.6, "#a87a22"], [1, GOLD[0]]]);
-  ctx.stroke(roundRect(24, 24, W - 48, H - 48, 26));
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = rgba(GOLD[1], 0.5);
-  ctx.stroke(roundRect(38, 38, W - 76, H - 76, 18));
 
   // the brand lockup, in gold foil: a soft amber halo, a dark drop under it for depth,
   // then the mark itself in a champagne → gold → bronze sweep with a bright top edge
-  const LW = 440; // the lockup's width on the card
+  const LW = 400; // the lockup's width on the card (inside the frame's panel)
   ctx.save();
-  ctx.shadowColor = rgba(AMBER, 0.55); ctx.shadowBlur = 48;
+  ctx.globalCompositeOperation = "source-atop"; // (never outside the silhouette)
+  ctx.save();
+  ctx.shadowColor = rgba(AMBER, 0.55); ctx.shadowBlur = 44;
   brand(ctx, cx, cy, LW, rgba(GOLD[1], 0.35));
   ctx.restore();
-  brand(ctx, cx, cy + 4, LW, "rgba(0,0,0,0.55)");
-  brand(ctx, cx, cy, LW, lin(ctx, 0, cy - 60, 0, cy + 60, [[0, GOLD[0]], [0.45, GOLD[1]], [0.72, "#b8862b"], [1, GOLD[0]]]));
+  brand(ctx, cx, cy + 4, LW, "rgba(0,0,0,0.6)");
+  brand(ctx, cx, cy, LW, lin(ctx, 0, cy - 56, 0, cy + 56, [[0, GOLD[0]], [0.45, GOLD[1]], [0.72, "#b8862b"], [1, GOLD[0]]]));
   brand(ctx, cx, cy - 1.5, LW, "rgba(255,246,220,0.22)");
-  foilFinishCard(ctx, W, H);
-}
-
-function foilFinishCard(ctx, W, H) {
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = lin(ctx, 0, 0, W, H, [[0.25, "rgba(255,255,255,0)"], [0.38, "rgba(255,240,210,0.14)"], [0.5, "rgba(255,255,255,0)"]]);
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
-  ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.globalCompositeOperation = "overlay";
-  ctx.fillStyle = ctx.createPattern(grainTile(), "repeat");
-  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 

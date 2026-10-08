@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG = {
   // where the brand + pack name are printed (tools/render_art.mjs): their own finish
   printFront: "assets/pack-print-front.png",
   printBack: "assets/pack-print-back.png",
-  cardBack: "assets/card-back.jpg",
+  cardBack: "assets/card-back.webp",
   /** @type {Quality} */
   quality: "standard",
 };

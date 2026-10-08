@@ -202,17 +202,18 @@
   transition: opacity 0.35s ease;
 }
 
-/* card back — the OpenPack FC back (assets/card-back.jpg, rendered from
-   tools/art/card-back.html), shown when the card is turned to its back (the front
-   face hides via backface-visibility). The card rounds + clips the corners, so
-   the image can be full-bleed with square edges. Path is relative to this file. */
+/* card back — the gold frame dimmed, with the brand lockup (assets/card-back.webp,
+   rendered by tools/art/packart.js drawCardBack), shown when the card is turned to
+   its back (the front face hides via backface-visibility). It's SHAPED like the
+   front (alpha outside the frame), drawn to the card's box. Path is relative to
+   this file. */
 .card__back {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   backface-visibility: hidden;
   overflow: hidden;
-  background: #0d0b08 url("../assets/card-back.jpg") center / cover no-repeat;
+  background: url("../assets/card-back.webp") center / 100% 100% no-repeat;
 }
 
 /* thin paper edge — flat matte color, deliberately no holo/glare/reflection
