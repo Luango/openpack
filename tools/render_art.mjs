@@ -10,6 +10,7 @@
 //   assets/pack-print-front.png the print masks: where the brand + pack name are
 //   assets/pack-print-back.png  printed (720 wide, greyscale) — src/pack3d's ink finish
 //   assets/card-back.webp       the card back (756×1056, alpha — the gold frame, dimmed)
+//   assets/card-back-normal.png the card back's relief (512 wide, lossless): the raised brand + foil ripples
 //
 //   node tools/render_art.mjs            # render + export into assets/
 //   node tools/render_art.mjs --out dir  # just write the raw PNGs to dir (preview)
@@ -55,7 +56,7 @@ try {
   for (let i = 0; i < 150 && !(await b.eval("typeof window.renderArt === 'function'")); i++) await b.sleep(100);
   if (!(await b.eval("typeof window.renderArt === 'function'"))) throw new Error("art page never loaded:\n" + b.logs.join("\n"));
   await b.eval("window.artReady");
-  for (const name of ["pack-front", "pack-back", "pack-front-print", "pack-back-print", "card-back"]) {
+  for (const name of ["pack-front", "pack-back", "pack-front-print", "pack-back-print", "card-back", "card-back-normal"]) {
     const url = await b.eval(`window.renderArt(${JSON.stringify(name)})`);
     const file = join(outDir, `${name}.png`);
     await writeFile(file, Buffer.from(url.split(",")[1], "base64"));
@@ -86,10 +87,12 @@ fit(front, 880).save(a("pack.webp"), quality=88, method=6)
 back.save(a("pack-back-hi.webp"), quality=88, method=6)
 fit(back, 720).save(a("pack-back-hi-720.webp"), quality=86, method=6)
 cardb.save(a("card-back.webp"), quality=92, method=6)
+cardn = Image.open(os.path.join(out, "card-back-normal.png")).convert("RGB")
+fit(cardn, 512).save(a("card-back-normal.png"), optimize=True)
 for side in ["front", "back"]:
     m = Image.open(os.path.join(out, f"pack-{side}-print.png")).convert("RGBA").getchannel("A")
     fit(m, 720).save(a(f"pack-print-{side}.png"), optimize=True)
-for f in ["pack.png", "pack-hi.webp", "pack-hi-720.webp", "pack.webp", "pack-back-hi.webp", "pack-back-hi-720.webp", "pack-print-front.png", "pack-print-back.png", "card-back.webp"]:
+for f in ["pack.png", "pack-hi.webp", "pack-hi-720.webp", "pack.webp", "pack-back-hi.webp", "pack-back-hi-720.webp", "pack-print-front.png", "pack-print-back.png", "card-back.webp", "card-back-normal.png"]:
     print(f"{f:24s} {os.path.getsize(a(f)) // 1024:5d} KB")
 `;
   const r = spawnSync(process.env.PYTHON || "python", ["-c", py], { stdio: "inherit" });

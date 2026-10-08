@@ -37,10 +37,11 @@ export function getPackAsset(overrides = {}) {
     // low tier's 1024 atlas can't use more anyway (mirrors the index.html preloads)
     if (COARSE && !overrides.artFront) cfg.artFront = cfg.artFront.replace("pack-hi.webp", "pack-hi-720.webp");
     if (COARSE && !overrides.artBack) cfg.artBack = cfg.artBack.replace("pack-back-hi.webp", "pack-back-hi-720.webp");
-    const [front, back, cardBack, printFront, printBack] = await Promise.all([
+    const [front, back, cardBack, cardBackNormal, printFront, printBack] = await Promise.all([
       loadImage(cfg.artFront).catch(() => null),
       loadImage(cfg.artBack).catch(() => null),
       loadImage(cfg.cardBack).catch(() => null),
+      loadImage(cfg.cardBackNormal).catch(() => null),
       loadImage(cfg.printFront).catch(() => null),
       loadImage(cfg.printBack).catch(() => null),
     ]);
@@ -69,7 +70,7 @@ export function getPackAsset(overrides = {}) {
     const frontTex = plain(front), backTex = plain(back);
 
     return {
-      cfg, aspect, layout, front, back, cardBack, frontTex, backTex,
+      cfg, aspect, layout, front, back, cardBack, cardBackNormal, frontTex, backTex,
       map, normalMap: surface.normalMap, normalMapIn: surface.normalMapIn, ormMap: surface.ormMap, surfaceReady: surface.whenReady,
       showGeometry,
       showOutline,

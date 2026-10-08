@@ -27,6 +27,7 @@ export const DEFAULT_CONFIG = {
   printFront: "assets/pack-print-front.png",
   printBack: "assets/pack-print-back.png",
   cardBack: "assets/card-back.webp",
+  cardBackNormal: "assets/card-back-normal.png", // its relief: the raised brand + the foil's ripples
   /** @type {Quality} */
   quality: "standard",
 };
