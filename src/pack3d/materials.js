@@ -69,8 +69,13 @@ export function makeMaterials({ map, normalMap, normalMapIn = normalMap, ormMap 
 
 export function makeCardMaterials({ cardBack, edge }) {
   const face = nearLight(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.08, envMapIntensity: 0.6, alphaTest: 0.5 }));
-  const back = nearLight(new THREE.MeshStandardMaterial({ map: cardBack, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.5 }));
+  // the back is the gold frame dimmed — SHAPED (alpha outside the frame), so it's cut
+  // out like the face is; a fade (the burst hand-off) must scale alphaTest with opacity
+  // …and it carries some of its own light (emissive = the print) so, with the pack's
+  // light BEHIND a card that's turned its back to the lens, it still reads as the same
+  // dusk gold the DOM back shows at the hand-off, not a brown silhouette
+  const back = nearLight(new THREE.MeshStandardMaterial({ map: cardBack, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.5, alphaTest: 0.5, emissive: 0xffffff, emissiveMap: cardBack, emissiveIntensity: 0.42 }));
   const rim = nearLight(new THREE.MeshStandardMaterial({ map: edge, roughness: 0.7, metalness: 0.05 }));
-  const deckTop = nearLight(new THREE.MeshStandardMaterial({ map: cardBack, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.5 }));
+  const deckTop = nearLight(new THREE.MeshStandardMaterial({ map: cardBack, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.5, alphaTest: 0.5, emissive: 0xffffff, emissiveMap: cardBack, emissiveIntensity: 0.42 }));
   return { face, back, rim, deckTop, all: [face, back, rim, deckTop] };
 }

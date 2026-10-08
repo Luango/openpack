@@ -28,7 +28,7 @@ implementation departs from it.
 | Route | Where you grab | Gesture | What happens |
 |---|---|---|---|
 | **Front** (top strip) | the notch at the pack's upper-left corner (front facing you) | drag **right** across the top | the sealed header tears off around the whole pack — front, both side folds and back together — and lifts away in your fingers; at the last connection the cap flies clear, the mouth gapes, the opening light pours out, and the body drops away to uncover the cards |
-| **Back** (fin seam) | the rear fin seam near its top (flip the pack first: tap it, or drag to turn it) | **pull** — drag away in any direction, the further the harder | nothing tears: the pack **strains** with the pull — it's hauled a little toward your hand, bulges, its creases deepen, stress pleats gather toward the seam, it stretches lengthwise, trembles harder and harder, and the seam gapes in a sliver below the crimp — until, at the limit, the seal lets go all at once: **"pong"** — both halves of the back blow open about the side folds (overshooting), the pack recoils, and the cards BLOW OUT of the back with the force — five single cards, each tumbling out on its own — and settle face DOWN in a spread round the stage; you turn them over one at a time. Let go early and the seam simply slackens back |
+| **Back** (fin seam) | the rear fin seam near its top (flip the pack first: tap it, or drag to turn it) | **pull** — drag away in any direction, the further the harder | nothing tears: the pack **strains** with the pull — it's hauled a little toward your hand, bulges, its creases deepen, stress pleats gather toward the seam, it stretches lengthwise, trembles harder and harder, and the seam gapes in a sliver below the crimp — until, at the limit, the seal lets go all at once: **"pong"** — both halves of the back blow open about the side folds (overshooting), the pack recoils, and the cards BLOW OUT of the back with the force — five single cards, each tumbling out on its own — and settle face DOWN in a spread round the stage, then gather back into a face-down STACK; you tap the deck to turn the top card over, one at a time. Let go early and the seam simply slackens back |
 
 Both run on one state machine ([`controller.js`](../src/pack3d/controller.js)):
 `Ready → Gripping → Tearing ⇄ Paused → Detached → Revealed`. On the front route progress
@@ -189,13 +189,25 @@ to exactly the DOM card's width, each settled card's on-screen rect is a plain
 translate/rotate/scale of the DOM reveal slot: at the hand-off `scatterLayout` reports
 those rects (centre, width, tilt, stacking order), the DOM slots take the poses and show
 their own card back (`reveal.js scatter`), and the two cross-fade at the same rects (the
-3D cards fade out as the DOM ones fade in) before the spent wrapper drops away. From
-there the player turns the cards over by hand: tap one and it flies to the centre face
-down, flips over and lands with the usual entrance + stamp-in (a rare holds face down a
-beat first — the tell, or the walkout); tap it again and it's flung and the rest wait for
-the next pick (`pick` / `flipOpen` / `advance` in reveal.js). The card back itself is an
-empty card — the warm black foil, the gold frame and the brand lockup alone
-(`drawCardBack` in tools/art/packart.js → `assets/card-back.jpg`).
+3D cards fade out as the DOM ones fade in) before the spent wrapper drops away.
+
+**The gather** (`stepGather` in view.js). The spread is held a beat (~0.3 s) and then the
+cards glide back and RE-FORM THE STACK, still face down: deepest first, the top card
+last, each arcing toward the lens so it passes over the ones already down, squaring up
+and shrinking/growing to its place as it lands (a soft tap each). The targets are the
+DOM deck's own rest poses — the 5 px step and 1 % shrink per card behind
+(`.reveal__slot` in index.html), corrected for each card's z so it projects exactly — so
+the hand-off (which waits for the last card to land: `handOffPending`) reports a stack
+the DOM can own with no visible change: `reveal.js` takes the poses (`stacked`), and
+once the cross-fade is done drops them for the CSS deck (`settleStack`). From there the
+player turns the cards over by hand: tap the deck and the TOP card flips over in place
+and lands with the usual entrance + stamp-in (a rare holds face down a beat first — the
+tell, or the walkout); tap it again and it's flung, the deck steps up and the next
+face-down card waits for its tap (`pick` / `flipOpen` / `advance` in reveal.js). The card
+back itself is the FRONT's gold frame dimmed — the same shaped silhouette, with the
+brand lockup alone on it (`drawCardBack` in tools/art/packart.js →
+`assets/card-back.webp`, alpha; the 3D back material cuts it out with `alphaTest` and
+carries some of its own light so it matches the DOM back at the hand-off).
 
 ## Feedback ([`view.js`](../src/pack3d/view.js))
 
@@ -243,13 +255,14 @@ the camera impact.
   curls, travels, cap flies; back: the strain builds — hauled, bulged, pleated, stretched,
   the seam sliver opens — then the pop: the wrapper blows open flat, fin rides the right
   half, the five cards blow out through the released light, tumble and settle face down
-  in the spread).
+  in the spread, then gather back into the stack).
 - Full app flow on desktop (`?noframe`) and a 375 × 812 phone viewport: gate → carousel →
   hand-off (face-on landing, then settle) → front tear by pointer drag → light beat →
   reveal; and flip → back pull by pointer drag (an early release slackens back) → pop →
-  the burst (five cards settle face down by ~1.0 s) → hand-off at ~1.5 s (five DOM slots
-  face down at the 3D cards' rects, cross-faded) → pick → flight → flip → land + stamp-in
-  → fling → the next pick → the haul; the rare pick holds face down through the tell /
+  the burst (five cards settle face down by ~1.0 s) → the gather (the stack re-forms by
+  ~2.0 s) → hand-off (five DOM slots face down at the 3D cards' rects, cross-faded; the
+  poses match the CSS deck to < 0.5 px) → tap the deck → flip in place → land + stamp-in
+  → fling → the next tap → the haul; the rare pick holds face down through the tell /
   walkout; a second pack after Send to Club bursts cleanly. Headless timed captures via
   `tools/cdp.mjs` (scripted and dragged) confirm the state sequence
   `tearing → detached (flapOpen overshoots ~1.13, strain rings) → revealed`.

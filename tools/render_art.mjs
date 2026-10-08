@@ -9,7 +9,7 @@
 //   assets/pack-back-hi-720.webp
 //   assets/pack-print-front.png the print masks: where the brand + pack name are
 //   assets/pack-print-back.png  printed (720 wide, greyscale) — src/pack3d's ink finish
-//   assets/card-back.jpg        the card back (660×921)
+//   assets/card-back.webp       the card back (756×1056, alpha — the gold frame, dimmed)
 //
 //   node tools/render_art.mjs            # render + export into assets/
 //   node tools/render_art.mjs --out dir  # just write the raw PNGs to dir (preview)
@@ -76,7 +76,7 @@ root, out = r"${ROOT}", r"${outDir}"
 a = lambda *p: os.path.join(root, "assets", *p)
 front = Image.open(os.path.join(out, "pack-front.png")).convert("RGBA")
 back = Image.open(os.path.join(out, "pack-back.png")).convert("RGBA")
-cardb = Image.open(os.path.join(out, "card-back.png")).convert("RGB")
+cardb = Image.open(os.path.join(out, "card-back.png")).convert("RGBA")
 def fit(im, w):
     return im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
 front.save(a("pack.png"), optimize=True)
@@ -85,11 +85,11 @@ fit(front, 720).save(a("pack-hi-720.webp"), quality=88, method=6)
 fit(front, 880).save(a("pack.webp"), quality=88, method=6)
 back.save(a("pack-back-hi.webp"), quality=88, method=6)
 fit(back, 720).save(a("pack-back-hi-720.webp"), quality=86, method=6)
-cardb.save(a("card-back.jpg"), quality=90, optimize=True, progressive=True)
+cardb.save(a("card-back.webp"), quality=92, method=6)
 for side in ["front", "back"]:
     m = Image.open(os.path.join(out, f"pack-{side}-print.png")).convert("RGBA").getchannel("A")
     fit(m, 720).save(a(f"pack-print-{side}.png"), optimize=True)
-for f in ["pack.png", "pack-hi.webp", "pack-hi-720.webp", "pack.webp", "pack-back-hi.webp", "pack-back-hi-720.webp", "pack-print-front.png", "pack-print-back.png", "card-back.jpg"]:
+for f in ["pack.png", "pack-hi.webp", "pack-hi-720.webp", "pack.webp", "pack-back-hi.webp", "pack-back-hi-720.webp", "pack-print-front.png", "pack-print-back.png", "card-back.webp"]:
     print(f"{f:24s} {os.path.getsize(a(f)) // 1024:5d} KB")
 `;
   const r = spawnSync(process.env.PYTHON || "python", ["-c", py], { stdio: "inherit" });

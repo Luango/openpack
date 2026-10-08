@@ -252,7 +252,7 @@ node tools/render_art.mjs         # needs Chrome/Edge + Python with Pillow
 ```
 
 That writes `assets/pack.png` (source), `pack-hi.webp`, `pack-hi-720.webp`,
-`pack.webp`, `pack-back-hi.webp`, `pack-back-hi-720.webp` and `card-back.jpg`.
+`pack.webp`, `pack-back-hi.webp`, `pack-back-hi-720.webp` and `card-back.webp`.
 The tear-pack reads the image's aspect and re-derives its tear geometry, and the
 3D carousel traces its rim light from the art's alpha, so any silhouette works.
 [`tools/cdp.mjs`](tools/cdp.mjs) is the tiny headless-Chrome driver (no

@@ -13,12 +13,15 @@
 // only then, out of a swelling light, does the PLAYER appear (stampIn).
 //
 // THE SCATTER — when the 3D pack is popped from the BACK, its cards blow out of the
-// wrapper and land FACE DOWN around the stage (the burst in pack3d/view.js; the DOM
-// takes them over at the hand-off at the exact same rects — scatter()). Nothing is
-// shown until the player turns a card: tap one and it flies to the centre, flips
-// over and lands with the full entrance + stamp-in above (a rare holds a beat face
-// down first — the tell, or the walkout); tap it again and it's flung away and the
-// rest of the face-down cards wait for the next pick (pick / flipOpen / advance).
+// wrapper, land FACE DOWN around the stage and then GATHER BACK INTO A STACK (the
+// burst + gather in pack3d/view.js; the DOM takes them over at the hand-off at the
+// exact same rects — scatter(), `stacked`). Nothing is shown until the player turns a
+// card: tap the TOP of the face-down deck and it flips over in place and lands with
+// the full entrance + stamp-in above (a rare holds a beat face down first — the tell,
+// or the walkout); tap it again and it's flung away, the deck steps up and the next
+// face-down card waits for its tap (pick / flipOpen / advance). A loose spread (no
+// stack from the 3D pack) still works the old way: tap any card, it flies to the
+// centre first.
 //
 // Once every card is seen they fan back into the HAUL — a draggable fan SELECTOR of
 // the pull: drag / swipe / wheel / arrow-keys rotate the fan to switch which card
@@ -185,6 +188,7 @@ export function createReveal({ mountEl, onAgain }) {
   // the player is choosing). Each face-down entry keeps its pose (entry.pose) and
   // entry.down; slots are reordered on each pick so slots[pos] is always the card up.
   let scatterMode = false;
+  let stacked = false; // the scatter arrived as a face-down STACK (top card first) — the CSS deck owns the poses
   let current = null;
 
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -300,8 +304,9 @@ export function createReveal({ mountEl, onAgain }) {
     clearTimeout(anticTimer);
     clearArrival();
     clearEnter();
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "haul-live", "scatter", "picked");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "haul-live", "scatter", "stacked", "picked");
     scatterMode = false;
+    stacked = false;
     current = null;
     stackEl.style.visibility = "";
     haulDragging = false;
@@ -367,7 +372,7 @@ export function createReveal({ mountEl, onAgain }) {
   // build is layered on top by flourishIfRare (unchanged).
   function show(opts) {
     if (!slots.length) return;
-    if (opts?.scatter) { scatter(opts.scatter); return; } // the back pop: the cards lie face down
+    if (opts?.scatter) { scatter(opts.scatter, !!opts.stacked); return; } // the back pop: the cards lie face down
     host.classList.remove("hidden"); // ensure visible (normally already woken on grab)
     document.body.classList.add("revealing"); // the pack drops away + stops taking taps
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
@@ -404,13 +409,19 @@ export function createReveal({ mountEl, onAgain }) {
   // over the 3D card as it fades out underneath (the same image at the same rect),
   // then waits to be picked. The blown-open wrapper only drops away once the swap
   // is done: the 3D cards ride the stage, so it can't move while they still show.
-  function scatter(poses) {
+  // `asStack`: the poses are the re-formed STACK (the 3D gather landed each card on the
+  // DOM deck's own rest pose for its depth) — once the swap is done the inline poses
+  // are dropped and the CSS deck owns the cards (settleStack); only the top one takes
+  // a tap, and it flips in place.
+  function scatter(poses, asStack = false) {
     if (!slots.length) return;
     clearWalkout();
     clearArrival();
     host.classList.remove("hidden");
     host.classList.add("scatter");
+    host.classList.toggle("stacked", asStack);
     scatterMode = true;
+    stacked = asStack;
     current = null;
     peeking = false;
     particles.resize(); // the canvas was sized while hidden (zero rect) — re-measure
@@ -437,6 +448,7 @@ export function createReveal({ mountEl, onAgain }) {
     });
     arrivalTimers.push(setTimeout(() => { for (const s of slots) s.slot.style.opacity = ""; }, 560)); // then the CSS owns it
     arrivalTimers.push(setTimeout(() => document.body.classList.add("revealing"), 460)); // the spent wrapper drops away
+    if (stacked) arrivalTimers.push(setTimeout(settleStack, 620)); // (after body.revealing: the deck's rest pose is live)
     // the afterglow + a few embers, as the stack arrival has — the stage never cuts to black
     interiorAnim?.cancel();
     interiorAnim = interiorEl.animate(
@@ -444,9 +456,24 @@ export function createReveal({ mountEl, onAgain }) {
       { duration: 900, easing: "ease-out", fill: "forwards" }
     );
     embers();
-    hintEl.textContent = "Tap a card to turn it over";
+    hintEl.textContent = stacked ? "Tap the deck to turn a card" : "Tap a card to turn it over";
     arrivalTimers.push(setTimeout(() => host.classList.add("show-status"), 600));
     updateHint();
+  }
+  // the stack has been handed over: its poses ARE the CSS deck's rest (the 3D gather
+  // targeted them), so drop the inline poses and let the deck own the cards from here —
+  // the deck step, the fling, the recoil all read as the front route's stack. No
+  // visible change. (A card already being turned keeps its own animation.)
+  function settleStack() {
+    for (const s of slots) {
+      if (s === current) continue;
+      s.pose = null;
+      s.slot.style.transition = "none";
+      s.slot.style.transform = "";
+    }
+    void stackEl.offsetWidth; // commit before the transitions come back
+    for (const s of slots) if (s !== current) s.slot.style.transition = "";
+    layout();
   }
   // a fallback pose (no layout from the 3D pack): a loose ring round the centre
   function ringSpot(i, n, r) {
@@ -471,6 +498,7 @@ export function createReveal({ mountEl, onAgain }) {
   function pick(entry) {
     if (!scatterMode || current || anticipating || !entry.down || peeking) return;
     if (host.classList.contains("held")) return;
+    if (stacked && entry !== slots[pos]) return; // only the top of the deck turns
     current = entry;
     const i = slots.indexOf(entry);
     if (i !== pos) { slots.splice(i, 1); slots.splice(pos, 0, entry); }
@@ -483,7 +511,9 @@ export function createReveal({ mountEl, onAgain }) {
     sfx.flick();
     if (navigator.vibrate) navigator.vibrate(6);
     const tier = rarityToTier(entry.card);
-    flyToCentre(entry, () => {
+    // in the stack the card is already at the centre, on top: it turns where it lies
+    const arrive = stacked ? (fn) => fn() : (fn) => flyToCentre(entry, fn);
+    arrive(() => {
       if (tier >= RARE_TIER) {
         // ANTICIPATION — the card is up but still face down: its colour leaks up behind
         // it, the world dims, a riser climbs (or the walkout plays) before it's turned
@@ -552,7 +582,7 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.remove("picked", "iridescent");
     clearHit();
     for (const s of slots) if (s.down) placeFacedown(s, false);
-    hintEl.textContent = "Tap a card to turn it over";
+    hintEl.textContent = stacked ? "Tap the deck to turn the next card" : "Tap a card to turn it over";
     updateHint();
   }
 
@@ -1059,8 +1089,9 @@ export function createReveal({ mountEl, onAgain }) {
   function close() {
     clearWalkout();
     host.classList.add("hidden");
-    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting", "scatter", "picked");
+    host.classList.remove("browsing", "iridescent", "telling", "held", "show-status", "haul", "collecting", "scatter", "stacked", "picked");
     scatterMode = false;
+    stacked = false;
     current = null;
     stackEl.style.visibility = "";
     binderEl.classList.remove("rising");
@@ -1165,8 +1196,8 @@ export function createReveal({ mountEl, onAgain }) {
   function layout() {
     slots.forEach((s, i) => {
       const d = i - pos;
-      if (scatterMode && s.down && s !== current) {
-        // a face-down card in the scatter keeps its own pose (inline), lies under the
+      if (scatterMode && !stacked && s.down && s !== current) {
+        // a face-down card in a loose spread keeps its own pose (inline), lies under the
         // card that's up, and takes taps only while the player is choosing
         s.slot.classList.remove("front", "flung");
         s.slot.style.setProperty("--d", "0");
@@ -1181,8 +1212,10 @@ export function createReveal({ mountEl, onAgain }) {
       // leaving card covers the cards behind it all the way off — a real swap-off,
       // not a card sinking through the stack as it goes
       s.slot.style.zIndex = String(d < 0 ? 200 + i : 100 - d);
-      // (a picked card takes no taps until it's been turned over)
-      s.slot.style.pointerEvents = d === 0 && !peeking && !(scatterMode && s.down) ? "auto" : "none";
+      // (a picked card takes no taps until it's been turned over; in the face-down
+      // STACK the top card takes the tap that turns it)
+      const downBlocked = s.down && (stacked ? !!current : true);
+      s.slot.style.pointerEvents = d === 0 && !peeking && !downBlocked ? "auto" : "none";
     });
   }
 
@@ -1442,8 +1475,9 @@ export function createReveal({ mountEl, onAgain }) {
     tiltSpring.stop(); // no more stack holo tilt
     slots.forEach((s) => commitPrint(s)); // every card shows its full print in the fan
     scatterMode = false;
+    stacked = false;
     current = null;
-    host.classList.remove("scatter", "picked");
+    host.classList.remove("scatter", "stacked", "picked");
     host.classList.add("haul", "show-status");
     haulN = slots.length;
     // hero = rarest (rarest-LAST → >= keeps the last among ties)
@@ -1704,7 +1738,7 @@ export function createReveal({ mountEl, onAgain }) {
   function updateHint() {
     if (scatterMode && !current) {
       const left = slots.filter((s) => s.down).length;
-      srEl.textContent = `${left} card${left === 1 ? "" : "s"} face down. Tap one to turn it over.`;
+      srEl.textContent = `${left} card${left === 1 ? "" : "s"} face down. ${stacked ? "Tap the top card" : "Tap one"} to turn it over.`;
       return;
     }
     const card = slots[pos]?.card;
