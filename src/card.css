@@ -174,8 +174,8 @@
   background: none;
   outline: none;
 }
-.card[data-frame="gold"] { --frame-mask: url("../assets/frames/mask-gold.png"); --frame-shade: url("../assets/frames/shade-gold.png"); }
-.card[data-frame="icon"] { --frame-mask: url("../assets/frames/mask-icon.png"); --frame-shade: url("../assets/frames/shade-icon.png"); }
+.card[data-frame="gold"] { --frame-mask: url("../assets/frames/mask-gold.png"); --frame-shade: url("../assets/frames/shade-gold.png"); --frame-field: url("../assets/frames/field-gold.png"); }
+.card[data-frame="icon"] { --frame-mask: url("../assets/frames/mask-icon.png"); --frame-shade: url("../assets/frames/shade-icon.png"); --frame-field: url("../assets/frames/field-icon.png"); }
 .card--detail[data-frame] { box-shadow: none; }
 .card[data-frame] .card__art { background: none; }
 .card[data-frame] .card__face,
@@ -201,6 +201,31 @@
   transform: scale(1.05);
   transition: opacity 0.35s ease;
 }
+
+/* ---- the film inside the frame (reveal.js cinema()) ----------------------
+ * A staged card's clip plays INSIDE its frame: .card__cinema is a layer over the
+ * card's face and its print, masked to the frame's FIELD (the inside of the rim —
+ * the same field cardart.js clips the player to), so the rim stays the card's
+ * while the inside dips to black, the clip plays in it, and the black lifts. The
+ * clip sits on the field's box (--field-t/-l/-h/-w, from the field's alpha) and
+ * covers it; the mask trims it to the field's shape. */
+.card__cinema {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: var(--frame-field) center / 100% 100% no-repeat;
+  mask: var(--frame-field) center / 100% 100% no-repeat;
+  will-change: opacity;
+}
+.card__cinema .cinema__video {
+  position: absolute;
+  inset: auto;
+  top: var(--field-t); left: var(--field-l); height: var(--field-h); width: var(--field-w);
+}
+.card[data-frame="gold"] .card__cinema { --field-t: 1.7%; --field-l: 6.08%; --field-h: 96.59%; --field-w: 87.83%; }
+.card[data-frame="icon"] .card__cinema { --field-t: 3.41%; --field-l: 10.05%; --field-h: 91.67%; --field-w: 79.89%; }
 
 /* card back — the gold frame dimmed, with the brand lockup (assets/card-back.webp,
    rendered by tools/art/packart.js drawCardBack), shown when the card is turned to

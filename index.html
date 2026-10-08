@@ -1554,13 +1554,14 @@
       .reveal.walkout .reveal__dim { opacity: 1; background: radial-gradient(120% 100% at 50% 44%, rgba(6, 4, 2, 0.35) 20%, rgba(6, 4, 2, 0.86) 80%); }
 
       /* THE FILM (reveal.js cinema()) — a staged card's rating has landed and, instead
-         of its name and player, the camera RUSHES into the card: the stage darkens
-         beneath it (.reveal__veil — under the stack), the screen dips to black (the
-         film layer's own background, .reveal__cinema, over everything), the clip comes
-         up out of the black, plays, dips back to black, and the black lifts on the card
-         drifting back to rest. Opacity and the slot's transform are driven by WAAPI in
-         reveal.js; the layer only exists (and takes the tap that cuts the clip short)
-         while .reveal.cinema is on. */
+         of its name and player, the camera ZOOMS the card up to the screen's edges: the
+         stage darkens beneath it (.reveal__veil — under the stack), the INSIDE of the
+         frame dips to black and the clip plays in it (.card__cinema, a layer inside the
+         card masked to the frame's field — card.css), dips back to black, and the black
+         lifts off the card as it drifts back to rest. Opacity and the slot's transform
+         are driven by WAAPI in reveal.js. .reveal__cinema is the <video>'s home between
+         films and, while .reveal.cinema is on, the transparent full-screen layer that
+         takes the tap that cuts the clip short. */
       .reveal__veil {
         position: fixed;
         inset: 0;
@@ -1572,11 +1573,8 @@
       .reveal__cinema {
         position: fixed;
         inset: 0;
-        background: #000;
-        opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        will-change: opacity;
       }
       .reveal.cinema .reveal__cinema { visibility: visible; pointer-events: auto; cursor: pointer; }
       .cinema__video {
@@ -1589,16 +1587,16 @@
         background: #000;
         pointer-events: none;
       }
-      /* the awards-night vignette over the clip: the warm black pools at the corners and
-         along the top and bottom edges (under the status bar / home indicator), so the
-         film sits in the same dark room as the card rather than cutting to raw footage */
+      /* the awards-night vignette over the clip, inside the frame: the warm black pools
+         at the field's edges, so the film sits in the same dark room as the card rather
+         than cutting to raw footage against the rim */
       .cinema__vignette {
         position: absolute;
         inset: 0;
         pointer-events: none;
         background:
-          radial-gradient(120% 100% at 50% 50%, transparent 52%, rgba(13, 11, 8, 0.55) 100%),
-          linear-gradient(to bottom, rgba(13, 11, 8, 0.55), transparent 16%, transparent 84%, rgba(13, 11, 8, 0.6));
+          radial-gradient(110% 100% at 50% 50%, transparent 50%, rgba(13, 11, 8, 0.6) 100%),
+          linear-gradient(to bottom, rgba(13, 11, 8, 0.45), transparent 14%, transparent 86%, rgba(13, 11, 8, 0.5));
       }
       .reveal.cinema .reveal__status { opacity: 0; } /* the teach line sits out the film */
 
@@ -1611,7 +1609,7 @@
       .reveal__stack { z-index: 10; }
       .reveal__fx { z-index: 150; }   /* sparkles spray in front of the card */
       .reveal__shock { z-index: 160; } /* ring reads just in front of the sparkles */
-      .reveal__cinema { z-index: 250; } /* the clip, over the card */
+      .reveal__cinema { z-index: 250; } /* the film's tap catcher, over the card */
       .reveal__flash { z-index: 300; }
       .reveal__stamp, .reveal__walkout { z-index: 320; }
 
