@@ -555,6 +555,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   // from the mouth, which HOLD and breathe (longer for a chase — the "what's in
   // here?!" window) before the body drops and the card rises through them. The
   // hand-off is gated on the hold, with a safety net so the flow can never stall.
+  // At hand-off the beams snuff out (openlight.js settle) BEFORE the body has visibly
+  // moved — they are anchored to the mouth, and a ray outliving the pack hangs in the
+  // air with no bottom half.
   function release(power, delay) {
     const holdMs = REDUCED ? 420 : 880 + tellTier * 70; // long enough for the god-light to be SEEN, not glimpsed
     const dropBeat = 150;
@@ -562,8 +565,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     light.t = -delay;
     light.hold = holdMs / 1000;
     light.releasedAt = performance.now();
-    light.impulse = 1;
-    light.innerT = 0.9;
+    light.impulse = 1.25; // the spike at the break — the loudest the inside ever gets
+    light.innerT = 1;
     light.seamT = 1;
     light.roomT = 1;
     core.visible = true;
@@ -580,8 +583,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (handedOff) return;
     handedOff = true;
     light.handedAt = performance.now();
-    // the beams and the dark room linger while the card rises; the light inside
-    // goes out quickly so nothing rides the body as it drops
+    // the beams snuff out ahead of the drop, the dark room lifts behind the card; the
+    // light inside goes out quickly so nothing rides the body as it drops
     light.phase = "out";
     light.innerT = light.seamT = light.roomT = 0;
     light.impulse = 0;
@@ -603,7 +606,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         const env = u < 0.3 ? 1 - 0.2 * (u / 0.3)
           : u < 0.55 ? 0.8 + 0.2 * Math.sin(((u - 0.3) / 0.25) * Math.PI)
           : u < 0.85 ? 0.8 + 0.2 * Math.sin(((u - 0.55) / 0.3) * Math.PI) : 0.8;
-        light.innerT = 0.72 + 0.28 * env;
+        light.innerT = 0.82 + 0.3 * env; // the held glow stays hot (the surges go past 1)
       }
     }
     light.seam += (light.seamT - light.seam) * k;
