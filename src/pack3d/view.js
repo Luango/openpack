@@ -24,7 +24,7 @@ import { makeConfig, pickQuality } from "./config.js";
 import { buildCardStack } from "./geometry.js";
 import { makeEdgeTexture, makeCoreTexture } from "./textures.js";
 import { getPackAsset } from "./asset.js";
-import { makeMaterials, makeCardMaterials } from "./materials.js";
+import { makeMaterials, makeCardMaterials, EXT_ENV, EXT_EMI } from "./materials.js";
 import { buildEnvironment, addLights, fitDistance } from "./lighting.js";
 import { createDeformer } from "./deformer.js";
 import { createController, P_NOTCH } from "./controller.js";
@@ -93,7 +93,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   const env = buildEnvironment(renderer);
   scene.environment = env.texture;
   const lights = addLights(scene);
-  const KEY_I = lights.key.intensity, HEMI_I = lights.hemi.intensity;
+  const KEY_I = lights.key.intensity, FILL_I = lights.fill.intensity, HEMI_I = lights.hemi.intensity;
 
   // ---- state ------------------------------------------------------------------
   let pack = null, deformer = null, ctl = null, mats = null, cardMats = null, wrapper = null;
@@ -573,10 +573,15 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     const tipY = detached ? 0 : ySeal - st.p * 2 * ySeal;
     const inner = light.inner * light.flicker, imp = light.impulse;
 
-    // the room dims → the pack's own reflections and key light sink with it
-    const dimK = 1 - 0.5 * light.room;
-    mats.bodyExt.envMapIntensity = mats.headerExt.envMapIntensity = 1.15 * dimK;
-    lights.key.intensity = KEY_I * (1 - 0.45 * light.room);
+    // the room dims → the pack's own reflections, self-light and the rig sink with it,
+    // so the lower half falls into shadow and the light at the tear is the bright thing.
+    // (The base rig is brighter than it was, so the dim bites a little deeper to land
+    // the open at the same darkness it was tuned for.)
+    const dimK = 1 - 0.58 * light.room;
+    mats.bodyExt.envMapIntensity = mats.headerExt.envMapIntensity = EXT_ENV * dimK;
+    mats.bodyExt.emissiveIntensity = mats.headerExt.emissiveIntensity = EXT_EMI * dimK;
+    lights.key.intensity = KEY_I * (1 - 0.5 * light.room);
+    lights.fill.intensity = FILL_I * (1 - 0.65 * light.room);
     lights.hemi.intensity = HEMI_I * dimK;
     // the inside catches the light
     mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = 0.55 * inner + 0.9 * imp;

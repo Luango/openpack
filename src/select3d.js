@@ -77,8 +77,22 @@ const POP_S     = 0.42;  // extra scale added to the focused pack
 // whatever pack the wheel turns to the front LIGHTS UP and the rest recede — the lift
 // is in the pack's own material, on top of the shared rig + front spot, so it reads
 // even on the side/back facings the spot can't reach.
-const FOCUS_EMI_DIM = 0.08, FOCUS_EMI_HOT = 0.2; // emissive self-light: side → front
-const FOCUS_ENV_DIM = 0.9, FOCUS_ENV_HOT = 1.3; // foil env sheen:      side → front
+// Exposure pass (2026-10-08): the lift used to come from a very hot spot, which clipped the
+// metal to a flat white-gold band. The hero/bystander contrast is now mostly EXPOSURE —
+// each pack's material colour (a plain multiplier on its print) sits at FOCUS_COL_DIM on
+// the sides and 1 at the centre, about a stop apart, as if only the centred pack stood in
+// the key — with the self-light and sheen giving the rest. Nothing here can clip.
+// The self-light is now a low floor (it flattened the metal into a print at 0.2 — the gold
+// comes from the reflection room's soft wall behind the lens instead, pack3d/lighting.js).
+const FOCUS_EMI_DIM = 0.03, FOCUS_EMI_HOT = 0.1;  // emissive self-light: side → front
+const FOCUS_ENV_DIM = 0.85, FOCUS_ENV_HOT = 1.35; // foil env sheen:      side → front
+const FOCUS_COL_DIM = 0.62;                       // print exposure on the side packs (1 at the centre)
+const HANDOFF_ENV = 0.85;                         // the flown hero lands at the tear stage's foil sheen
+                                                  // (pack3d/materials.js EXT_ENV) so the dissolve is seamless
+const FOCUS_COL_POW = 6;                          // how tightly exposure + self-light hug the centre: the
+                                                  // ring has 10 packs (neighbours at 36°), so a soft curve
+                                                  // left them nearly as bright as the hero; this puts the
+                                                  // neighbours' exposure at ~0.73
 // How far each pack YAWS toward "radially outward". 1.0 = a true REVOLVER: the front
 // pack faces you, the side packs turn, and the back packs face AWAY from the screen.
 // (Even lighting across all those facings is handled by using only azimuth-uniform
@@ -149,27 +163,37 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   //
   // (1) BASE — azimuth-uniform fill (depends on a surface's up-ness, not its facing),
   //     so turned/back packs don't go dark. Kept LOW to leave headroom for the spot.
-  scene.add(new THREE.AmbientLight(0xfff1d6, 1.95)); // strong warm fill — lifts EVERY pack (incl. sides) so the scene isn't dark around the spotlit centre
-  scene.add(new THREE.HemisphereLight(0xffe4b0, 0x3b2510, 3.2)); // warm stage light from above / bronze floor bounce → mood + shape, no dead-black undersides
+  //     NB (exposure pass, 2026-10-08): the foil is a full metal, and metals have no
+  //     diffuse term — so neither of these reaches the gold at all; they only lift the
+  //     printed ink (the non-metal parts of the ORM map). The foil's base level comes
+  //     from the reflection room instead (pack3d/lighting.js — its soft wall behind the
+  //     lens is what a face-on pack mirrors), which is also what the tear stage reflects,
+  //     so the landed hero and the stage pack sit at one exposure across the hand-off.
+  scene.add(new THREE.AmbientLight(0xfff1d6, 1.5)); // warm fill on the ink
+  scene.add(new THREE.HemisphereLight(0xffe4b0, 0x3b2510, 2.2)); // warm from above / bronze floor bounce, on the ink
   // (2) KEY — a soft warm directional from upper front-left rakes a light-to-shade
   //     gradient across the foil so the packs read as dimensional, not flat prints.
-  const key = new THREE.DirectionalLight(0xffe6b8, 1.55);
+  const key = new THREE.DirectionalLight(0xffe6b8, 1.5);
   key.position.set(-4, 5, 8);
   scene.add(key);
   // (3) RIM — gold, from behind/above, peels the back of the wheel off the black bg
   //     with a warm edge highlight instead of a cool one.
-  const rim = new THREE.DirectionalLight(0xf0c060, 1.2);
+  const rim = new THREE.DirectionalLight(0xf0c060, 1.0);
   rim.position.set(0, 5, -10);
   scene.add(rim);
   // (4) FRONT SPOT — the focused pack's dedicated light. A warm cone pooled on the
   //     front dock (between the lens and the ring), aimed at where the hero sits. Decay
   //     + cone keep it OFF the side/back packs, so it reads as a stage spotlight that
-  //     the wheel turns each pack through — bright key + a sweeping foil highlight.
-  // intensity tripled (was 30) + decay eased (was 1.4) so the centred pack actually
-  // POPS — the cone+decay still keep it pooled on the front dock, so side/back packs
-  // stay on the cool base and don't get washed out.
-  const frontSpot = new THREE.SpotLight(0xffe6b0, 95, 14, 0.66, 0.65, 1.15); // (was 230 for the printed quad; real metal needs far less)
-  frontSpot.position.set(0.5, 2.6, CAM_D - 3.5);
+  //     the wheel turns each pack through — a soft key pool + a sweeping foil highlight.
+  // Exposure pass (2026-10-08): 95 → 14, and the lamp moved OFF the lens axis to the
+  // key's side. The camera is at eye level, so a lamp near the axis put its specular (a
+  // mirror-like metal lobe) straight across the pack's upper face, and on this foil even a
+  // sixth of the old power clipped that band flat (measured: the spot alone was the whole
+  // over-exposure; the rig without it never clipped). From up-left the glint becomes a
+  // diagonal sweep that runs off the pack's edge and the face below keeps its colour —
+  // the hero/bystander contrast now comes from FOCUS_COL_DIM (focusLight), which can't clip.
+  const frontSpot = new THREE.SpotLight(0xffe6b0, 14, 14, 0.66, 0.65, 1.15); // (was 230 for the printed quad; real metal needs far less)
+  frontSpot.position.set(-2.4, 3.0, CAM_D - 3.5);
   frontSpot.target.position.set(0, 0, RING_R + FRONT_PUSH);
   scene.add(frontSpot);
   scene.add(frontSpot.target);
@@ -441,12 +465,15 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
   // from the idle layout().)
   function focusLight(mesh, front) {
     const f = Math.pow(front, 1.5); // a soft falloff — neighbours dim gradually, not abruptly
-    const emi = FOCUS_EMI_DIM + (FOCUS_EMI_HOT - FOCUS_EMI_DIM) * f;
+    const tight = Math.pow(front, FOCUS_COL_POW);
+    const emi = FOCUS_EMI_DIM + (FOCUS_EMI_HOT - FOCUS_EMI_DIM) * tight;
     const env = FOCUS_ENV_DIM + (FOCUS_ENV_HOT - FOCUS_ENV_DIM) * f;
+    const col = FOCUS_COL_DIM + (1 - FOCUS_COL_DIM) * tight;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mm of mats) {
       if (mm.emissiveMap) mm.emissiveIntensity = emi;
       mm.envMapIntensity = env;
+      mm.color.setScalar(col); // exposure: the bystanders sit ~a stop under the hero
     }
     // The rim beam (流光) follows the same focus, on the sharper pop curve: the centred
     // pack's beam burns bright, wide and long-tailed; its neighbours' shrink to a thin,
@@ -697,6 +724,10 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     const heroRim = heroMesh.userData.rim;
     if (heroRim) heroRim.material.uniforms.uOpacity.value = Math.max(0, 1 - selT / 0.55);
     setHeroFlash(Math.sin(selT * Math.PI) * 0.9); // golden-streak flash, peaks mid-flight
+    // ease the hero's sheen from the dock's focus lift to the tear stage's level: face-on
+    // at the lens it mirrors the room's soft wall in full, and the stage pack it dissolves
+    // into carries the same room at EXT_ENV — matched here so there's no brightness step
+    for (const mm of (Array.isArray(heroMesh.material) ? heroMesh.material : [heroMesh.material])) mm.envMapIntensity = lerp(FOCUS_ENV_HOT, HANDOFF_ENV, e);
     // bystanders recede outward + fade
     for (const m of meshes) {
       if (m === heroMesh) continue;
@@ -1206,7 +1237,7 @@ function rdp(pts, eps) {
 
 function setFaceFlash(mesh, v) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) if (m.emissiveMap) m.emissiveIntensity = 0.12 + v;
+  for (const m of mats) if (m.emissiveMap) m.emissiveIntensity = FOCUS_EMI_HOT + v; // the hero's idle floor + the flash
 }
 
 // ---- shader backdrop -------------------------------------------------------
