@@ -423,6 +423,9 @@ export async function cardPrint(card) {
     // meets the rim differently (visible on the swap back to the baked art)
     box: [0, 0, W, H],
     focus: [px + ps / 2, py + ps * 0.4, ps * 0.62],
+    // the portrait's panel, clear of the left column's print — the WINDOW a staged
+    // card's film opens in (reveal.js cinema): [x, y, w, h]
+    window: [Math.max(px, F.colX + 96), py, px + ps - Math.max(px, F.colX + 96), ps],
     draw: (ctx) => drawPlayer(ctx, L, photoLayer(card, L, F, assets)),
   };
   return [player, ...printPieces(card, L, F, assets)].map((p) => {
@@ -439,7 +442,7 @@ export async function cardPrint(card) {
       p.draw(g, value);
     };
     paint();
-    return { key: p.key, box: p.box, focus: p.focus, canvas, paint };
+    return { key: p.key, box: p.box, focus: p.focus, window: p.window, canvas, paint };
   });
 }
 

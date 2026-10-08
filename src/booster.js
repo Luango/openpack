@@ -12,6 +12,7 @@
 import { POOL } from "./pool.js";
 import { rarityToTier, TIER_HEX } from "./rarity.js";
 import { cardArt, loadCardAssets } from "./cardart.js";
+import { CINEMATIC } from "./staged.js";
 
 const PACK_SIZE = 5;
 
@@ -40,9 +41,36 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 // the paints while something it can't afford to hitch (the carousel entrance) is
 // animating, so a pack can be painted early — under the start gate, during the
 // haul — and never on top of the motion.
-export async function buildBooster(size = PACK_SIZE, { pace = nextFrame } = {}) {
+// `staged`: a list of card ids to deal INSTEAD of rolling (staged.js — the first
+// pack of a session is a set piece), in reveal order; a card with a film attached
+// (CINEMATIC) carries it as `card.cinematic` for the reveal.
+export async function buildBooster(size = PACK_SIZE, { pace = nextFrame, staged = null } = {}) {
   if (!POOL.length) return mysteryPack(size);
 
+  const pack = (staged && stagedPack(staged, size)) || rollPack(size);
+
+  // fetch every card's frame + photo at once, then paint them one per frame
+  await Promise.all(pack.map(loadCardAssets));
+  const out = [];
+  for (const c of pack) {
+    const { art, bare, player } = await cardArt(c, pace); // paced right before its paint
+    out.push({ ...c, image: art, imageSmall: art, imageBare: bare, playerMask: player });
+  }
+  return out;
+}
+
+// the scripted hand: the pool's cards by id, in the given order, each with its film
+// (if any). Null if an id is unknown — the caller rolls a pack instead.
+function stagedPack(ids, size) {
+  const byId = new Map(POOL.map((c) => [c.id, c]));
+  const cards = ids.slice(0, size).map((id) => byId.get(id));
+  if (cards.some((c) => !c)) return null;
+  return cards.map((c) => (CINEMATIC[c.id] ? { ...c, cinematic: CINEMATIC[c.id] } : c));
+}
+
+// roll a pack: three Bronze/Silver fillers, a Gold (or Rare Gold), and the promo
+// hit — rarest LAST
+function rollPack(size) {
   const tier = (c) => rarityToTier(c);
   const byTier = new Map();
   for (const c of POOL) {
@@ -70,16 +98,7 @@ export async function buildBooster(size = PACK_SIZE, { pace = nextFrame } = {}) 
   cards.push(draw(byTier.get(hitTier) || among(4, 5, 6, 7, 8, 9)));
 
   cards.sort((a, b) => tier(a) - tier(b)); // rarest LAST → revealed last
-  const pack = cards.slice(0, size);
-
-  // fetch every card's frame + photo at once, then paint them one per frame
-  await Promise.all(pack.map(loadCardAssets));
-  const out = [];
-  for (const c of pack) {
-    const { art, bare, player } = await cardArt(c, pace); // paced right before its paint
-    out.push({ ...c, image: art, imageSmall: art, imageBare: bare, playerMask: player });
-  }
-  return out;
+  return cards.slice(0, size);
 }
 
 // ---- offline fallback -----------------------------------------------------
