@@ -17,9 +17,9 @@
 // layers to the frame's silhouette (data-frame on the card). Alongside it comes
 // the PLAYER's silhouette (the same footprint the photo was painted with), so
 // card.css can give the photo its own material — the frame lights as metal, the
-// player as a gloss print. And the BARE card — the same art before its print
-// (the data) goes on — which the reveal shows first and stamps the print onto
-// piece by piece (cardPrint).
+// player as a gloss print. And the BARE card — just the frame and the light
+// waiting for the player — which the reveal shows first, stamping the print (the
+// data) onto it piece by piece and bringing the player in last (cardPrint).
 
 import { lin, rad, rgba, shade, font, spacedText, fitSize } from "./paint.js";
 import { drawFlag, drawCrest, crestURL } from "./emblems.js";
@@ -237,9 +237,10 @@ function mysteryBadge(ctx, L, x, y, w, h, r) {
 // name — as separate pieces, in the order the reveal stamps them on (reveal.js
 // stampIn). Each paints in art pixels inside its `box` [x, y, w, h] (padded for
 // the engraving's shadow); the rating takes an optional value so it can count up.
-// drawCard paints them all over the bare card, and cardPrint() paints each into
-// its own small canvas with the SAME painter — so the stamped pieces match the
-// baked art pixel for pixel and the reveal can swap back to it unseen.
+// drawCard paints them all over the bare card and the player, and cardPrint()
+// paints each (the player too) into its own small canvas with the SAME painter —
+// so the pieces match the baked art pixel for pixel and the reveal can swap back
+// to it unseen.
 function printPieces(card, L, F, assets) {
   const colX = F.colX;
   const ink = (ctx, weight, px, text, x, y, spacing, align, color = L.ink) =>
@@ -252,8 +253,11 @@ function printPieces(card, L, F, assets) {
   const pieces = [
     { key: "pos", box: [colX - 80, F.posY - 52, 160, 68], draw: (ctx) => ink(ctx, 700, 58, card.pos || "", colX, F.posY, 2, "center") },
     {
-      key: "nation", box: [colX - 52, F.flagY - 2, 104, 74],
+      key: "nation", box: [colX - 52, F.flagY - 14, 104, 98],
+      // the flag between its pair of rules
       draw: (ctx) => {
+        divider(ctx, L, colX - 44, F.flagY - 10, colX + 44, F.flagY - 10);
+        divider(ctx, L, colX - 44, F.flagY + 80, colX + 44, F.flagY + 80);
         if (card.mystery) mysteryBadge(ctx, L, colX - 46, F.flagY + 4, 92, 61, 10);
         else if (card.nation) drawFlag(ctx, card.nation, colX - 46, F.flagY + 4, 92, 61);
       },
@@ -303,11 +307,21 @@ function printPieces(card, L, F, assets) {
 
 // ---- the whole card --------------------------------------------------------------
 
+// The player layer (photoLayer) dropped onto the card, with its shadow.
+function drawPlayer(ctx, L, player) {
+  ctx.save();
+  ctx.shadowColor = L.dark ? "rgba(0,0,0,0.6)" : "rgba(40,20,0,0.35)";
+  ctx.shadowBlur = 26;
+  ctx.shadowOffsetY = 8;
+  ctx.drawImage(player, 0, 0);
+  ctx.restore();
+}
+
 // Paint `card` with its loaded `assets` (loadCardAssets). Leaves everything
 // outside the frame transparent. Returns the player layer (a shared canvas —
 // read it before the next card is painted) for playerMask(). With `bare` set it
-// calls `bare()` once the card is painted WITHOUT its print (frame, player, the
-// rules between the print's slots, the edition mark), before the print goes on.
+// calls `bare()` once the card is painted WITHOUT its player or print (the frame,
+// the light waiting for the player, two rules, the edition mark).
 export function drawCard(ctx, card, assets, bare = null) {
   const L = lookOf(card);
   const F = LAYOUT[L.family];
@@ -336,24 +350,12 @@ export function drawCard(ctx, card, assets, bare = null) {
   if (!L.dark) { ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 0.35; ctx.drawImage(pool, 0, 0); }
   ctx.restore();
 
-  // 3 — the player
-  const player = photoLayer(card, L, F, assets);
-  ctx.save();
-  ctx.shadowColor = L.dark ? "rgba(0,0,0,0.6)" : "rgba(40,20,0,0.35)";
-  ctx.shadowBlur = 26;
-  ctx.shadowOffsetY = 8;
-  ctx.drawImage(player, 0, 0);
-  ctx.restore();
-
-  // 4 — the rules between the print's slots: under the position, round the
-  // flag, under the name, between the stat columns
-  const colX = F.colX;
-  divider(ctx, L, colX - 44, F.flagY - 10, colX + 44, F.flagY - 10);
-  divider(ctx, L, colX - 44, F.flagY + 80, colX + 44, F.flagY + 80);
+  // 3 — the rules under the name and between the stat columns (the flag's pair
+  // comes with the flag — printPieces)
   divider(ctx, L, 150, F.nameY + 30, W - 150, F.nameY + 30, 0.42);
   divider(ctx, L, W / 2 - 4, F.statY - 44, W / 2 - 4, F.statY + 2 * 56 + 8, 0.3);
 
-  // 5 — the edition mark in the shield's point (promos; the base metals carry
+  // 4 — the edition mark in the shield's point (promos; the base metals carry
   // the frame's own GFP mark there)
   const mark = card.markLabel;
   if (mark && F.markY) {
@@ -371,6 +373,11 @@ export function drawCard(ctx, card, assets, bare = null) {
   }
   bare?.();
 
+  // 5 — the player (it overlaps neither the rules nor the mark, so the bare card
+  // can stop short of it)
+  const player = photoLayer(card, L, F, assets);
+  drawPlayer(ctx, L, player);
+
   // 6 — the print: position, nation, club, stats, rating, name
   for (const p of printPieces(card, L, F, assets)) {
     ctx.save();
@@ -381,14 +388,27 @@ export function drawCard(ctx, card, assets, bare = null) {
   return player;
 }
 
-// The print as loose pieces for the reveal to stamp on over the bare art, in
-// stamping order: [{ key, box, canvas, paint(value?) }]. Each canvas is the
-// piece's box at art resolution (lay it over the card at box / ART_W·ART_H);
-// paint() repaints it — the rating with a count-up value.
+// The player and the print as loose pieces for the reveal to put on over the bare
+// art, bottom to top: [{ key, box, canvas, paint(value?), focus? }] — "player"
+// first (its `focus` = [x, y, r]: the head, for the light it appears in), then
+// the print. Each canvas is the piece's box at art resolution (lay it over the
+// card at box / ART_W·ART_H); paint() repaints it — the rating with a count-up
+// value.
 export async function cardPrint(card) {
   const [assets] = await Promise.all([loadCardAssets(card), ensureFonts()]);
   const L = lookOf(card);
-  return printPieces(card, L, LAYOUT[L.family], assets).map((p) => {
+  const F = LAYOUT[L.family];
+  const [px, py, ps] = F.photo;
+  const player = {
+    key: "player",
+    // the WHOLE card, not a crop round the photo: the shadow's blur is computed
+    // relative to the canvas, and a cropped canvas blurs the edge where the photo
+    // meets the rim differently (visible on the swap back to the baked art)
+    box: [0, 0, W, H],
+    focus: [px + ps / 2, py + ps * 0.4, ps * 0.62],
+    draw: (ctx) => drawPlayer(ctx, L, photoLayer(card, L, F, assets)),
+  };
+  return [player, ...printPieces(card, L, F, assets)].map((p) => {
     const [x, y, w, h] = p.box;
     const canvas = document.createElement("canvas");
     canvas.width = w;
@@ -402,7 +422,7 @@ export async function cardPrint(card) {
       p.draw(g, value);
     };
     paint();
-    return { key: p.key, box: p.box, canvas, paint };
+    return { key: p.key, box: p.box, focus: p.focus, canvas, paint };
   });
 }
 

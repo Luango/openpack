@@ -7,9 +7,10 @@
 // first: the player's nation, position and club are teased one by one, in the
 // dark, before the card itself drops (see walkout()).
 //
-// Every card lands BARE — frame and player, no data — and its print is STAMPED
-// on piece by piece: position, nation, club, the six face stats; then the rating
-// counts up, slowing as it nears the number, and the name lands last (stampIn).
+// Every card lands BARE — just its frame and an empty pool of light — and its
+// print is STAMPED on piece by piece: position, nation, club, the six face stats;
+// then the rating counts up, slowing as it nears the number, the name lands, and
+// only then, out of a swelling light, does the PLAYER appear (stampIn).
 //
 // Once every card is seen they fan back into the HAUL — a draggable fan SELECTOR of
 // the pull: drag / swipe / wheel / arrow-keys rotate the fan to switch which card
@@ -51,12 +52,15 @@ const WALKOUT_TIER = 7; // tier ≥ this gets the walkout (nation → position �
 const WALKOUT_BEAT = 700; // ms each walkout clue holds the stage
 const CONFETTI = ["#ffffff", "#f7e4aa", "#d4a63a"]; // champagne-and-gold ticker tape for the top pulls
 
-// The PRINT stamp-in pace, by tier — rarer pulls stamp slower and count longer, so
-// the build scales with the pull. lead = after the card plants (a promo's hit gets
-// room to land first), beat = between the left-column stamps, stat = between the
-// face stats, count = the rating's count-up, hold = the held breath between the
-// rating landing and the name.
-const NAME_SETTLE = 460; // ms from the name's stamp to the swap back to the baked art
+// The PRINT stamp-in pace, by tier — rarer pulls stamp slower, count longer and
+// hold the player back longer, so the build scales with the pull. lead = after the
+// card plants (a promo's hit gets room to land first), beat = between the
+// left-column stamps, stat = between the face stats, count = the rating's
+// count-up, hold = the held breath between the rating landing and the name,
+// charge = the light swelling in the empty frame before the player appears.
+const NAME_TO_CHARGE = 360; // ms from the name's stamp to the light starting to swell
+const PLAYER_IN = 800; // ms the player takes to come out of the light
+const PLAYER_SETTLE = 150; // ms after that before the swap back to the baked art
 function printPace(tier) {
   const p = Math.max(0, Math.min(1, tier / 9));
   return {
@@ -65,6 +69,7 @@ function printPace(tier) {
     stat: 105 + 55 * p,
     count: 1800 + 1400 * p,
     hold: 380 + 320 * p,
+    charge: 700 + 600 * p,
   };
 }
 const pct = (v, of) => ((v / of) * 100).toFixed(4) + "%";
@@ -456,20 +461,22 @@ export function createReveal({ mountEl, onAgain }) {
     stampIn(entry); // …and once it's planted, its print goes on
   }
 
-  // ---- the print: stamped on piece by piece ------------------------------------
-  // The card lands BARE (card.imageBare: frame + player, the rules between the
-  // print's slots) and its data is stamped over it in loose canvases (cardPrint):
-  // position → nation → club → the six face stats, each slamming down with a
-  // "pap" and a jolt through the card; then the rating COUNTS UP on an ease-out —
-  // the early points fly, the last few crawl, each clicking louder and higher, and
-  // the final one lands with a slam — a held breath, and the name lands last.
-  // Then the baked art (pixel-identical) swaps back in under the pieces and a gleam
-  // sweeps the finished card. A tap mid-way finishes it at once (advance); the next
-  // tap moves on. State lives on the entry: entry.bare until committed,
-  // entry.print while stamping.
+  // ---- the print: stamped on piece by piece, the player last --------------------
+  // The card lands BARE (card.imageBare: the frame, the empty pool of light where
+  // the player will stand, two rules) and the rest comes on in loose canvases
+  // (cardPrint): position → nation → club → the six face stats, each slamming down
+  // with a "pap" and a jolt through the card; then the rating COUNTS UP on an
+  // ease-out — the early points fly, the last few crawl, each clicking louder and
+  // higher, and the final one lands with a slam — a held breath, and the name.
+  // Then the light in the empty frame swells under a riser and the PLAYER comes out
+  // of it — a white silhouette rising into the photo — with a burst. Then the baked
+  // art (pixel-identical) swaps back in under the pieces and a gleam sweeps the
+  // finished card. A tap mid-way finishes it at once (advance); the next tap moves
+  // on. State lives on the entry: entry.bare until committed, entry.print while
+  // it's going on.
   function stampIn(entry) {
     if (!entry.bare || entry.print) return;
-    const st = { timers: [], raf: 0, pieces: null, layer: null, shown: new Set(), counted: false, done: false };
+    const st = { timers: [], raf: 0, pieces: null, layer: null, glow: null, ghost: null, fx: [], shown: new Set(), counted: false, done: false };
     entry.print = st;
     const tier = rarityToTier(entry.card);
     const pace = printPace(tier);
@@ -497,7 +504,11 @@ export function createReveal({ mountEl, onAgain }) {
       at(t, () => landRating(entry)); // on time even if rAF is throttled
       t += pace.hold;
       at(t, () => stampPiece(entry, "name", 1));
-      t += NAME_SETTLE;
+      t += NAME_TO_CHARGE;
+      at(t, () => charge(entry, pace.charge, tier));
+      t += pace.charge;
+      at(t, () => playerIn(entry, tier));
+      t += PLAYER_IN + PLAYER_SETTLE;
       at(t, () => { st.done = true; commitPrint(entry, true); });
     }, () => commitPrint(entry));
   }
@@ -555,8 +566,7 @@ export function createReveal({ mountEl, onAgain }) {
 
   // The rating counts up from 0 on an ease-out (cubic): it races through the low
   // numbers, then each point comes slower than the last — the final few pulse in
-  // one by one, and the last waits longest before landRating slams it home. A
-  // promo's riser swells under the crawl and peaks on the number.
+  // one by one, and the last waits longest before landRating slams it home.
   function countUp(entry, ms, tier) {
     const st = entry.print;
     const pc = st?.pieces?.get("ovr");
@@ -569,7 +579,6 @@ export function createReveal({ mountEl, onAgain }) {
       [{ opacity: 0, transform: "scale(1.3)" }, { opacity: 1, transform: "scale(1)" }],
       { duration: 220, easing: "ease-out", fill: "forwards" }
     );
-    if (tier >= RARE_TIER) st.timers.push(setTimeout(() => sfx.riser(tier, ms * 0.6), ms * 0.4));
     const t0 = performance.now();
     const step = (now) => {
       if (entry.print !== st || st.counted) return;
@@ -607,8 +616,134 @@ export function createReveal({ mountEl, onAgain }) {
     st.timers.push(setTimeout(() => contact(entry, pc, 0.85), 160));
   }
 
+  // THE BUILD before the player — everything says "something's coming" at once,
+  // so it reads on a bright silver card as well as a dark promo: the empty pool of
+  // light where the player will stand swells (under the player's canvas, so the
+  // player comes out of it); the card's own silhouette glow pulses up round its
+  // edge against the dark stage, quicker and brighter each time; the card trembles
+  // harder and harder; and a riser climbs to peak as the player appears.
+  function charge(entry, ms, tier) {
+    const st = entry.print;
+    const pc = st?.pieces?.get("player");
+    if (!pc?.focus || !st.layer) return;
+    const p = Math.max(0, Math.min(1, tier / 9));
+    const [fx, fy, r] = pc.focus;
+    const g = (st.glow = document.createElement("div"));
+    g.className = "print-charge";
+    Object.assign(g.style, { left: pct(fx, ART_W), top: pct(fy, ART_H), width: pct(r * 2.2, ART_W) });
+    st.layer.prepend(g);
+    st.fx.push(g.animate(
+      [
+        { opacity: 0, transform: "translate(-50%, -50%) scale(0.45)" },
+        { opacity: 0.5, transform: "translate(-50%, -50%) scale(0.8)", offset: 0.65 },
+        { opacity: 0.95, transform: "translate(-50%, -50%) scale(1.05)" },
+      ],
+      { duration: ms, easing: "cubic-bezier(0.5, 0, 0.9, 0.6)", fill: "forwards" }
+    ));
+    // the rim glow: three pulses, each closer and brighter, ending full
+    const rim = entry.cardEl.querySelector(".card__glow");
+    if (rim) {
+      const base = +getComputedStyle(rim).opacity || 0;
+      st.fx.push(rim.animate(
+        [
+          { opacity: base },
+          { opacity: Math.max(base, 0.45), offset: 0.3 },
+          { opacity: base * 0.6, offset: 0.45 },
+          { opacity: Math.max(base, 0.7), offset: 0.66 },
+          { opacity: base * 0.5, offset: 0.76 },
+          { opacity: 0.9, offset: 0.9 },
+          { opacity: 1 },
+        ],
+        { duration: ms, easing: "ease-in", fill: "forwards" }
+      ));
+    }
+    // the tremble: random little shoves that grow to the end
+    const amp = 1.2 + p * 1.8;
+    const N = Math.round(ms / 40);
+    const frames = [];
+    for (let i = 0; i <= N; i++) {
+      const k = (i / N) ** 1.6;
+      const a = i === 0 || i === N ? 0 : amp * k;
+      frames.push({ transform: `translate(${((Math.random() * 2 - 1) * a).toFixed(2)}px, ${((Math.random() * 2 - 1) * a).toFixed(2)}px)` });
+    }
+    st.fx.push(entry.cardEl.animate(frames, { duration: ms, easing: "linear" }));
+    sfx.riser(tier, ms);
+    if (navigator.vibrate) navigator.vibrate(6);
+  }
+
+  // THE PLAYER APPEARS — the light bursts and the player rises out of it as a pure
+  // white silhouette (the player's own mask, card.playerMask), which then melts
+  // away to the photo underneath; the rim glow settles back, motes spray from the
+  // head, the card takes the blow and the impact lands.
+  function playerIn(entry, tier) {
+    const st = entry.print;
+    const pc = st?.pieces?.get("player");
+    if (!pc) return;
+    st.shown.add("player");
+    st.fx.forEach((a) => a.cancel());
+    st.fx = [];
+    const [fx, fy] = pc.focus || [ART_W / 2, ART_H / 2];
+    const origin = `${pct(fx, ART_W)} ${pct(fy, ART_H)}`;
+    const rise = { easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" };
+    const opts = { duration: PLAYER_IN, fill: "forwards" };
+    pc.canvas.style.transformOrigin = origin;
+    pc.canvas.animate(
+      [
+        { opacity: 0, transform: "translateY(3%) scale(0.94)", ...rise },
+        { opacity: 0, transform: "translateY(0%) scale(1.02)", offset: 0.22 },
+        { opacity: 1, transform: "translateY(0%) scale(1.01)", offset: 0.28 },
+        { opacity: 1, transform: "translateY(0%) scale(1)" },
+      ],
+      opts
+    );
+    if (entry.card.playerMask) {
+      const ghost = (st.ghost = document.createElement("div"));
+      ghost.className = "print-ghost";
+      ghost.style.setProperty("--ghost-mask", `url("${entry.card.playerMask}")`);
+      ghost.style.transformOrigin = origin;
+      pc.canvas.after(ghost); // over the player, under the print
+      ghost.animate(
+        [
+          { opacity: 0, transform: "translateY(3%) scale(0.94)", ...rise },
+          { opacity: 1, transform: "translateY(0%) scale(1.02)", offset: 0.22 },
+          { opacity: 1, transform: "translateY(0%) scale(1.01)", offset: 0.34, easing: "ease-in-out" },
+          { opacity: 0, transform: "translateY(0%) scale(1)" },
+        ],
+        opts
+      );
+    }
+    st.glow?.animate(
+      [
+        { opacity: 0.95, transform: "translate(-50%, -50%) scale(1.05)" },
+        { opacity: 0, transform: "translate(-50%, -50%) scale(1.9)" },
+      ],
+      { duration: 650, easing: "cubic-bezier(0.15, 0.7, 0.3, 1)", fill: "forwards" }
+    );
+    // the rim glow eases back down to wherever the CSS has it (no fill → no jump)
+    const rim = entry.cardEl.querySelector(".card__glow");
+    if (rim) rim.animate([{ opacity: 1 }, { opacity: +getComputedStyle(rim).opacity || 0 }], { duration: 900, easing: "ease-out" });
+    sfx.playerReveal(tier);
+    if (navigator.vibrate) navigator.vibrate([12, 30, 18]);
+    entry.cardEl.animate(
+      [
+        { transform: "translateY(0px) scale(1)" },
+        { transform: "translateY(3px) scale(0.985)", offset: 0.3 },
+        { transform: "translateY(0px) scale(1)" },
+      ],
+      { duration: 320, easing: "ease-out" }
+    );
+    const r = entry.cardEl.getBoundingClientRect();
+    const hex = TIER_HEX[tier] || TIER_HEX[0];
+    particles.emit(r.left + (fx / ART_W) * r.width, r.top + (fy / ART_H) * r.height, {
+      count: 16 + tier * 7, speed: 5.5, spread: Math.PI * 2,
+      // light tones only — a darker metal's own colour reads as specks on the white silhouette
+      colors: ["#ffffff", "#fff4d6", lighten(hex, 0.7)], gravity: 0.04, life: 64, size: 2.4, bloom: true,
+    });
+  }
+
   // A tap mid-stamp: every piece still to come lands at once (one quick fade and a
-  // single stamp), the rating jumps to its number, and the card commits.
+  // single stamp), the rating jumps to its number, the player is simply there, and
+  // the card commits.
   function finishPrint(entry) {
     const st = entry.print;
     if (!st || st.done) return;
@@ -619,6 +754,9 @@ export function createReveal({ mountEl, onAgain }) {
     st.counted = true;
     if (!st.pieces) { commitPrint(entry); return; }
     st.pieces.get("ovr").paint();
+    st.fx.forEach((a) => a.cancel());
+    st.glow?.remove();
+    st.ghost?.remove();
     for (const [key, pc] of st.pieces) {
       pc.canvas.getAnimations().forEach((a) => a.finish());
       if (st.shown.has(key)) continue;
@@ -645,7 +783,7 @@ export function createReveal({ mountEl, onAgain }) {
       cancelAnimationFrame(st.raf);
     }
     const { cardEl, card, slot } = entry;
-    cardEl.querySelector(".card__player")?.style.setProperty("--player-art", `url("${card.image}")`);
+    cardEl.classList.remove("unprinted"); // the player's gloss layer fades back in (index.html)
     const art = cardEl.querySelector(".card__art");
     if (art) art.src = card.image;
     if (st?.layer) {
@@ -669,6 +807,7 @@ export function createReveal({ mountEl, onAgain }) {
       st.done = true;
       st.timers.forEach(clearTimeout);
       cancelAnimationFrame(st.raf);
+      st.fx.forEach((a) => a.cancel());
     }
   }
 
@@ -718,13 +857,14 @@ export function createReveal({ mountEl, onAgain }) {
     const cardEl = slot.querySelector(".card");
     // renderCard seeds the thumbnail; swap in the full-res scan (already preloaded)
     // so the pulled card is as crisp as the gallery's lightbox — or, for a painted
-    // card, its BARE art: the print is stamped on once it's revealed (stampIn), so
-    // even the peek through the tear gives nothing away. The gloss-print player
-    // layer reads the same art, so it goes bare too.
+    // card, its BARE art: no player, no data — they come on once it's revealed
+    // (stampIn), so even the peek through the tear gives nothing away. The player's
+    // gloss layer (card.js) would light the player's silhouette, so it's hidden
+    // until then (.unprinted).
     const art = cardEl.querySelector(".card__art");
     const bare = !REDUCED && !!card.imageBare;
     if (art && card.image) art.src = bare ? card.imageBare : card.image;
-    if (bare) cardEl.querySelector(".card__player")?.style.setProperty("--player-art", `url("${card.imageBare}")`);
+    if (bare) cardEl.classList.add("unprinted");
     stackEl.appendChild(slot);
 
     const entry = { slot, cardEl, card, bare, print: null };

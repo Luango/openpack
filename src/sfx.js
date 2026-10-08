@@ -1636,6 +1636,19 @@ export function stamp(weight = 0.5) {
   setDown();
 }
 
+// THE PLAYER APPEARS — the last beat of a revealed card (reveal.js playerIn),
+// coming straight out of the riser: the reveal impact, gentler for the base
+// metals, under a scatter of glitter that thickens with the tier.
+export function playerReveal(tier = 0) {
+  const p = Math.max(0, Math.min(1, tier / 9));
+  if (playSample("reveal_impact", { gain: 0.5 + p * 0.8, rate: 1.06 - p * 0.12, send: 0.3 + p * 0.15 })) {
+    duck(0.3 - p * 0.08, 700 + p * 400, 800);
+  } else {
+    revealImpact(tier);
+  }
+  sparkleDust(6 + tier * 3, 0.35 + p * 0.25);
+}
+
 // One click of the rating COUNTING UP onto its number — a short pip whose pitch
 // climbs with the count (progress 0→1), so as the count slows the clicks spread
 // out and rise, like a wheel winding down onto the number. Throttled so the fast
