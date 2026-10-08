@@ -240,7 +240,8 @@ def credits(cache):
         "//",
         "// Every player portrait (assets/players/<id>.webp) is cut from a freely licensed",
         "// Wikimedia Commons photo — cropped, background removed. The licences require",
-        "// crediting the author and licence, which the reveal shows under each card.",
+        "// crediting the author and licence — this file is that record (it is not shown in",
+        "// the UI; see README / the Commons page each entry links to).",
         "",
         "export const PHOTOS = {",
     ]

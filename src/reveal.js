@@ -27,7 +27,6 @@ import { createParticles } from "./particles.js";
 import { rarityToTier, tierOf, TIER_HEX, lighten } from "./rarity.js";
 import { NATIONS, drawFlag, drawCrest, crestURL, emblemCanvas } from "./emblems.js";
 import * as sfx from "./sfx.js";
-import { PHOTOS } from "./photos.js";
 
 const TILT = 12; // max pointer tilt on the front card (deg)
 const FOIL_X = 13; // holo parallax half-ranges (match the lightbox feel)
@@ -113,7 +112,6 @@ export function createReveal({ mountEl, onAgain }) {
     </div>
     <div class="reveal__status">
       <p class="reveal__hint"></p>
-      <a class="reveal__credit" target="_blank" rel="noopener noreferrer" hidden></a>
     </div>
     <p class="reveal__sr" aria-live="polite"></p>
     <button class="reveal__again" type="button" hidden>Send to Club</button>
@@ -152,7 +150,6 @@ export function createReveal({ mountEl, onAgain }) {
   const walkoutEl = host.querySelector(".reveal__walkout");
   const haulCapEl = host.querySelector(".reveal__haul-cap");
   const srEl = host.querySelector(".reveal__sr");
-  const creditEl = host.querySelector(".reveal__credit");
   const particles = createParticles(host.querySelector(".reveal__fx"));
 
   // The post-tear payoff window. Every impact cue (set-down sound, haptic,
@@ -1249,7 +1246,6 @@ export function createReveal({ mountEl, onAgain }) {
       const card = slots[haulOrder[idx]].card;
       host.style.setProperty("--tier-color", TIER_HEX[rarityToTier(card)]);
       haulCapEl.querySelector(".hc-best").textContent = tierOf(card).label;
-      setCredit(card);
       srEl.textContent = `${card.name} · ${card.pos || ""} ${card.ovr || ""} · ${tierOf(card).label}`;
     }
   }
@@ -1434,24 +1430,10 @@ export function createReveal({ mountEl, onAgain }) {
     host.classList.remove("telling", "held");
   }
 
-  // Announce the current card to screen readers (the SR live region), and credit
-  // its photo.
+  // Announce the current card to screen readers (the SR live region).
   function updateHint() {
     const card = slots[pos]?.card;
     if (card) srEl.textContent = `Card ${pos + 1} of ${cards.length}: ${card.name}, ${card.pos || ""} ${card.ovr || ""}, ${card.rarity}. Tap for the next card.`;
-    setCredit(card);
-  }
-
-  // The player photos are Creative Commons / public-domain Wikimedia Commons
-  // images (photos.js): show the one on screen's author + licence, linked to its
-  // Commons page — the attribution the licences ask for.
-  function setCredit(card) {
-    const p = card && PHOTOS[card.playerId];
-    creditEl.hidden = !p;
-    if (!p) return;
-    creditEl.textContent = `Photo: ${p.author}${p.license ? ` · ${p.license}` : ""}`;
-    if (p.url) creditEl.href = p.url;
-    else creditEl.removeAttribute("href");
   }
 
   // SEND TO CLUB — the button drops away as your club badge rises, then the signings
