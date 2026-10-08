@@ -1002,6 +1002,30 @@
       .reveal__slot .card__edge {
         display: none;
       }
+      /* THE SCATTER (reveal.js scatter / pick) — the back pop blew the cards out of the
+         3D pack and they lie FACE DOWN round the stage at the rects pack3d/view.js
+         reports. The reveal flattens the card component and drops its own back face
+         (above), so each slot carries a back of its own: the card back art, shown
+         while the slot is .facedown, over the hidden card. Poses are inline (from
+         reveal.js); --shy lets the CSS shrink the waiting cards while one is up. */
+      .reveal__slot .slot__back {
+        position: absolute;
+        inset: 0;
+        display: none;
+        border-radius: calc(var(--stackw) * 0.055);
+        background: #0d0b08 url("assets/card-back.jpg") center / cover no-repeat;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(212, 166, 58, 0.18);
+        backface-visibility: hidden;
+      }
+      .reveal__slot.facedown .slot__back { display: block; }
+      .reveal__slot.facedown .card { visibility: hidden; }
+      .reveal.scatter .reveal__slot.facedown { cursor: pointer; }
+      /* a card is up at the centre: the rest wait aside, smaller and dimmer */
+      .reveal.scatter.picked .reveal__slot.facedown:not(.picking) { --shy: 0.86; opacity: 0.5; }
+      @media (hover: hover) {
+        .reveal.scatter:not(.picked) .reveal__slot.facedown:hover { --shy: 1.05; }
+      }
+
       /* the PRINT being stamped onto a fresh card (reveal.js stampIn): loose pieces
          laid over the bare art at their art-pixel boxes (in percent), on top of the
          face and NOT clipped to it — so a stamp can come down from bigger than the
@@ -1741,11 +1765,15 @@
         // at z 2). Wake it the moment the pack is grabbed so it's already THERE: the 3D
         // pack shows its own card stack through the torn mouth, then drops away to
         // uncover this one in place (reveal.show() presents the haul).
-        onGrab: () => reveal.wake(),
-        onOpen: async () => {
+        // The back route's cards come out of the 3D pack itself (its burst), so the DOM
+        // stack stays out of sight until the hand-off (wake takes the route).
+        onGrab: (mode) => reveal.wake(mode),
+        // The 3D pack says how it opened: the front tear uncovers the stack in place; the
+        // back pop hands over the scattered, face-down cards at their on-screen rects.
+        onOpen: async (info) => {
           hintEl.textContent = ""; // the reveal has its own hint
           await ready; // (already prepared — instant)
-          reveal.show();
+          reveal.show(info);
         },
       }).then((p) => { pack = p; return p; });
 

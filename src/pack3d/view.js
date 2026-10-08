@@ -11,8 +11,9 @@
 //   BACK  — flip the pack (tap, or drag to turn it), pinch the rear fin seam
 //           and PULL: nothing tears — the pack strains harder the further you
 //           haul (it bulges, creases, trembles, the seam gapes), until the seal
-//           gives all at once and the whole back pops open; the cards leap out
-//           toward you and turn face-up.
+//           gives all at once and the whole back pops open; the cards BLOW OUT
+//           of it with the force — five of them, each tumbling on its own — and
+//           settle face DOWN in a spread, their backs to you, until one is tapped.
 //
 // The light (see "the light inside" below): trapped in the pack, let out through
 // the tear, at its brightest for the one instant the seal breaks, then settling
@@ -23,7 +24,7 @@
 
 import * as THREE from "three";
 import { makeConfig, pickQuality } from "./config.js";
-import { buildCardStack } from "./geometry.js";
+import { buildCardStack, buildBurstCard } from "./geometry.js";
 import { makeEdgeTexture, makeCoreTexture } from "./textures.js";
 import { getPackAsset } from "./asset.js";
 import { makeMaterials, makeCardMaterials, EXT_ENV, EXT_EMI } from "./materials.js";
@@ -111,6 +112,11 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   // ---- state ------------------------------------------------------------------
   let pack = null, deformer = null, ctl = null, mats = null, cardMats = null, wrapper = null;
   let stack = null, topCard = null, deckMesh = null;
+  // the back pop's burst: the stack blown apart into single cards (built with the stack,
+  // kept off the scene until the pop) — see startBurst / stepBurst
+  const BURST_N = 5;
+  let burstGeo = null, burstMats = null, burstCards = [];
+  let burst = null; // { t, cards: [{ mesh, p0, q0, pT, qT, s, axis, delay, dur, done }], settled, fade }
   let core = null, innerLight = null, seam = null; // the light inside (see below)
   let surface = null, atlasTex = null, faceTex = null;
   let armed = false, opened = false, built = false, disposed = false;
@@ -122,7 +128,6 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   const pose = { yaw: REST_YAW, pitch: REST_PITCH, yawT: REST_YAW, pitchT: REST_PITCH, yawV: 0, pitchV: 0 };
   let frozen = false; // pose locked during a tear
   let fly = null; // the detached cap's flight (front)
-  let stackAnim = null; // the stack emerging + turning face-up (back)
   let handoffTimer = 0;
   const beatTimers = []; // the open's scheduled beats (beams, shimmer, floor)
   const openSpring = { v: 0, t: 0, k: 60, c: 10 }; // the mouth
@@ -224,6 +229,22 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     stack.add(deckMesh, topCard);
     packGroup.add(stack);
     if (faceTex) { cardMats.face.map = faceTex; cardMats.face.needsUpdate = true; }
+    // the burst cards: single-card slabs, backs on BOTH faces (a card tumbling out
+    // must never flash its print — the player turns each one over by hand later)
+    {
+      const bc = buildBurstCard(cfg, BURST_N);
+      burstGeo = bc.geometry;
+      burstMats = makeCardMaterials({ cardBack: cb, edge: makeEdgeTexture() });
+      burstCards = [];
+      for (let i = 0; i < BURST_N; i++) {
+        const m = new THREE.Mesh(burstGeo, [burstMats.back, burstMats.back, burstMats.rim]);
+        m.visible = false;
+        m.frustumCulled = false;
+        m.renderOrder = 3;
+        burstCards.push(m);
+        scene.add(m);
+      }
+    }
 
     // the light inside: a point light at the tear (in the scene from the start, at
     // zero, so its shader is compiled during the warm-up and never on the first
@@ -408,7 +429,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         sceneFx?.classList.add("paused");
         sfx.grab();
         strainTick = 0;
-        onGrab?.();
+        onGrab?.(ctl.state.mode);
         anticipate(type === "resume");
         if (type === "resume" && d.p > P_NOTCH + 1e-4) sfx.tearStart(tellTier); // the rip picks its sound back up
         updateCue();
@@ -556,7 +577,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
         lean.vp -= 1.4; // the top nods back as the tension lets go
       }
       shake.until = 0;
-      stackAnim = { t: 0, dur: REDUCED ? 0.34 : 0.64, delay: 0.03, q0: new THREE.Quaternion(), started: false, power };
+      startBurst(power); // the cards blow out of the open back and scatter, backs to the lens
       release(power, 0.04);
     }
     // exit: the spent body drops away (px, so iOS animates it)
@@ -608,12 +629,17 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     light.impulse = 0;
     room.settle();
     if (stack) stack.visible = false; // the DOM stack behind the canvas takes over, in place
-    // the back pop: the cards leapt OUT of the wrapper toward the lens, so the DOM stack
-    // must stay OVER the blown-open sheet as it drops away (CSS: #pack-stage.cards-over
-    // sinks the stage under the reveal) — the front tear keeps the body over the card
-    if (ctl.state.mode === "back") mountEl.classList.add("cards-over");
+    // the back pop: the cards blew OUT of the wrapper toward the lens and lie scattered in
+    // front of it, so the DOM cards must stay OVER the blown-open sheet as it drops away
+    // (CSS: #pack-stage.cards-over sinks the stage under the reveal) — the front tear keeps
+    // the body over the card. The DOM takes each scattered card at its exact screen rect
+    // (scatterLayout) and fades in over the 3D one as it fades out.
+    const back = ctl.state.mode === "back";
+    if (back) mountEl.classList.add("cards-over");
+    const scatter = back && burst ? scatterLayout() : null;
+    if (burst) burst.fade = { t: 0, dur: 0.4 };
     ctl.reveal();
-    onOpen?.();
+    onOpen?.({ mode: ctl.state.mode, scatter });
     requestRender();
   }
 
@@ -696,31 +722,143 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     mats.headerExt.opacity = mats.headerInt.opacity = fade;
     if (fade <= 0) { mats.headerExt.visible = mats.headerInt.visible = false; fly = null; }
   }
-  function stepStack(dt) {
-    if (!stackAnim) return;
-    const a = stackAnim;
-    a.t += dt;
-    if (a.t < a.delay) return;
-    if (!a.started) {
-      a.started = true;
-      scene.attach(stack); // animate in world space: the DOM card is world-aligned
-      a.q0.copy(stack.quaternion);
-      a.p0 = stack.position.clone();
-      a.topZ = topCard ? topCard.position.z : 0;
+  // ---- THE BURST (back pop) ------------------------------------------------------------
+  // The seal lets go and the stack is BLOWN APART: every card leaves the open back on its
+  // own — fast off the mark, out toward the lens and away from the centre, overshooting its
+  // spot and settling back, tumbling end over end once — and lands face DOWN (its back to
+  // the lens) in a spread that fills the frame. The spread is laid out in SCREEN space (a
+  // loose ring of spots, shuffled per pack) and mapped onto the z = 0 plane, where the
+  // camera is fitted so a card projects to exactly the DOM card's width: a settled card's
+  // on-screen rect is therefore an exact translate/rotate/scale of the DOM slot, which is
+  // what lets the DOM take over at the hand-off without a seam (scatterLayout).
+  function scatterSpots(n) {
+    const vw = mountEl.clientWidth || window.innerWidth, vh = mountEl.clientHeight || window.innerHeight;
+    const cw = cardPx(), ch = cw * (cfg.cardHM / cfg.cardWM);
+    // the cards' size in the spread: wide enough to read, small enough that five fit a phone
+    const s = Math.max(0.34, Math.min(0.62, (0.31 * vw) / cw, (0.2 * vh) / ch));
+    let spots;
+    if (n === 5) {
+      // a hand-tuned quincunx for the five-card pack: one up top, two either side, two low
+      spots = [[0, -0.31, -5], [-0.265, -0.1, -13], [0.265, -0.1, 12], [-0.22, 0.26, 9], [0.22, 0.26, -10]];
+    } else {
+      spots = [];
+      for (let k = 0; k < n; k++) {
+        const a = -Math.PI / 2 + (k / n) * Math.PI * 2;
+        spots.push([0.27 * Math.cos(a), 0.3 * Math.sin(a), (k % 2 ? 1 : -1) * (6 + (k * 7) % 9)]);
+      }
     }
-    const u = Math.min(1, (a.t - a.delay) / a.dur);
-    // the leap: fast off the mark, a high arc up and out toward the lens, then it
-    // settles into the DOM card's place; the turn to face-up overshoots a touch
-    const e = 1 - Math.pow(1 - u, 3);
-    const c1 = 1.25, c3 = c1 + 1;
-    const eb = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); // ease-out-back
-    stack.quaternion.slerpQuaternions(a.q0, _q.identity(), Math.min(1.08, eb));
-    const arc = Math.sin(Math.PI * Math.pow(u, 0.82)); // up quickly, down slower
-    const h = REDUCED ? 0.012 : 0.024 + (a.power || 0.7) * 0.012;
-    stack.position.set(a.p0.x * (1 - e), a.p0.y * (1 - e) + h * arc, a.p0.z * (1 - e) + (REDUCED ? 0.026 : 0.05) * arc);
-    // the top card lifts off the deck at the peak — they're cards, not a slab
-    if (topCard) { topCard.position.z = a.topZ + 0.006 * arc; topCard.rotation.x = -0.16 * arc; }
-    if (u >= 1) { stackAnim = null; if (topCard) { topCard.position.z = a.topZ; topCard.rotation.x = 0; } }
+    const out = spots.map(([fx, fy, rot]) => ({
+      x: fx * vw + (Math.random() * 2 - 1) * 0.012 * vw,
+      y: fy * vh + (Math.random() * 2 - 1) * 0.01 * vh,
+      rot: (rot + (Math.random() * 2 - 1) * 3) * Math.PI / 180,
+      s,
+    }));
+    for (let i = out.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [out[i], out[j]] = [out[j], out[i]]; } // shuffle: the rare is never in the same spot
+    return out;
+  }
+  function startBurst(power) {
+    if (!burstCards.length) return;
+    stack.visible = false;
+    stack.updateMatrixWorld(true);
+    const ppm = cardPx() / cfg.cardWM; // px per metre on the z = 0 plane
+    const spots = scatterSpots(burstCards.length);
+    const thick = cfg.stackDepthM / burstCards.length;
+    const q0 = new THREE.Quaternion(), p0 = new THREE.Vector3();
+    stack.getWorldQuaternion(q0);
+    const halfTurn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI); // back to the lens
+    const cards = burstCards.map((mesh, i) => {
+      // card i sits at its depth in the stack (0 = the top card)
+      _v.set(0, 0, cfg.stackDepthM / 2 - thick / 2 - i * thick);
+      stack.localToWorld(_v);
+      p0.copy(_v);
+      const sp = spots[i];
+      const pT = new THREE.Vector3(sp.x / ppm, -sp.y / ppm, 0.0005 * (burstCards.length - i));
+      const qT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -sp.rot).multiply(halfTurn);
+      const phi = Math.random() * Math.PI * 2; // the tumble axis: in the card's own plane → end over end
+      mesh.position.copy(p0); mesh.quaternion.copy(q0); mesh.scale.setScalar(1);
+      mesh.visible = true;
+      return {
+        mesh, p0: p0.clone(), q0: q0.clone(), pT, qT, s: sp.s,
+        axis: new THREE.Vector3(Math.cos(phi), Math.sin(phi), 0), turn: (Math.random() < 0.5 ? -1 : 1) * (REDUCED ? 0 : 1),
+        delay: 0.03 + i * (REDUCED ? 0.012 : 0.028) + Math.random() * 0.02,
+        dur: REDUCED ? 0.4 : 0.66 + Math.random() * 0.12,
+        done: false,
+      };
+    });
+    burst = { t: 0, cards, settled: false, fade: null, power };
+  }
+  function stepBurst(dt) {
+    if (!burst) return;
+    burst.t += dt;
+    const pw = burst.power ?? 0.7;
+    let all = true;
+    for (const c of burst.cards) {
+      if (c.done) continue;
+      const u = Math.max(0, Math.min(1, (burst.t - c.delay) / c.dur));
+      if (u <= 0) { all = false; continue; }
+      const e = 1 - Math.pow(1 - u, 3); // ease-out: fast off the mark
+      const c1 = 1.2, c3 = c1 + 1;
+      const eb = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); // ease-out-back: past the spot, then back
+      const arc = Math.sin(Math.PI * Math.pow(u, 0.8)); // out toward the lens, then settling
+      const m = c.mesh;
+      m.position.set(
+        c.p0.x + (c.pT.x - c.p0.x) * eb,
+        c.p0.y + (c.pT.y - c.p0.y) * eb,
+        c.p0.z + (c.pT.z - c.p0.z) * e + (REDUCED ? 0.02 : 0.035 + 0.03 * pw) * arc,
+      );
+      // the base turn (from the pack's pose to flat, back to the lens) plus one full
+      // tumble about the card's own in-plane axis, fast first — a whole turn is the
+      // identity, so it ends exactly on the settled pose
+      m.quaternion.slerpQuaternions(c.q0, c.qT, e);
+      if (c.turn) {
+        const spin = 1 - Math.pow(1 - u, 2.6);
+        _q.setFromAxisAngle(c.axis, c.turn * Math.PI * 2 * spin);
+        m.quaternion.multiply(_q);
+      }
+      m.scale.setScalar(1 + (c.s - 1) * e);
+      if (u >= 1) {
+        c.done = true;
+        m.position.copy(c.pT); m.quaternion.copy(c.qT); m.scale.setScalar(c.s);
+        sfx.cardTap?.(burst.cards.indexOf(c)); // a soft tap as each lands
+      } else all = false;
+    }
+    if (all && !burst.settled) burst.settled = true;
+    if (burst.fade) {
+      // the hand-off: the DOM backs fade in over these at the same rects as they fade out
+      burst.fade.t += dt;
+      const k = Math.min(1, burst.fade.t / burst.fade.dur);
+      for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = true; mt.opacity = 1 - k; mt.depthWrite = k < 1; }
+      if (k >= 1) endBurst();
+    }
+  }
+  function endBurst() {
+    if (!burst) return;
+    for (const c of burst.cards) c.mesh.visible = false;
+    for (const mt of [burstMats.back, burstMats.rim]) { mt.transparent = false; mt.opacity = 1; mt.depthWrite = true; }
+    burst = null;
+  }
+  // where each settled card is on screen: centre, size and tilt — the DOM slot's pose.
+  // (The camera is fitted so a card on z = 0 is exactly the DOM card's width, and these
+  // lie flat on that plane, so the projection is a plain translate/rotate/scale.)
+  function scatterLayout() {
+    if (!burst) return null;
+    const r = canvas.getBoundingClientRect();
+    const toScreen = (v) => { v.project(camera); return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height }; };
+    return burst.cards.map((c, i) => {
+      const m = c.mesh;
+      m.position.copy(c.pT); m.quaternion.copy(c.qT); m.scale.setScalar(c.s);
+      m.updateMatrixWorld(true);
+      const C = toScreen(m.localToWorld(new THREE.Vector3(0, 0, 0)));
+      const U = toScreen(m.localToWorld(new THREE.Vector3(0, cfg.cardHM / 2, 0)));
+      const R = toScreen(m.localToWorld(new THREE.Vector3(cfg.cardWM / 2, 0, 0)));
+      return {
+        i, cx: C.x, cy: C.y,
+        w: 2 * Math.hypot(R.x - C.x, R.y - C.y),
+        h: 2 * Math.hypot(U.x - C.x, U.y - C.y),
+        rot: Math.atan2(U.x - C.x, -(U.y - C.y)) * 180 / Math.PI, // CSS rotate: clockwise-positive, from screen-up
+        order: burst.cards.length - i, // the deeper in the stack, the lower it lies
+      };
+    });
   }
   function stepSprings(dt) {
     const sp = (s, k, c) => { const a = (s.t - s.x) * k - s.v * c; s.v += a * dt; s.x += s.v * dt; };
@@ -795,7 +933,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function needsLoop() {
     if (!built) return false;
     const st = ctl.state;
-    if (drag || st.auto || fly || stackAnim) return true;
+    if (drag || st.auto || fly) return true;
+    if (burst && (!burst.settled || burst.fade)) return true;
     if (st.phase === "gripping" || st.phase === "tearing") return true;
     if (lightMoving()) return true;
     if (poseMoving()) return true;
@@ -817,7 +956,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       stepFly(dt);
       stepSprings(dt);
       stepPose(dt);
-      stepStack(dt);
+      stepBurst(dt);
       const lit = stepLight(dt);
       deformer.evaluate(ctl.state, dt, lit);
       renderer.render(scene, camera);
@@ -860,7 +999,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function reset() {
     if (!built) return;
     opened = false; handedOff = false; frozen = false;
-    fly = null; stackAnim = null;
+    fly = null;
+    endBurst();
     clearTimeout(handoffTimer); clearTimeout(floatTimer);
     for (const t of beatTimers) clearTimeout(t);
     beatTimers.length = 0;
@@ -990,6 +1130,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     mats?.all.forEach((m) => m.dispose());
     cardMats?.all.forEach((m) => m.dispose());
     deckMesh?.geometry.dispose(); topCard?.geometry.dispose();
+    burstGeo?.dispose(); burstMats?.all.forEach((m) => m.dispose());
     faceTex?.dispose(); // (the atlas + surface maps belong to the shared asset)
     core?.material.map.dispose(); core?.material.dispose();
     seam?.dispose();
@@ -1047,6 +1188,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     get pack() { return pack; },
     get deformer() { return deformer; },
     get stack() { return stack; },
+    get burst() { return burst; },
+    get burstCards() { return burstCards; },
     get materials() { return mats; },
     get pose() { return pose; },
     get light() { return light; },

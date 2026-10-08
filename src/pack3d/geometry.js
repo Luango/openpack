@@ -495,6 +495,14 @@ export function buildCardStack(cfg) {
   return { deck, top, deckDepth: d * 0.8, topDepth: d * 0.2 };
 }
 
+// ONE card of a stack of `n` — the back pop blows the stack apart into these (each
+// tumbles out on its own), so the slab is a single card's thickness. Same rounded
+// slab, same UV layout (+z face upright, −z mirrored, a tiled rim).
+export function buildBurstCard(cfg, n = 5) {
+  const w = cfg.cardWM, h = cfg.cardHM, t = cfg.stackDepthM / Math.max(1, n);
+  return { geometry: roundedSlab(w, h, t, 0.0025), thickness: t };
+}
+
 // A rounded-rectangle extrusion with clean per-face UVs (0..1 on the big faces,
 // a tiled strip around the edge). Built by hand so the UVs are predictable.
 function roundedSlab(w, h, d, r, N = 6) {

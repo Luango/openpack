@@ -21,7 +21,7 @@
 // live at /tools/art/ while tuning.
 
 import { P, lin, rad, rgba, shade, rng, font, serif, spacedText, grainTile, starPath, poly, roundRect } from "../../src/paint.js";
-import { ensureFonts, SHIELD_D, ART_W, ART_H } from "../../src/cardart.js";
+import { ensureFonts, ART_W, ART_H } from "../../src/cardart.js";
 import { drawBall, BALL_PANELS, BALL_CENTER } from "../../src/ball.js";
 import { HIT_ODDS, RARE_GOLD_ODDS } from "../../src/booster.js";
 import { TIERS } from "../../src/rarity.js";
@@ -464,6 +464,8 @@ function sparkle(ctx, x, y, r, col = "#fff6d8") {
 export async function drawCardBack(ctx) {
   await ensureFonts();
   const W = CARD_BACK_W, H = CARD_BACK_H, cx = W / 2, cy = H / 2;
+  // an EMPTY card: the warm black foil, a faint sunburst and pinstripe, the gold frame,
+  // and the brand lockup alone at its heart — no crest, no ball, no words
   ctx.fillStyle = rad(ctx, cx, cy, H * 0.7, [[0, "#2a2016"], [0.55, "#120e09"], [1, "#0a0806"]]);
   ctx.fillRect(0, 0, W, H);
   // sunburst
@@ -471,7 +473,7 @@ export async function drawCardBack(ctx) {
   ctx.translate(cx, cy);
   for (let i = 0; i < 48; i++) {
     const a0 = (i / 48) * Math.PI * 2, a1 = a0 + Math.PI / 48;
-    ctx.fillStyle = rgba(GOLD[1], 0.06);
+    ctx.fillStyle = rgba(GOLD[1], 0.055);
     ctx.fill(poly([[0, 0], [Math.cos(a0) * 900, Math.sin(a0) * 900], [Math.cos(a1) * 900, Math.sin(a1) * 900]]));
   }
   ctx.restore();
@@ -481,10 +483,10 @@ export async function drawCardBack(ctx) {
   for (let i = -30; i < 40; i++) {
     ctx.beginPath(); ctx.moveTo(i * 26, 0); ctx.lineTo(i * 26 + H, H); ctx.stroke();
   }
-  // the amber pool behind the crest
+  // the amber pool behind the lockup
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = rad(ctx, cx, cy, 360, [[0, rgba(AMBER, 0.32)], [0.5, rgba(AMBER, 0.1)], [1, rgba(AMBER, 0)]]);
+  ctx.fillStyle = rad(ctx, cx, cy, 330, [[0, rgba(AMBER, 0.26)], [0.5, rgba(AMBER, 0.08)], [1, rgba(AMBER, 0)]]);
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
   // frame
@@ -495,44 +497,16 @@ export async function drawCardBack(ctx) {
   ctx.strokeStyle = rgba(GOLD[1], 0.5);
   ctx.stroke(roundRect(38, 38, W - 76, H - 76, 18));
 
-  // the centre crest: the card's own shield in black foil, rimmed in gold, holding
-  // the golden ball
+  // the brand lockup, in gold foil: a soft amber halo, a dark drop under it for depth,
+  // then the mark itself in a champagne → gold → bronze sweep with a bright top edge
+  const LW = 440; // the lockup's width on the card
   ctx.save();
-  ctx.translate(cx, cy - 6);
-  const s = 0.42;
-  ctx.scale(s, s);
-  ctx.translate(-ART_W / 2, -ART_H / 2);
-  const sh = P(SHIELD_D);
-  ctx.shadowColor = rgba(AMBER, 0.55); ctx.shadowBlur = 60;
-  ctx.fillStyle = lin(ctx, 0, 0, ART_W, ART_H, [[0, "#211b13"], [1, "#0d0b08"]]);
-  ctx.fill(sh);
-  ctx.shadowColor = "transparent";
-  ctx.lineWidth = 16;
-  ctx.strokeStyle = lin(ctx, 0, 0, ART_W, ART_H, [[0, GOLD[0]], [0.45, GOLD[1]], [1, "#a87a22"]]);
-  ctx.stroke(sh);
+  ctx.shadowColor = rgba(AMBER, 0.55); ctx.shadowBlur = 48;
+  brand(ctx, cx, cy, LW, rgba(GOLD[1], 0.35));
   ctx.restore();
-  ctx.save();
-  ctx.translate(cx - 95, cy - 150);
-  ctx.scale(1.9, 1.9);
-  ctx.shadowColor = rgba(AMBER, 0.6); ctx.shadowBlur = 30;
-  drawBall(ctx, { gold: true });
-  ctx.restore();
-  ctx.save();
-  goldLetters(ctx, "OPENPACK", cx, cy + 112, 56, 4, { lw: 6 });
-  ctx.fillStyle = IVORY;
-  ctx.font = serif(600, 22);
-  spacedText(ctx, "FOOTBALL CLUB", cx, cy + 152, 9, "center");
-  ctx.restore();
-
-  // the wordmark top + bottom, mirrored like a real card back
-  for (const flip of [false, true]) {
-    ctx.save();
-    if (flip) { ctx.translate(W, H); ctx.rotate(Math.PI); }
-    ctx.fillStyle = rgba(GOLD[1], 0.85);
-    ctx.font = serif(700, 26);
-    spacedText(ctx, "ULTIMATE  XI", cx, 98, 12, "center");
-    ctx.restore();
-  }
+  brand(ctx, cx, cy + 4, LW, "rgba(0,0,0,0.55)");
+  brand(ctx, cx, cy, LW, lin(ctx, 0, cy - 60, 0, cy + 60, [[0, GOLD[0]], [0.45, GOLD[1]], [0.72, "#b8862b"], [1, GOLD[0]]]));
+  brand(ctx, cx, cy - 1.5, LW, "rgba(255,246,220,0.22)");
   foilFinishCard(ctx, W, H);
 }
 
