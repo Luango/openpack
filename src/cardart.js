@@ -356,7 +356,7 @@ export function drawCard(ctx, card, assets, bare = null) {
   divider(ctx, L, W / 2 - 4, F.statY - 44, W / 2 - 4, F.statY + 2 * 56 + 8, 0.3);
 
   // 4 — the edition mark in the shield's point (promos; the base metals carry
-  // the frame's own GFP mark there)
+  // the frame's own BETFAIR CARDS mark there — baked by tools/frames/build.py)
   const mark = card.markLabel;
   if (mark && F.markY) {
     ctx.save();
