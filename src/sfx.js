@@ -846,61 +846,9 @@ export function spinTick(vel = 6) {
 // tears with more sparkle than a Bronze one.
 let tear = null;
 
-// THE CHIME-UP — as you drag the rip across the pack an ascending pentatonic bell
-// ladder climbs with how FAR you've torn (not how fast), so tearing feels like
-// winding a spring: each chunk of progress rings the next note up, building toward
-// the release when it pops. Pentatonic so any subset lands pleasantly; notes also
-// get a touch louder as they climb. Layered OVER the physical rip (synth or sample).
-const TEAR_SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51, 1567.98, 1760.0]; // C5 major-pentatonic → A6
-
-function tearBell(c, freq, vel) {
-  const t = c.currentTime;
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.06 * vel, t + 0.006); // struck-glass attack
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); // bell tail
-  g.connect(master);
-  send(g, 0.3); // a little air so each step rings
-  for (const [type, det] of [["sine", 6], ["triangle", -6]]) {
-    const o = c.createOscillator();
-    o.type = type;
-    o.frequency.value = freq;
-    o.detune.value = det;
-    o.connect(g);
-    o.start(t);
-    o.stop(t + 0.47);
-  }
-  // an octave shimmer that decays faster → a brighter "ting" on top
-  const sp = c.createOscillator();
-  const spg = c.createGain();
-  sp.type = "sine";
-  sp.frequency.value = freq * 2;
-  spg.gain.setValueAtTime(0.0001, t);
-  spg.gain.exponentialRampToValueAtTime(0.025 * vel, t + 0.005);
-  spg.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-  sp.connect(spg).connect(master);
-  send(spg, 0.3);
-  sp.start(t);
-  sp.stop(t + 0.24);
-}
-
-// Ring the next bell(s) up the ladder as the tear advances. `progress` 0→1 along
-// the rip; we only ever climb (jitter back-and-forth never replays a note).
-function tearChimeUp(progress) {
-  chimeUp(tear, progress);
-}
-// the ladder itself, for any holder with {c, step}: the tear climbs it by torn
-// length, the back pull by strain (the power builds up the scale toward the pop)
-function chimeUp(h, progress) {
-  if (!h || !h.c) return;
-  if (h.step == null) h.step = -1;
-  const steps = TEAR_SCALE.length;
-  const target = Math.min(steps - 1, Math.floor(Math.max(0, Math.min(1, progress)) * steps));
-  while (h.step < target) {
-    h.step++;
-    tearBell(h.c, TEAR_SCALE[h.step], 0.75 + (h.step / steps) * 0.5); // climbs louder
-  }
-}
+// (The old "chime-up" — a synth pentatonic bell ladder that climbed as you tore — is
+// gone: it read as cartoonish. The tear is carried by the recorded wrapper crinkle
+// alone: `tear_rip`, scrubbed by the tear's progress, below.)
 
 // ONE shared, read-only white-noise buffer. Every noise-based cue (the tear loop,
 // burst, revealImpact, riser, flick, reseal) reads from it — looped or simply
@@ -1058,7 +1006,7 @@ function ripStart(c, tier) {
   send(g, 0.1);
   const out = Math.min(RIP_OUT, buf.duration - 0.05), inn = Math.min(RIP_IN, out - 0.5);
   ripGrains = 0;
-  tear = { c, rip: true, buf, hp, g, in: inn, out, lastPos: null, lastT: -1, tier, step: -1 };
+  tear = { c, rip: true, buf, hp, g, in: inn, out, lastPos: null, lastT: -1, tier };
   return true;
 }
 function ripMove(progress, i) {
@@ -1111,7 +1059,7 @@ export function tearStart(tier = 0) {
   stopTear();
   if (ripStart(c, tier)) return; // the recorded rip, scrubbed by the tear's progress (ripMove)
   const loop = startLoopSample("tear_loop");
-  if (loop) { tear = { ...loop, sample: true, tier, step: -1 }; return; } // recorded rip — modulated in tearMove
+  if (loop) { tear = { ...loop, sample: true, tier }; return; } // recorded rip — modulated in tearMove
   const tg = Math.max(0, Math.min(1, (tier - 3) / 6)); // 0 below Rare Gold → 1 at Legend
   const src = c.createBufferSource();
   src.buffer = noiseBuffer(c);
@@ -1138,13 +1086,12 @@ export function tearStart(tier = 0) {
   src.start();
   // a metallic crinkle on first contact, so the cut starts as FOIL, not a fade-in
   crinkle(c, c.currentTime, { n: 5, gain: 0.018 + tg * 0.014, lo: 4000, hi: 9000, send: 0.05 });
-  tear = { c, src, gain, bp, bodyGain, tier, step: -1 };
+  tear = { c, src, gain, bp, bodyGain, tier };
 }
 
 export function tearMove(intensity = 0.5, progress = null) {
   if (!tear) return;
   const i = Math.max(0, Math.min(1, intensity));
-  if (progress != null) tearChimeUp(progress); // the rising chime-up, over either rip
   if (tear.rip) { ripMove(progress, i); return; }
   if (tear.sample) {
     const ts = tear.c.currentTime;
@@ -1155,9 +1102,7 @@ export function tearMove(intensity = 0.5, progress = null) {
   }
   const tg = Math.max(0, Math.min(1, (tear.tier - 3) / 6));
   const t = tear.c.currentTime;
-  // crackle TEXTURE sits under the chime-up melody — kept lighter than before so the
-  // rising bells read clearly as the satisfying lead, not buried in hiss
-  tear.gain.gain.setTargetAtTime(0.025 + i * 0.16, t, 0.03); // smooth crackle, no stutter
+  tear.gain.gain.setTargetAtTime(0.04 + i * 0.22, t, 0.03); // smooth crackle, no stutter
   tear.bp.frequency.setTargetAtTime((3200 + tg * 900) + i * 3600, t, 0.05);
   tear.bodyGain.gain.setTargetAtTime(0.02 + i * 0.07, t, 0.04);
 }
@@ -1228,62 +1173,12 @@ function shred(c, i, tier = 0) {
   }
 }
 
-// THE RELEASE — the small, joyful "pop" the instant the pack gives way: a quick
-// bright ascending major flourish resolving on a high tonic + a sparkle ding — the
-// pleasant resolution the chime-up ladder was climbing toward. Short + modest (the
-// big celebration is saved for a rare card); it rides over the burst's body thump.
+// THE RELEASE — the instant the pack gives way. Only a RECORDED `open_release`
+// plays here (none is wired today); the old synth major-flourish + sparkle "ding"
+// that resolved the chime-up ladder is gone with the ladder. The burst's thump and
+// the recorded snap carry the open on their own.
 export function tearRelease() {
-  if (playSample("open_release", { send: 0.35 })) return;
-  const c = live();
-  if (!c) return;
-  const t = c.currentTime;
-  const notes = [1046.5, 1318.51, 1567.98]; // C6 E6 G6 — a bright major resolve
-  notes.forEach((f, k) => {
-    const ts = t + k * 0.05;
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, ts);
-    g.gain.exponentialRampToValueAtTime(0.07, ts + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.55);
-    g.connect(master);
-    send(g, 0.35);
-    for (const [type, det] of [["sine", 5], ["triangle", -5]]) {
-      const o = c.createOscillator();
-      o.type = type;
-      o.frequency.value = f;
-      o.detune.value = det;
-      o.connect(g);
-      o.start(ts);
-      o.stop(ts + 0.57);
-    }
-  });
-  // a top sparkle "ding" caps the release (C7)
-  const dingT = t + 0.13;
-  const ding = c.createOscillator();
-  const dg = c.createGain();
-  ding.type = "sine";
-  ding.frequency.value = 2093;
-  dg.gain.setValueAtTime(0.0001, dingT);
-  dg.gain.exponentialRampToValueAtTime(0.06, dingT + 0.005);
-  dg.gain.exponentialRampToValueAtTime(0.0001, dingT + 0.7);
-  ding.connect(dg).connect(master);
-  send(dg, 0.4);
-  ding.start(dingT);
-  ding.stop(dingT + 0.72);
-  // a whisper of high sparkle fizz — the "release" glitter
-  for (let k = 0; k < 5; k++) {
-    const ts = t + Math.random() * 0.18;
-    const o = c.createOscillator();
-    const g = c.createGain();
-    o.type = "sine";
-    o.frequency.value = (2349 + Math.random() * 1837); // D7–A7-ish
-    g.gain.setValueAtTime(0.0001, ts);
-    g.gain.exponentialRampToValueAtTime(0.018, ts + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.2);
-    o.connect(g).connect(master);
-    send(g, 0.35);
-    o.start(ts);
-    o.stop(ts + 0.22);
-  }
+  playSample("open_release", { send: 0.35 });
 }
 
 function stopTear() {
@@ -1299,8 +1194,8 @@ function stopTear() {
 // ---- the back PULL ----------------------------------------------------------------
 // Nothing tears on the back: the hand hauls on the seam and the pack STRAINS until
 // the seal pops. Three cues carry that: strainStart (the slack is taken up),
-// strain(level) every move (the creak + a tense body tone that rise with the power,
-// and the chime-up ladder climbing with it), strainEnd (let go → it slackens; or
+// strain(level) every move (the creak + a tense body tone that rise with the power),
+// strainEnd (let go → it slackens; or
 // the pop). The pop itself is pop(): the seal letting go all at once.
 let strainN = null;
 
@@ -1313,7 +1208,7 @@ export function strainStart(tier = 0) {
   }
   strainStop();
   const loop = startLoopSample("strain_loop");
-  if (loop) { strainN = { ...loop, sample: true, tier, step: -1, lastCreak: 0 }; return; } // recorded creak — modulated in strain()
+  if (loop) { strainN = { ...loop, sample: true, tier, lastCreak: 0 }; return; } // recorded creak — modulated in strain()
   const t = c.currentTime;
   // the pack's "power": a low detuned pair under a resonant lowpass, swelling and
   // rising with the strain, with a tremolo that quickens as the seal nears giving
@@ -1342,7 +1237,7 @@ export function strainStart(tier = 0) {
   o1.start(t);
   o2.start(t);
   lfo.start(t);
-  strainN = { c, o1, o2, lp, g, lfo, lfoG, tier, step: -1, lastCreak: 0 };
+  strainN = { c, o1, o2, lp, g, lfo, lfoG, tier, lastCreak: 0 };
 }
 
 export function strain(level = 0, vel = 0) {
@@ -1350,7 +1245,6 @@ export function strain(level = 0, vel = 0) {
   const s = Math.max(0, Math.min(1, level));
   const n = strainN;
   const t = n.c.currentTime;
-  chimeUp(n, s); // the ladder climbs with the power
   if (n.sample) {
     n.g.gain.setTargetAtTime(0.06 + s * 0.6, t, 0.04);
     n.src.playbackRate.setTargetAtTime(0.85 + s * 0.45, t, 0.06); // tauter as it strains
