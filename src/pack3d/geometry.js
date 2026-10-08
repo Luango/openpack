@@ -445,6 +445,28 @@ export function buildPack(cfg, artAspect = 1.657) {
   };
 }
 
+// The pouch's silhouette seen face-on, as a closed loop in metres: the right edge
+// top → bottom, then the left edge bottom → top. Each point is [x, y, z]. The sides
+// are the loop's own side columns (x = ±halfWidth + xShift), so the loop carries the
+// body, the shoulder flare and the squared-off crimp ears exactly as the mesh does —
+// whatever the profile becomes, the outline follows it. z is the front sheet's
+// height at that row (the fold's top at the body, near-flat at the sealed bands),
+// so a ribbon laid on the loop can hug the surface instead of hovering one fixed
+// distance in front. The crimp's serration (sub-millimetre teeth) is left out: the
+// ends read as the clean straight edge of the band, as they do to the eye.
+// `step` is the sample spacing along y (the caller simplifies the straight runs).
+export function packOutline(pack, step = 0.0003) {
+  const { dims, fn } = pack;
+  const ys = [];
+  const n = Math.max(2, Math.ceil(dims.H / step));
+  for (let i = 0; i <= n; i++) ys.push(dims.yTop - (dims.H * i) / n);
+  const at = (y, side) => [side * fn.halfWidth(y) + fn.xShift(y), y, fn.halfDepth(y)];
+  const out = [];
+  for (let i = 0; i < ys.length; i++) out.push(at(ys[i], 1));            // right edge ↓
+  for (let i = ys.length - 1; i >= 0; i--) out.push(at(ys[i], -1));      // left edge ↑
+  return out;
+}
+
 // The inner card stack: one shallow rounded-rectangle solid for the deck plus
 // the top card as its own thin slab, so the stack can be textured with the real
 // top card and rise/flip independently of the wrapper. Printed edge lines on the

@@ -342,27 +342,30 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     });
   }
 
-  // RIM LIGHT + BORDER BEAM, per pack. A glowing outline ribbon, traced from the
-  // art's own alpha so it HUGS the real pouch silhouette (crimped top, tapered
-  // sides), is attached to each pack mesh — so it rotates, pops and scales WITH the
+  // RIM LIGHT + BORDER BEAM, per pack. A glowing outline ribbon that HUGS the pouch's
+  // own silhouette — the loft's profile from pack3d (body, shoulder flare, the squared
+  // crimp ears), not the art's alpha, so whenever the model's outline changes the 流光
+  // follows it — is attached to each pack mesh, so it rotates, pops and scales WITH the
   // pack on the wheel. A weak always-on warm rim rings the whole edge; a bright
   // comet sweeps around it. One ShaderMaterial per pack (so each can fade in the
   // intro/selection), all ticked from the same clock so the beams move in sync.
   const rimMats = [];
   const rimGeoCache = new Map();
-  function addRimBeam(mesh, img, aspect) {
+  function addRimBeam(mesh, asset) {
     if (mesh.userData.rim) return; // already built (texture promise can resolve once)
-    const outline = traceOutline(img);
+    const outline = modelOutline(asset.showOutline);
     if (!outline) return;
-    const key = aspect.toFixed(3);
-    // a flat outline ribbon hugging the silhouette, floated just PROUD of its own front
-    // sheet (z=RIM_Z). depthTest is ON (see makeRimMaterial), so the ribbon must clear its
-    // own pack body or that body would bury it — but a pack physically IN FRONT on the
-    // wheel writes nearer depth and correctly OCCLUDES this rim. The float is tiny (well
-    // under the body's mid bulge) so head-on it still reads as the outline glow.
+    const aspect = asset.aspect;
+    // an outline ribbon riding the silhouette, floated just PROUD of the front sheet
+    // under it (each point carries the sheet's own height + RIM_LIFT, so it sits as
+    // close over the flat ears as over the full body). depthTest is ON (see
+    // makeRimMaterial), so the ribbon must clear its own pack body or that body would
+    // bury it — but a pack physically IN FRONT on the wheel writes nearer depth and
+    // correctly OCCLUDES this rim. The float is tiny (well under the body's mid bulge)
+    // so head-on it still reads as the outline glow.
     // halfW 0.023 (was 0.046): the ribbon read as a thick border, not an edge light —
     // the user asked for half the width; RIM_GAIN below halves its brightness to match.
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.023, RIM_Z));
+    if (!rimGeoCache.has(asset)) rimGeoCache.set(asset, makeRimGeometry(outline, 0.023, RIM_LIFT));
     const mat = makeRimMaterial();
     mat.uniforms.uHalfH.value = aspect / 2; // the pack's base (local y = −aspect/2) is the floor contact line
     // Randomise each pack's comet so they DON'T flow in sync: a random start position
@@ -370,7 +373,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // holding a fixed offset.
     mat.uniforms.uPhase.value = Math.random();
     mat.uniforms.uSpeed.value = 0.16 + Math.random() * 0.12; // ~0.16–0.28 loops/sec
-    const rimMesh = new THREE.Mesh(rimGeoCache.get(key), mat);
+    const rimMesh = new THREE.Mesh(rimGeoCache.get(asset), mat);
     // Draw AFTER every pack (packs reach renderOrder ~43, the breakaway hero 999) so the
     // rim sits in the transparent pass on top of its own art, while still depth-tested
     // against the opaque pack bodies. The layout() facing-fade keeps far-back packs from
@@ -404,7 +407,7 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
       const mat = makePackMaterial(asset);
       mesh.material = mat;
       packMats.push(mat);
-      if (asset.front) addRimBeam(mesh, asset.front, asset.aspect); // rim light + border beam, hugging the art's silhouette
+      if (asset.showOutline) addRimBeam(mesh, asset); // rim light + border beam, hugging the pouch's silhouette
       if (asset.frontTex) buildReflection(mesh, asset.frontTex, asset.aspect); // glossy-floor reflection of the front art
       if (mesh.userData.refl && asset.backTex) mesh.userData.refl.material.uniforms.uBackMap.value = reflTex(asset.backTex); // the floor reflects the back too
     }).catch(() => { /* asset failed → the intro timeout still fires it */ });
@@ -1008,72 +1011,49 @@ function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 function viewSpread(aspect) { return Math.max(0.32, Math.min(1, (aspect || 1) / 1.4)); }
 
 // ---- rim light + border beam ----------------------------------------------
-// Trace the pack art's OUTER silhouette from its alpha, returned as a closed loop
-// of points in the mesh's LOCAL coords (x ∈ [-0.5,0.5], y ∈ [-aspect/2, aspect/2],
-// image-y flipped to match the geometry). The pouch is one opaque span per row, so
-// the outline = its right edge top→bottom + its left edge bottom→top. A high sample
-// width + a low alpha cutoff make it hug the true outer edge tightly. Cached per art.
+// The pack's OUTER silhouette for the rim ribbon, from the pouch MODEL: asset.showOutline
+// is the loft's face-on profile (pack3d/geometry.js packOutline), a closed loop of
+// [x, y, zSheet] in the mesh's local coords (x ∈ [-0.5, 0.5], y ∈ [-aspect/2, aspect/2]),
+// right edge top→bottom then left edge bottom→top. Dense samples along the straight
+// runs are simplified away, keeping the shoulder's flare curve, then each square corner
+// (the four crimp ears) gets a SMALL fillet. The old code traced the printed art's alpha
+// instead, which stopped matching the mesh once the crimp was made to flare past the
+// body — the light ran the art's pinched outline while the foil stood proud of it.
 const _outlineCache = new WeakMap();
-function traceOutline(img) {
-  if (_outlineCache.has(img)) return _outlineCache.get(img);
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-  if (!iw || !ih) return null;
-  const CW = 200, CH = Math.max(8, Math.round(CW * ih / iw));
-  const cv = document.createElement("canvas"); cv.width = CW; cv.height = CH;
-  const ctx = cv.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, CW, CH);
-  let data; try { data = ctx.getImageData(0, 0, CW, CH).data; } catch { return null; } // tainted → skip the rim
-  const A = 18; // low cutoff → the outline sits right at the true outer edge, not inside it
-  const left = new Array(CH).fill(-1), right = new Array(CH).fill(-1);
-  let maxW = 0;
-  for (let y = 0; y < CH; y++) {
-    let l = -1, r = -1;
-    for (let x = 0; x < CW; x++) if (data[(y * CW + x) * 4 + 3] > A) { if (l < 0) l = x; r = x; }
-    if (l >= 0) { left[y] = l; right[y] = r; if (r - l > maxW) maxW = r - l; }
-  }
-  if (maxW <= 0) return null;
-  // Drop the 1px serration TIPS at the very top/bottom seal: a real booster's crimp
-  // ends in a tiny saw-tooth nub that traces as a single narrow row and spikes the
-  // outline right at the corners. Keep only rows at least ~45% as wide as the body, so
-  // the silhouette is the clean pouch rectangle and its four corners sit square.
-  const MINW = maxW * 0.45;
-  const wide = (y) => right[y] >= 0 && right[y] - left[y] >= MINW;
-  let yTop = -1, yBot = -1;
-  for (let y = 0; y < CH; y++) if (wide(y)) { if (yTop < 0) yTop = y; yBot = y; }
-  if (yTop < 0) return null;
-  let pts = [];
-  for (let y = yTop; y <= yBot; y++) if (wide(y)) pts.push([right[y] + 1, y + 0.5]); // right edge ↓
-  for (let y = yBot; y >= yTop; y--) if (wide(y)) pts.push([left[y], y + 0.5]);        // left edge ↑
-  // Simplify the pixel staircase into clean straight edges, then put a SMALL fillet on
-  // each corner. The old code ran a Chaikin corner-cut, but Chaikin trims 25% off each
-  // adjacent edge — after RDP those edges are the pack's full height/width, so it rounded
-  // every corner inward by ~a quarter of the pack and the flowing rim never reached the
-  // four corners. roundCorners instead replaces just the corner POINT with a short arc of
-  // a fixed small radius: the rim still runs right into each corner (hugging the edge) but
-  // turns it on a gentle curve instead of a hard spike (the 流光's four corners read soft).
-  pts = rdp(pts, 1.2);
-  pts = roundCorners(pts, maxW * 0.045, 5); // radius ≈ 4.5% of pack width — a tiny round-off
-  const aspect = ih / iw;
-  const out = pts.map(([px, py]) => [px / CW - 0.5, (0.5 - py / CH) * aspect]); // → local mesh coords
-  _outlineCache.set(img, out);
-  return out;
+function modelOutline(loop) {
+  if (!loop || loop.length < 4) return null;
+  if (_outlineCache.has(loop)) return _outlineCache.get(loop);
+  // Simplify the sample staircase into clean straight edges, then put a SMALL fillet on
+  // each corner. (Chaikin trims 25% off each adjacent edge — after RDP those edges are
+  // the pack's full height/width, so it would round every corner inward by ~a quarter of
+  // the pack and the flowing rim would never reach the four corners. roundCorners instead
+  // replaces just the corner POINT with a short arc of a fixed small radius: the rim still
+  // runs right into each corner but turns it on a gentle curve instead of a hard spike.)
+  // eps 0.0015 (≈0.1 mm on a 74 mm pack): tight enough to keep the shoulder's S-curve
+  // as a curve rather than one chord, loose enough to drop every sample on a straight.
+  let pts = rdp(loop, 0.0015);
+  pts = roundCorners(pts, 0.045, 5); // radius = 4.5% of the pack's width — a tiny round-off
+  _outlineCache.set(loop, pts);
+  return pts;
 }
 
-// Forward float of the rim ribbon, in local z (the pack is 1 unit wide). With depthTest
-// ON, the ribbon must sit just PROUD of the envelope's front sheet (+0.040 at the body,
-// +0.045 with the crown) or that sheet would occlude it head-on — but as shallow as
-// possible so the 流光 hugs the true edge instead of hovering in front of it.
-const RIM_Z = 0.052;
+// Forward float of the rim ribbon above the front sheet beneath it, in local z (the
+// pack is 1 unit wide). With depthTest ON, the ribbon must sit just PROUD of the sheet
+// (which the outline carries per point: +0.040 at the body's fold, +0.045 with the
+// crown, near 0 over the flat sealed bands) or that sheet would occlude it head-on —
+// but as shallow as possible so the 流光 hugs the true edge instead of hovering in
+// front of it. 0.0115 puts the body's ribbon at the 0.052 it always sat at, and lets
+// the ears' ribbon drop right down onto the crimp instead of floating a body's depth
+// ahead of it when the pack turns.
+const RIM_LIFT = 0.0115;
 
 // Build a flat ribbon (triangle strip) that follows the closed outline, `halfW` wide
-// to each side of the edge, at local depth `z`. Centred at z=0 it sits at the middle
-// of the foil's thickness — the pack's true edge — so it reads as the edge glow from a
-// quarter angle instead of floating proud of the front face. Each vertex carries aArc
-// (0..1 along the loop, MONOTONIC — closed with a duplicate start vertex at arc=1 so
-// the beam doesn't glitch at the seam) and aSide (-1..1 across the ribbon, for the
-// soft cross-section glow in the shader).
-function makeRimGeometry(outline, halfW, z) {
+// to each side of the edge, each vertex `lift` in front of its point's own sheet depth
+// (the outline's third component) — so the ribbon follows the foil in depth as well as
+// in silhouette. Each vertex carries aArc (0..1 along the loop, MONOTONIC — closed with
+// a duplicate start vertex at arc=1 so the beam doesn't glitch at the seam) and aSide
+// (-1..1 across the ribbon, for the soft cross-section glow in the shader).
+function makeRimGeometry(outline, halfW, lift) {
   const n = outline.length;
   const seg = new Array(n); let total = 0;
   for (let i = 0; i < n; i++) { const a = outline[i], b = outline[(i + 1) % n]; seg[i] = Math.hypot(b[0] - a[0], b[1] - a[1]); total += seg[i]; }
@@ -1098,6 +1078,7 @@ function makeRimGeometry(outline, halfW, z) {
     const hw = halfW / denom;
     const u = i < n ? acc / total : 1;
     if (i < n) acc += seg[i];
+    const z = (cur[2] || 0) + lift;
     pos.push(cur[0] + mx * hw, cur[1] + my * hw, z); aArc.push(u); aSide.push(1);
     pos.push(cur[0] - mx * hw, cur[1] - my * hw, z); aArc.push(u); aSide.push(-1);
   }
@@ -1186,7 +1167,7 @@ function makeRimMaterial() {
     blending: THREE.AdditiveBlending,
     depthWrite: false,       // glow never occludes — but IS occluded (depthTest below)
     depthTest: true,         // a pack in front on the wheel must hide this rim; the
-                             // RIM_Z float keeps its OWN body from burying it
+                             // RIM_LIFT float keeps its OWN body from burying it
     side: THREE.DoubleSide,
   });
 }
@@ -1195,7 +1176,8 @@ function makeRimMaterial() {
 // `radius` (approximated by a quadratic Bézier through the original corner), so the
 // flowing rim turns each corner on a gentle curve instead of a hard point. The radius
 // is trimmed to <½ of each adjacent edge so neighbouring fillets never overlap, and
-// near-straight vertices are passed through untouched. Operates in canvas-px coords.
+// near-straight vertices are passed through untouched. Points are [x, y] or [x, y, z]
+// (a third component — the sheet depth under the rim — is carried along the fillet).
 function roundCorners(pts, radius, segs) {
   const n = pts.length;
   if (n < 3 || radius <= 0) return pts.slice();
@@ -1206,19 +1188,22 @@ function roundCorners(pts, radius, segs) {
     let v2x = next[0] - cur[0], v2y = next[1] - cur[1];
     const l1 = Math.hypot(v1x, v1y) || 1, l2 = Math.hypot(v2x, v2y) || 1;
     v1x /= l1; v1y /= l1; v2x /= l2; v2y /= l2;
-    if (v1x * v2x + v1y * v2y < -0.985) { out.push([cur[0], cur[1]]); continue; } // ~straight → keep
+    if (v1x * v2x + v1y * v2y < -0.985) { out.push(cur.slice()); continue; } // ~straight → keep
     const d = Math.min(radius, l1 * 0.5, l2 * 0.5);
     const t1x = cur[0] + v1x * d, t1y = cur[1] + v1y * d; // tangent point on the incoming edge
     const t2x = cur[0] + v2x * d, t2y = cur[1] + v2y * d; // tangent point on the outgoing edge
+    const z0 = prev[2] || 0, z1 = cur[2] || 0, z2 = next[2] || 0;
+    const t1z = z1 + (z0 - z1) * (d / l1), t2z = z1 + (z2 - z1) * (d / l2);
     for (let s = 0; s <= segs; s++) {                     // quad Bézier t1→corner→t2
       const u = s / segs, iu = 1 - u, w0 = iu * iu, w1 = 2 * iu * u, w2 = u * u;
-      out.push([w0 * t1x + w1 * cur[0] + w2 * t2x, w0 * t1y + w1 * cur[1] + w2 * t2y]);
+      out.push([w0 * t1x + w1 * cur[0] + w2 * t2x, w0 * t1y + w1 * cur[1] + w2 * t2y, w0 * t1z + w1 * z1 + w2 * t2z]);
     }
   }
   return out;
 }
 
-// Ramer–Douglas–Peucker simplification (epsilon in px).
+// Ramer–Douglas–Peucker simplification (epsilon in the points' own units; extra
+// components ride along with the kept points).
 function rdp(pts, eps) {
   if (pts.length < 3) return pts.slice();
   let maxD = 0, idx = 0;
