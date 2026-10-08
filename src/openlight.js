@@ -49,8 +49,8 @@ const CSS = `
   position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: 0; will-change: opacity;
   /* warm-white at the mouth, gone before the edges: a burst of light, not a screen wash */
   background: radial-gradient(circle at var(--fx, 50%) var(--fy, 30%),
-    rgba(255, 252, 240, 1) 0%, rgba(255, 238, 196, 0.92) 11%, rgba(255, 214, 130, 0.5) 26%,
-    rgba(255, 180, 80, 0.16) 44%, rgba(255, 160, 60, 0) 62%);
+    rgba(255, 252, 240, 1) 0%, rgba(255, 240, 200, 0.95) 14%, rgba(255, 216, 134, 0.6) 32%,
+    rgba(255, 184, 84, 0.22) 54%, rgba(255, 160, 60, 0) 76%);
 }
 `;
 function ensureStyle() {
@@ -150,7 +150,7 @@ function createOpenLight() {
   // ---- the room --------------------------------------------------------------------
   function dim(level, ms = 450) {
     dimEl.style.transition = `opacity ${ms}ms ${level > 0 ? "ease-out" : "ease-in-out"}`;
-    dimEl.style.opacity = (clamp01(level) * 0.84).toFixed(3);
+    dimEl.style.opacity = (clamp01(level) * 0.9).toFixed(3);
   }
   function floor(rect, level, ms = 400) {
     if (rect) {
@@ -167,11 +167,12 @@ function createOpenLight() {
     if (!flashEl.animate) return;
     flashEl.style.setProperty("--fx", `${x.toFixed(0)}px`);
     flashEl.style.setProperty("--fy", `${y.toFixed(0)}px`);
-    const peak = REDUCED ? 0.4 : 0.86 + 0.14 * clamp01(power);
+    const peak = REDUCED ? 0.4 : 0.9 + 0.1 * clamp01(power);
     flashAnim?.cancel();
+    // the one brightest instant: snaps up, holds a beat, then falls away slowly enough to be seen
     flashAnim = flashEl.animate(
-      [{ opacity: 0 }, { opacity: peak, offset: 0.2 }, { opacity: peak * 0.5, offset: 0.42 }, { opacity: 0 }],
-      { duration: REDUCED ? 180 : 270, easing: "ease-out", fill: "none" }
+      [{ opacity: 0 }, { opacity: peak, offset: 0.12 }, { opacity: peak * 0.9, offset: 0.3 }, { opacity: peak * 0.45, offset: 0.55 }, { opacity: 0 }],
+      { duration: REDUCED ? 180 : 420, easing: "ease-out", fill: "none" }
     );
   }
 
@@ -190,22 +191,23 @@ function createOpenLight() {
   function release({ x, y, width, tier = 0, up = -Math.PI / 2 } = {}) {
     if (x != null) { src.x = x; src.y = y; }
     if (width) src.w = width;
-    const n = 3 + (tier >= 4 ? 1 : 0) + (tier >= 7 ? 1 : 0); // 3 common → 5 for a chase
-    // mostly upward: one straight up, a pair leaning out, one or two further off-axis;
-    // mirrored at random so no two opens fan the same way
+    const n = 6 + (tier >= 4 ? 1 : 0) + (tier >= 7 ? 1 : 0); // 6 common → 8 for a chase
+    // mostly upward: one straight up, pairs leaning out, the last ones well off-axis;
+    // mirrored at random so no two opens fan the same way. Distinct RAYS, not one wash:
+    // each is narrow enough to be told from its neighbours, long enough to cross the screen
     const flip = Math.random() < 0.5 ? -1 : 1;
-    const slots = [0, -0.62, 0.58, -1.08, 1.02].map((a) => a * flip);
+    const slots = [0, -0.34, 0.3, -0.7, 0.64, -1.06, 1.0, -1.36].map((a) => a * flip);
     const list = [];
     for (let i = 0; i < n; i++) {
-      const lean = slots[i] + (Math.random() - 0.5) * 0.24;
+      const lean = slots[i] + (Math.random() - 0.5) * 0.16;
       const ang = up + lean;
       const vmin = Math.min(vw, vh);
-      const width = vmin * (i === 0 ? 0.4 : 0.22 + Math.random() * 0.2) * (1 + 0.3 * Math.abs(lean));
-      const want = vh * (i === 0 ? 0.8 : 0.55 + Math.random() * 0.3);
+      const width = vmin * (i === 0 ? 0.4 : 0.16 + Math.random() * 0.18) * (1 + 0.3 * Math.abs(lean));
+      const want = vh * (i === 0 ? 1.0 : 0.72 + Math.random() * 0.28);
       list.push({
         ang, width,
-        length: Math.min(want, 0.96 * reach(ang)),
-        alpha: (i === 0 ? 1 : 0.7 + Math.random() * 0.3),
+        length: Math.min(want, 0.98 * reach(ang)),
+        alpha: (i === 0 ? 1 : 0.8 + Math.random() * 0.2),
         swayAmp: REDUCED ? 0 : 0.02 + Math.random() * 0.03,
         swayHz: 0.1 + Math.random() * 0.14,
         phase: Math.random() * Math.PI * 2,
@@ -215,17 +217,17 @@ function createOpenLight() {
     beams = { list, t: 0, settleAt: -1, fade: 1 };
     glow = 1;
     // a tight burst of dust straight out of the mouth, then a sparse drift
-    burst(up, 12 + (tier >= 4 ? 4 : 0) + (tier >= 7 ? 4 : 0));
-    drift = { rate: 7, until: Infinity, up };
+    burst(up, 20 + (tier >= 4 ? 6 : 0) + (tier >= 7 ? 6 : 0));
+    drift = { rate: 11, until: Infinity, up };
     start();
   }
   function setSource(x, y) { src.x = x; src.y = y; }
   // the envelope of the released light: a quick peak as the flash settles, easing to a
   // sustained glow that breathes; then, on settle, out
   function envelope(t) {
-    const rise = t < 0.14 ? 1 - Math.pow(1 - t / 0.14, 2) : 1;
-    const ease = t < 0.14 ? 1 : lerp(1, 0.62, smooth(clamp01((t - 0.14) / 0.42)));
-    const breathe = t > 0.56 ? 1 + 0.1 * Math.sin((t - 0.56) * 4.4) : 1;
+    const rise = t < 0.12 ? 1 - Math.pow(1 - t / 0.12, 2) : 1;
+    const ease = t < 0.3 ? 1 : lerp(1, 0.8, smooth(clamp01((t - 0.3) / 0.5)));
+    const breathe = t > 0.8 ? 1 + 0.1 * Math.sin((t - 0.8) * 4.4) : 1;
     return rise * ease * breathe;
   }
 
@@ -292,20 +294,22 @@ function createOpenLight() {
       // quickly, so no bright disc hangs over the card
       let hazeFade = 1;
       if (beams.settleAt >= 0) {
-        beams.fade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 0.95));
-        hazeFade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 0.38));
+        beams.fade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 1.5));
+        hazeFade = 1 - smooth(clamp01((beams.t - beams.settleAt) / 0.5));
       }
       const E = envelope(beams.t) * beams.fade;
       if (E > 0.004) {
         lit = true;
         // the haze at the mouth — most of it hides behind the pack, the rest hangs above the opening
         const H = envelope(beams.t) * hazeFade;
-        const rg = ctx.createRadialGradient(src.x, src.y, 0, src.x, src.y, src.w * 0.6);
-        rg.addColorStop(0, `rgba(255,238,196,${(0.7 * H).toFixed(3)})`);
-        rg.addColorStop(0.4, `rgba(255,196,90,${(0.22 * H).toFixed(3)})`);
+        const R = src.w * 0.8;
+        const rg = ctx.createRadialGradient(src.x, src.y, 0, src.x, src.y, R);
+        rg.addColorStop(0, `rgba(255,240,200,${(0.85 * H).toFixed(3)})`);
+        rg.addColorStop(0.3, `rgba(255,210,120,${(0.32 * H).toFixed(3)})`);
+        rg.addColorStop(0.65, `rgba(255,180,70,${(0.08 * H).toFixed(3)})`);
         rg.addColorStop(1, "rgba(255,170,60,0)");
         ctx.fillStyle = rg;
-        ctx.fillRect(src.x - src.w * 0.6, src.y - src.w * 0.6, src.w * 1.2, src.w * 1.2);
+        ctx.fillRect(src.x - R, src.y - R, R * 2, R * 2);
         for (const b of beams.list) {
           const sway = b.swayAmp * Math.sin(beams.t * b.swayHz * Math.PI * 2 + b.phase);
           const breathe = 1 + 0.04 * Math.sin(beams.t * 1.3 + b.bphase);
@@ -313,10 +317,14 @@ function createOpenLight() {
           ctx.save();
           ctx.translate(src.x, src.y);
           ctx.rotate(b.ang + sway - Math.PI / 2);
+          // a broad dim halo, the gold body, then a hot core — three layers add up to a ray
+          // that reads from across the room rather than a faint smear
+          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.3);
+          ctx.drawImage(GOLD, -W * 0.8, 0, W * 1.6, L * 0.9);
           ctx.globalAlpha = Math.min(1, E * b.alpha);
           ctx.drawImage(GOLD, -W / 2, 0, W, L);
-          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.7);
-          ctx.drawImage(CORE, -W * 0.2, 0, W * 0.4, L * 0.85);
+          ctx.globalAlpha = Math.min(1, E * b.alpha * 0.9);
+          ctx.drawImage(CORE, -W * 0.22, 0, W * 0.44, L * 0.88);
           ctx.restore();
         }
       } else if (beams.settleAt >= 0) beams = null;

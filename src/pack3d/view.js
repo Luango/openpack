@@ -50,7 +50,7 @@ const markTored = () => { toredSession = true; try { localStorage.setItem(TORE_K
 // the light inside the pack, at full: point-light candela at this (metre) scale —
 // bright at the torn mouth, 1/d² dark by the lower half (materials.js lifts the
 // 10 cm floor three puts under the falloff)
-const INNER_MAX = 0.00042;
+const INNER_MAX = 0.00056;
 
 export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = false }) {
   let cfg = makeConfig({ quality: pickQuality(), ...config }); // replaced by the shared asset's once loaded
@@ -130,8 +130,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
 
   // ---- the light inside -----------------------------------------------------------
   // Levels ease toward targets set by the beats of the open:
-  //   seam  — the hair-thin leak along the prepared tear line (gripped: the foil
-  //           strains and the seam brightens; tearing: it runs ahead of the tip)
+  //   seam  — the leak at the tip only (gripped: a pin of light at the notch that
+  //           swells as the foil strains; tearing: it rides the tip). The route
+  //           ahead is never lit — the player is not shown where the tear will run
   //   inner — the light in the pack: a point light at the tip, a near-white core
   //           sprite just inside the foil (only the gap shows it), the slab of light
   //           at the lip (glow.js), the inner foil's warm glow, hot torn edges
@@ -555,7 +556,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   // here?!" window) before the body drops and the card rises through them. The
   // hand-off is gated on the hold, with a safety net so the flow can never stall.
   function release(power, delay) {
-    const holdMs = REDUCED ? 420 : 760 + tellTier * 70;
+    const holdMs = REDUCED ? 420 : 880 + tellTier * 70; // long enough for the god-light to be SEEN, not glimpsed
     const dropBeat = 150;
     light.phase = "open";
     light.t = -delay;
@@ -567,10 +568,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     light.roomT = 1;
     core.visible = true;
     const at = (ms, fn) => beatTimers.push(setTimeout(() => { if (!disposed && opened) fn(); }, ms));
-    at(delay * 1000, () => { const s = mouthScreen(); room.flash(power, s.x, s.y); room.floor(null, 0.62, 100); });
+    at(delay * 1000, () => { const s = mouthScreen(); room.flash(power, s.x, s.y); room.floor(null, 0.95, 100); });
     at(delay * 1000 + 70, () => { const s = mouthScreen(); room.release({ x: s.x, y: s.y, width: packPx.w, tier: tellTier, up: upAngle() }); });
     at(delay * 1000 + 130, () => sfx.sparkleDust(5 + Math.round(tellTier * 0.5), 0.9)); // the delicate shimmer
-    at(delay * 1000 + 340, () => room.floor(null, 0.42, 500));
+    at(delay * 1000 + 340, () => room.floor(null, 0.66, 600));
     clearTimeout(handoffTimer);
     handoffTimer = setTimeout(handOff, delay * 1000 + holdMs + dropBeat + 60);
   }
@@ -599,10 +600,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       if (light.t >= 0) {
         const u = Math.min(1, light.t / light.hold);
         // settle from the flash, then two gentle surges — the trapped light breathing out
-        const env = u < 0.3 ? 1 - 0.3 * (u / 0.3)
-          : u < 0.55 ? 0.7 + 0.2 * Math.sin(((u - 0.3) / 0.25) * Math.PI)
-          : u < 0.85 ? 0.7 + 0.25 * Math.sin(((u - 0.55) / 0.3) * Math.PI) : 0.7;
-        light.innerT = 0.55 + 0.35 * env;
+        const env = u < 0.3 ? 1 - 0.2 * (u / 0.3)
+          : u < 0.55 ? 0.8 + 0.2 * Math.sin(((u - 0.3) / 0.25) * Math.PI)
+          : u < 0.85 ? 0.8 + 0.2 * Math.sin(((u - 0.55) / 0.3) * Math.PI) : 0.8;
+        light.innerT = 0.72 + 0.28 * env;
       }
     }
     light.seam += (light.seamT - light.seam) * k;
@@ -634,9 +635,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     lights.fill.intensity = FILL_I * (1 - 0.65 * light.room);
     lights.hemi.intensity = HEMI_I * dimK;
     // the inside catches the light
-    mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = 0.55 * inner + 0.9 * imp;
+    mats.bodyInt.emissiveIntensity = mats.headerInt.emissiveIntensity = 0.55 * inner + 1.2 * imp;
     // the point light at the tear tip, inside the foil
-    innerLight.intensity = INNER_MAX * (inner + 2.4 * imp);
+    innerLight.intensity = INNER_MAX * (inner + 3.2 * imp);
     if (front) innerLight.position.set(detached ? 0 : tipX - 0.004, yT0 - 0.005, 0.0004);
     else innerLight.position.set(0, detached ? 0.01 : tipY + 0.004, -b0 + 0.0025);
     // the core: just inside the surface, so the foil still in place hides it
@@ -646,9 +647,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       if (front) core.position.set(detached ? 0 : tipX - 0.0015, yT0 + (detached ? 0.002 : 0.0012), b0 - 0.0008);
       else core.position.set(0, detached ? ySeal - 0.01 : tipY - 0.001, -b0 + 0.0008);
       core.material.opacity = coreA;
-      core.scale.setScalar(detached ? 0.02 + 0.016 * inner + 0.05 * imp : 0.011 + 0.013 * inner + 0.04 * imp);
+      core.scale.setScalar(detached ? 0.03 + 0.024 * inner + 0.08 * imp : 0.011 + 0.013 * inner + 0.04 * imp);
     }
-    seam.update({ mode: st.mode, seam: light.seam, inner: Math.min(1, inner + imp * 0.8), tipX, tipY, open: detached });
+    seam.update({ mode: st.mode, seam: light.seam, inner: Math.min(1, inner + imp * 0.8), strain: light.strain, tipX, tipY, open: detached });
     if (light.phase === "open" && light.t >= 0) { const s = mouthScreen(); room.setSource(s.x, s.y); }
     return { heat: Math.min(1, inner + imp), tipX, tipY };
   }
