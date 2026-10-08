@@ -338,7 +338,9 @@ export function createSelector({ mountEl, packs = DEFAULT_PACKS, onSelect, onCha
     // own pack body or that body would bury it — but a pack physically IN FRONT on the
     // wheel writes nearer depth and correctly OCCLUDES this rim. The float is tiny (well
     // under the body's mid bulge) so head-on it still reads as the outline glow.
-    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.046, RIM_Z));
+    // halfW 0.023 (was 0.046): the ribbon read as a thick border, not an edge light —
+    // the user asked for half the width; RIM_GAIN below halves its brightness to match.
+    if (!rimGeoCache.has(key)) rimGeoCache.set(key, makeRimGeometry(outline, 0.023, RIM_Z));
     const mat = makeRimMaterial();
     mat.uniforms.uHalfH.value = aspect / 2; // the pack's base (local y = −aspect/2) is the floor contact line
     // Randomise each pack's comet so they DON'T flow in sync: a random start position
@@ -1104,6 +1106,9 @@ const RIM_VERT = `
     vFade = mix(1.0, pow(1.0 - h, 1.4), uRefl); // the mirror: bright at the contact line, gone below
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }`;
+// Overall strength of the 流光 (rim + comet together). 0.5 = half the original: at full
+// strength the ribbon blew out to a flat white-gold band and swamped the pack's edge.
+const RIM_GAIN = 0.5;
 const RIM_FRAG = `
   precision mediump float;
   varying float vU; varying float vV; varying float vFade;
@@ -1130,7 +1135,7 @@ const RIM_FRAG = `
     float tail  = exp(-behind / tailL) * 0.7;          // exponential tail trailing the head
     float beam = max(comet, tail);
     // weak always-on rim (0.22) + the sweeping comet; hot core sharpens it
-    float i = (body * (0.22 * rimG + 1.7 * beam * gain) + hot * beam * 0.7 * gain) * uOpacity * vFade;
+    float i = (body * (0.22 * rimG + 1.7 * beam * gain) + hot * beam * 0.7 * gain) * uOpacity * vFade * ${RIM_GAIN.toFixed(2)};
     vec3 col = mix(uWarm, uHot, clamp(beam, 0.0, 1.0)); // gold rim → white-hot comet
     gl_FragColor = vec4(col * i * 1.12, i);            // mild overdrive → a soft bloom, not a blowout
   }`;
