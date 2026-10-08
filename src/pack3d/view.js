@@ -596,6 +596,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     light.impulse = 0;
     room.settle();
     if (stack) stack.visible = false; // the DOM stack behind the canvas takes over, in place
+    // the back pop: the cards leapt OUT of the wrapper toward the lens, so the DOM stack
+    // must stay OVER the blown-open sheet as it drops away (CSS: #pack-stage.cards-over
+    // sinks the stage under the reveal) — the front tear keeps the body over the card
+    if (ctl.state.mode === "back") mountEl.classList.add("cards-over");
     ctl.reveal();
     onOpen?.();
     requestRender();
@@ -873,6 +877,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     stepLight(0);
     deformer.evaluate(ctl.state, 0);
     wrap.classList.remove("opening", "tearing", "settled", "back", "lit");
+    mountEl.classList.remove("cards-over");
     updateCue();
     requestRender();
   }

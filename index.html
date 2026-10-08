@@ -155,6 +155,10 @@
         opacity: 0;
         will-change: transform, opacity; /* promote the layer just for the slide */
       }
+      /* the 3D pack's BACK pop: the cards leapt out in FRONT of the wrapper, so for the
+         drop the stage sinks under the reveal (z 1, later in the DOM) — the blown-open
+         sheet falls away BEHIND the cards instead of sweeping over them */
+      #pack-stage.cards-over { z-index: 1; }
 
       /* ---- the procedural 3D foil pack (src/pack3d) --------------------------
        * A transparent WebGL canvas fills the stage; the pack is drawn at the viewport
