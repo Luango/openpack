@@ -1553,13 +1553,14 @@
       /* the stage goes darker for a walkout than for a plain tell */
       .reveal.walkout .reveal__dim { opacity: 1; background: radial-gradient(120% 100% at 50% 44%, rgba(6, 4, 2, 0.35) 20%, rgba(6, 4, 2, 0.86) 80%); }
 
-      /* THE FILM (reveal.js cinema()) — a staged card's print has landed and, instead
-         of its player, the card ZOOMS up into the screen: the stage blacks out beneath
-         it (.reveal__veil — under the stack, so the card itself stays lit), the clip
-         fades in over everything (.reveal__cinema), plays, then fades back out as the
-         card pulls back to rest and the player comes out of the light. Opacity and the
-         slot's transform are driven by WAAPI in reveal.js; the layer only exists (and
-         takes the tap that cuts the clip short) while .reveal.cinema is on. */
+      /* THE FILM (reveal.js cinema()) — a staged card's rating has landed and, instead
+         of its name and player, the camera RUSHES into the card: the stage darkens
+         beneath it (.reveal__veil — under the stack), the screen dips to black (the
+         film layer's own background, .reveal__cinema, over everything), the clip comes
+         up out of the black, plays, dips back to black, and the black lifts on the card
+         drifting back to rest. Opacity and the slot's transform are driven by WAAPI in
+         reveal.js; the layer only exists (and takes the tap that cuts the clip short)
+         while .reveal.cinema is on. */
       .reveal__veil {
         position: fixed;
         inset: 0;
