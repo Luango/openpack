@@ -21,7 +21,7 @@
 // (particles.js), and Web Audio (sfx.js) — the same parts the gallery + tear use.
 
 import { renderCard } from "./card.js";
-import { cardPrint, ART_W, ART_H } from "./cardart.js";
+import { cardPrint, foilOf, ART_W, ART_H } from "./cardart.js";
 import { prepareDissolve } from "./dissolve.js";
 import { createSpring } from "./motion.js";
 import { createParticles } from "./particles.js";
@@ -631,9 +631,9 @@ export function createReveal({ mountEl, onAgain }) {
     if (!pc?.focus || !st.layer) return;
     const p = Math.max(0, Math.min(1, tier / 9));
     const [fx, fy, r] = pc.focus;
-    // the dissolve's noise field is built now, while the light swells, so the
-    // player's first grain lands on time rather than after a hitch
-    if (!REDUCED && !st.dissolve) st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: TIER_HEX[tier] || TIER_HEX[0] });
+    // the dissolve's noise field and foil cast are built now, while the light
+    // swells, so the player's first grain lands on time rather than after a hitch
+    if (!REDUCED && !st.dissolve) st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: TIER_HEX[tier] || TIER_HEX[0], foil: foilOf(entry.card.edition) });
     const g = (st.glow = document.createElement("div"));
     g.className = "print-charge";
     Object.assign(g.style, { left: pct(fx, ART_W), top: pct(fy, ART_H), width: pct(r * 2.2, ART_W) });
@@ -677,12 +677,14 @@ export function createReveal({ mountEl, onAgain }) {
     if (navigator.vibrate) navigator.vibrate(6);
   }
 
-  // THE PLAYER APPEARS — the light bursts and the player DISSOLVES onto the card
-  // out of it: the photo materialises grain by grain, the face first (where the
-  // light was) and the body sweeping down after it, a hot edge in the edition's
-  // colour riding the front and motes lifting off it (dissolve.js); the rim glow
-  // settles back, the card takes the blow and the impact lands. Reduced motion
-  // (or no photo to dissolve) simply fades the player in.
+  // THE PLAYER APPEARS — the light bursts and the player stands on the card cast
+  // in the edition's FOIL (bronze, silver, gold…), then DISSOLVES out of it into
+  // the photo: the metal turns to photo grain by grain, the face first (where the
+  // light was) and the body sweeping down after it, a glint rolling down the foil
+  // ahead of the front, a hot edge in the edition's colour riding the front and
+  // motes lifting off it (dissolve.js); the rim glow settles back, the card takes
+  // the blow and the impact lands. Reduced motion (or no photo to dissolve)
+  // simply fades the player in.
   function playerIn(entry, tier) {
     const st = entry.print;
     const pc = st?.pieces?.get("player");
@@ -692,10 +694,10 @@ export function createReveal({ mountEl, onAgain }) {
     st.fx = [];
     const [fx, fy] = pc.focus || [ART_W / 2, ART_H / 2];
     const hex = TIER_HEX[tier] || TIER_HEX[0];
-    const dz = st.dissolve || (REDUCED ? null : (st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: hex })));
+    const dz = st.dissolve || (REDUCED ? null : (st.dissolve = prepareDissolve(pc.canvas, { focus: pc.focus, color: hex, foil: foilOf(entry.card.edition) })));
     if (dz) {
-      dz.frame(0); // nothing of the photo yet — just the first glow at the head
-      pc.canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, fill: "forwards" });
+      dz.frame(0); // the whole player in foil, nothing of the photo yet — just the first glow at the head
+      pc.canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, fill: "forwards" });
       const r = entry.cardEl.getBoundingClientRect();
       const motes = ["#ffffff", "#fff4d6", lighten(hex, 0.5)];
       const t0 = performance.now();

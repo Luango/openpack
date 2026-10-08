@@ -47,6 +47,23 @@ export const LOOKS = {
   legend:   { family: "icon", ink: "#43300c", sub: "#654b1c", glow: "#fff6dc", base: ["#fffdf7", "#f2e8d0", "#cdb27c"], trim: "#d1a547" },
 };
 
+// The FOIL the player dissolves out of in the reveal (dissolve.js), per edition,
+// as [highlight, body, shadow]: the base metals are their own material — bronze,
+// silver, gold, rare gold — and a promo's foil is its signature colour struck
+// as a metal (a dark promo's own base would be a near-black cast, which doesn't
+// read as foil at all).
+const PROMO_FOIL = {
+  totw:   ["#fff0b8", "#e4b64a", "#6b4a0c"], // black + gold → gold foil
+  potm:   ["#ffd0d8", "#ff4f6a", "#6e0f1e"], // crimson foil
+  future: ["#ead6ff", "#b46bff", "#3d1a78"], // violet foil
+  tots:   ["#d6fff8", "#2fd9c4", "#0a5b55"], // aqua foil
+  toty:   ["#d2dcff", "#4f7dff", "#132a80"], // royal-blue foil
+  legend: ["#fffdf3", "#f2dca0", "#9c7a3a"], // champagne foil
+};
+export function foilOf(edition) {
+  return PROMO_FOIL[edition] || (LOOKS[edition] || LOOKS.gold).base;
+}
+
 // Per-family layout, in art pixels. colX: the left column's centre line;
 // photo: [x, y, size] of the square portrait; the rest are text baselines.
 const LAYOUT = {

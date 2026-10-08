@@ -56,6 +56,9 @@ Handy URLs while working:
 - `/coverflow.html` is a cover-flow showcase with one card of every edition.
 - `/tools/card-lab.html` shows every card in the pool, filterable (`?f=toty`,
   `?ids=p01,p02`). It's the bench for tuning the card art.
+- `/tools/dissolve-lab.html` is the bench for the player's reveal: one card per
+  edition with the player frozen mid-dissolve out of its edition's foil
+  (`?t=0.4` the front's position, `?f=gold`, `?ids=…`; `window.lab.frame(t)`).
 - `/tools/art/` is a live preview of the printed art (pack front/back, card back).
 
 ## Deploy
@@ -266,6 +269,7 @@ dependencies) behind it. It's also handy for scripted smoke tests of the flow.
 ├── docs/             design specs: the 3D pack (pack3d.md), the SVG tear & exit, sound map
 ├── tools/
 │   ├── card-lab.html every card in the pool, for tuning the card art
+│   ├── dissolve-lab.html the player's foil dissolve, frozen at any point
 │   ├── pack-lab.html the 3D pack alone, with its developer panel
 │   ├── art/          the printed art (packart.js) + its live preview
 │   ├── frames/       the two card-frame designs → assets/frames (build.py)
