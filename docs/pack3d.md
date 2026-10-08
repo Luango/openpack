@@ -88,8 +88,16 @@ duplicated tear vertices keep their source UVs and the print splits exactly at t
   scratches, the 1.2 mm crimp ridges and the seal-line groove. Finite-difference gradients
   scaled by the real texel size; OpenGL Y convention; `normalScale` 0.55.
 - **Packed roughness/metalness** (G/B; R reserved for occlusion, off) — near-binary masks
-  from the art itself: warm bright print → metallic decorative foil, dark print → ink,
-  white print → glossy varnish, seals/sides → bare foil.
+  from the art itself: gold (even in shadow — it stays warm) → metallic foil, dark
+  *neutral* print → ink, white print → glossy varnish, seals/sides → bare foil.
+- **The print finish** — the brand and the pack name have their own print masks
+  (`assets/pack-print-front.png` / `-back.png`, rendered with the art; `printFront` /
+  `printBack` in `config.js`), laid onto the atlas exactly as the art is. Inside them the
+  foil's crinkle gives way to a smooth surface raised 0.2 mm with a soft 0.5 mm bevel at
+  every edge (the blurred mask as height), and the ORM turns to gloss-black ink
+  (dielectric, roughness 0.08). So the lockup and the name catch the light as raised
+  gloss print — lit rims, a silvery sweep at a steep angle — never like the gold foil
+  around them. Without the masks the brand simply prints as ink.
 
 The art maps gate the first frame; the surface maps are generated in row slices on idle
 ticks and swapped in when ready.
@@ -160,14 +168,18 @@ shortens the hold, damps the strip and skips the screen kick.
 
 ## The printed art
 
-[`tools/art/packart.js`](../tools/art/packart.js) now paints a **gold satin foil pouch**:
-a champagne-to-gold ramp with soft tonal patches (no painted folds or highlights — the 3D
-material supplies those), the brand lockup in black at the top (the two-arrow mark + the
-lowercase wordmark; `BRAND` is the one place to re-brand), an embossed hammered golden ball
-at the centre, GOLD PACK · FOOTBALL COLLECTION in black at the foot, and ribbed crimped seals.
-The back carries the contents and odds, the fin seal with its ball emboss, the legal and the
-barcode, all in black on the same foil. The roughness/metalness masks derive from this art:
-the gold is metal, the black print is ink. Render with `node tools/render_art.mjs`.
+[`tools/art/packart.js`](../tools/art/packart.js) paints the pouch. The **front** is the
+supplied cover design (`tools/art/ref/pack-cover-reference.webp`, a studio render):
+faceted gold foil — chevrons, a frame, long diagonals — with the Betfair lockup in black
+across the middle. `tools/art/cover_plate.py` unwarps the render's pouch into the art box
+(each row's pillowed edge stretched to the full width, crimp tip to crimp scallop) and
+inpaints its bitmap logo away; packart.js lays that plate down and draws the lockup back
+as vectors traced from the supplied logo (`tools/art/trace_logo.py` →
+`tools/art/betfair-logo.js`) into the same box. The **back** carries the brand, GOLD PACK ·
+FOOTBALL COLLECTION, the contents and odds, the fin seal with its ball emboss, the legal and
+the barcode, in black on a satin gold foil. The brand and the pack name are also rendered
+as print masks (the `*-print` pieces) for the print finish above. `BRAND` is the one place
+to re-brand. Render with `node tools/render_art.mjs`.
 
 ## Not done / deferred
 

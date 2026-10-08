@@ -2,16 +2,19 @@
 // back, composed on canvas with the app's own drawing modules so the packaging and
 // the cards inside it are one design system.
 //
-// The pouch is a GOLD satin foil pack, photographed-product style: a smooth
-// champagne-to-gold foil, the brand mark and wordmark in black at the top, ONE
-// embossed golden ball — hammered, polished, standing off the foil — at the centre,
-// and GOLD PACK · FOOTBALL COLLECTION in black at the foot, between two ribbed
-// crimped seals. The back carries the contents and odds, the fin seal and the legal.
+// The pouch is a GOLD foil pack. Its FRONT is the supplied cover design
+// (ref/pack-cover-reference.webp): faceted gold foil — chevrons, a frame, long
+// diagonals — with the Betfair lockup in black across the middle. cover_plate.py
+// unwarps that render into the art box and lifts its bitmap logo out; here the
+// plate is laid down and the lockup is drawn back as VECTORS (betfair-logo.js,
+// traced from ref/betfair-logo.png by trace_logo.py). The back carries the brand,
+// GOLD PACK · FOOTBALL COLLECTION, the contents and odds, the fin seal and the legal,
+// on a satin gold foil.
 //
-// These are FLAT base-colour maps: the 3D pack (src/pack3d) adds the real folds,
-// the moving reflections and the crinkle normal map, so the art carries only a mild
-// satin ramp and the ball's own embossed shading — no painted-on highlights or
-// photographed folds that would double up under the lighting.
+// These are base-colour maps: the 3D pack (src/pack3d) adds the real folds, the
+// moving reflections and the crinkle normal map. The brand and the pack name also
+// get their own PRINT MASKS (the *-print pieces): src/pack3d gives the print in them
+// a different finish — raised gloss ink with its own normal map, not the foil's.
 //
 // Build-time sources: tools/render_art.mjs renders them in headless Chrome and
 // writes the shipped files (assets/pack*.webp, assets/card-back.jpg). Preview them
@@ -23,6 +26,7 @@ import { drawBall, BALL_PANELS, BALL_CENTER } from "../../src/ball.js";
 import { HIT_ODDS, RARE_GOLD_ODDS } from "../../src/booster.js";
 import { TIERS } from "../../src/rarity.js";
 import { POOL } from "../../src/pool.js";
+import { BETFAIR_LOGO } from "./betfair-logo.js";
 
 export const PACK_W = 1083, PACK_H = 1794; // the pouch art box the carousel + tear-pack were tuned on
 export const CARD_BACK_W = 660, CARD_BACK_H = 921;
@@ -34,17 +38,22 @@ const INK = "#0d0b08";   // warm black — the print on the foil
 const IVORY = "#fff6e3"; // warm ivory
 const AMBER = "#ffb547"; // the glow behind the main object (card back)
 
-// the brand on the pouch: the mark (two arrows) + the lowercase wordmark. One place
-// to change if the pack is re-branded.
-export const BRAND = { word: "betfair", name: "GOLD PACK", sub: "FOOTBALL COLLECTION" };
+// the brand on the pouch: the traced lockup (the two-arrow mark + the wordmark) and
+// the pack's name. One place to change if the pack is re-branded (re-trace the logo
+// with trace_logo.py).
+export const BRAND = { logo: BETFAIR_LOGO, name: "GOLD PACK", sub: "FOOTBALL COLLECTION" };
 
-// the display faces the pouch adds on top of the card faces (see tools/art/index.html)
-const WORD_FONT = `"Nunito", "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+// The front's print plate (cover_plate.py) and where the reference's logo sat on
+// it, in art pixels — the vector lockup is drawn back into this box.
+const COVER_PLATE = new URL("./ref/cover-plate.webp", import.meta.url).href;
+const COVER_LOGO = { x: 212, y: 844, w: 743, h: 132 };
+
+// the display face the pouch adds on top of the card faces (see tools/art/index.html)
 const DISPLAY_FONT = `"Montserrat", "Gotham", "Avenir Next", "Segoe UI", system-ui, sans-serif`;
 let _pouchFonts = null;
 function pouchFonts() {
   if (_pouchFonts) return _pouchFonts;
-  const faces = [["900", "Nunito"], ["800", "Nunito"], ["800", "Montserrat"], ["700", "Montserrat"], ["500", "Montserrat"]]
+  const faces = [["800", "Montserrat"], ["700", "Montserrat"], ["500", "Montserrat"]]
     .map(([w, f]) => (document.fonts?.load(`${w} 100px "${f}"`, "abgp0") || Promise.resolve()).catch(() => null));
   _pouchFonts = Promise.race([Promise.all([ensureFonts(), ...faces]), new Promise((r) => setTimeout(r, 4000))]);
   return _pouchFonts;
@@ -189,37 +198,16 @@ function goldLetters(ctx, text, cx, y, size, spacing, { lw = 10, outline = "#1b1
 
 // ---- the brand lockup ------------------------------------------------------------
 
-// The mark: two arrows — one rising on the left, one falling on the right, their
-// stems overlapping — drawn in a 100-unit box centred on (0,0).
-function brandMark(ctx, cx, cy, size, color = INK) {
+// The lockup — the two-arrow mark + the wordmark, one traced path — `width` wide,
+// centred on (cx, cy).
+const _logoPath = new Path2D(BRAND.logo.d);
+function brand(ctx, cx, cy, width, color = INK) {
+  const s = width / BRAND.logo.w;
   ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(size / 100, size / 100);
+  ctx.translate(cx - width / 2, cy - (BRAND.logo.h * s) / 2);
+  ctx.scale(s, s);
   ctx.fillStyle = color;
-  // rising arrow (left): head apex top-left, stem down to the baseline
-  ctx.fill(poly([[-24, -50], [-54, -14], [-37, -14], [-37, 34], [-11, 34], [-11, -14], [6, -14]]));
-  // falling arrow (right): the mirror, apex bottom-right
-  ctx.fill(poly([[24, 50], [54, 14], [37, 14], [37, -34], [11, -34], [11, 14], [-6, 14]]));
-  ctx.restore();
-}
-
-// the lockup: mark + lowercase wordmark, centred as one unit on (cx, y)
-function brand(ctx, cx, y, scale = 1, color = INK) {
-  ctx.save();
-  ctx.translate(cx, y);
-  ctx.scale(scale, scale);
-  ctx.font = `900 150px ${WORD_FONT}`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  const tracking = -3;
-  const tw = ctx.measureText(BRAND.word).width + tracking * (BRAND.word.length - 1);
-  const mark = 118, gap = 26;
-  const total = mark + gap + tw;
-  const x0 = -total / 2;
-  brandMark(ctx, x0 + mark / 2, -44, mark, color);
-  ctx.fillStyle = color;
-  let x = x0 + mark + gap;
-  for (const ch of BRAND.word) { ctx.fillText(ch, x, 0); x += ctx.measureText(ch).width + tracking; }
+  ctx.fill(_logoPath, "evenodd");
   ctx.restore();
 }
 
@@ -270,53 +258,35 @@ function embossedBall(ctx, cx, cy, radius, seed = 41) {
 
 // ---- PACK FRONT ----------------------------------------------------------------------
 
+const image = (url) => new Promise((res) => {
+  const im = new Image();
+  im.onload = () => res(im);
+  im.onerror = () => res(null);
+  im.src = url;
+});
+
+// the front's print: the lockup, in the reference's logo box (same width, centred)
+const frontPrint = (ctx, color) =>
+  brand(ctx, COVER_LOGO.x + COVER_LOGO.w / 2, COVER_LOGO.y + COVER_LOGO.h / 2, COVER_LOGO.w, color);
+
 export async function drawPackFront(ctx) {
-  await pouchFonts();
-  const W = PACK_W, H = PACK_H, cx = W / 2;
+  const W = PACK_W, H = PACK_H;
   const body = pouchPath();
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.clip(body);
-
-  goldFoil(ctx, W, H);
-
-  // the brand, top
-  brand(ctx, cx, 408, 1);
-
-  // the hero: the embossed golden ball, dead centre
-  embossedBall(ctx, cx, 870, 300);
-
-  // the pack name, foot
-  ctx.save();
-  ctx.fillStyle = INK;
-  ctx.textAlign = "center";
-  ctx.font = `800 150px ${DISPLAY_FONT}`;
-  spacedText(ctx, BRAND.name, cx, 1452, 7, "center");
-  ctx.font = `500 46px ${DISPLAY_FONT}`;
-  spacedText(ctx, BRAND.sub, cx, 1526, 15, "center");
+  // the cover design itself — its crimps, gussets and facets included
+  const plate = await image(COVER_PLATE);
+  if (plate) ctx.drawImage(plate, 0, 0, W, H);
+  else goldFoil(ctx, W, H);
+  frontPrint(ctx, INK);
   ctx.restore();
+}
 
-  ctx.restore(); // body clip
-
-  // the crimped seals, top and bottom
-  ctx.save();
-  ctx.clip(body);
-  crimp(ctx, 0, SEAL, GOLD);
-  crimp(ctx, H - SEAL, H, GOLD);
-  sealEdges(ctx, W, H);
-  ctx.fillStyle = rgba("#3a2206", 0.72);
-  ctx.font = font(700, 26);
-  spacedText(ctx, "TEAR HERE", cx, 104, 10, "center");
-  spacedText(ctx, `${BRAND.name}  ·  ${BRAND.sub}  ·  SEASON 26/27`, cx, H - 70, 6, "center");
-  ctx.restore();
-
-  // a bright gold rim along the silhouette
-  ctx.save();
-  ctx.clip(body);
-  ctx.strokeStyle = rgba(GOLD[0], 0.55);
-  ctx.lineWidth = 5;
-  ctx.stroke(body);
-  ctx.restore();
+// the front's print mask: the brand, white on transparent (src/pack3d's print finish)
+export async function drawPackFrontPrint(ctx) {
+  ctx.clearRect(0, 0, PACK_W, PACK_H);
+  frontPrint(ctx, "#ffffff");
 }
 
 // ---- PACK BACK -------------------------------------------------------------------------
@@ -338,12 +308,23 @@ function barcode(ctx, x, y, w, h, seed) {
 }
 
 // an edition's frame image, for the printed swatches (assets/frames — tools/frames)
-const frameImage = (key) => new Promise((res) => {
-  const im = new Image();
-  im.onload = () => res(im);
-  im.onerror = () => res(null);
-  im.src = new URL(`../../assets/frames/${key}.webp`, import.meta.url).href;
-});
+const frameImage = (key) => image(new URL(`../../assets/frames/${key}.webp`, import.meta.url).href);
+
+// the back's title block — the lockup over the pack's name — centred in the right
+// column; drawn in the print colours, or all white for the print mask
+const BACK_RX = PACK_W / 2 + 66 + (PACK_W - (PACK_W / 2 + 66)) / 2;
+function backTitle(ctx, ink, dark) {
+  brand(ctx, BACK_RX, 268, 340, ink);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = ink;
+  ctx.font = `800 60px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.name, BACK_RX, 420, 3, "center");
+  ctx.fillStyle = dark;
+  ctx.font = `500 24px ${DISPLAY_FONT}`;
+  spacedText(ctx, BRAND.sub, BACK_RX, 462, 7, "center");
+  ctx.restore();
+}
 
 export async function drawPackBack(ctx) {
   await pouchFonts();
@@ -405,15 +386,10 @@ export async function drawPackBack(ctx) {
   embossedBall(ctx, cx, H / 2, 64, 43);
 
   // ---- right column: the brand, the pack name, the small print, the barcode ----
-  const RX = cx + 66 + (W - (cx + 66)) / 2;
-  brand(ctx, RX, 300, 0.5);
+  const RX = BACK_RX;
+  backTitle(ctx, INK, DARK);
   ctx.fillStyle = INK;
   ctx.textAlign = "center";
-  ctx.font = `800 60px ${DISPLAY_FONT}`;
-  spacedText(ctx, BRAND.name, RX, 420, 3, "center");
-  ctx.fillStyle = DARK;
-  ctx.font = `500 24px ${DISPLAY_FONT}`;
-  spacedText(ctx, BRAND.sub, RX, 462, 7, "center");
   embossedBall(ctx, RX, 640, 120, 47);
 
   const small = [
@@ -449,6 +425,13 @@ export async function drawPackBack(ctx) {
   ctx.lineWidth = 5;
   ctx.stroke(body);
   ctx.restore();
+}
+
+// the back's print mask: the brand and the pack name, white on transparent
+export async function drawPackBackPrint(ctx) {
+  await pouchFonts();
+  ctx.clearRect(0, 0, PACK_W, PACK_H);
+  backTitle(ctx, "#ffffff", "#ffffff");
 }
 
 // the vertical (fin) seal: ridges run across it, hammered, and it's a touch brighter
@@ -570,6 +553,8 @@ function foilFinishCard(ctx, W, H) {
 export const PIECES = {
   "pack-front": { w: PACK_W, h: PACK_H, draw: drawPackFront },
   "pack-back": { w: PACK_W, h: PACK_H, draw: drawPackBack },
+  "pack-front-print": { w: PACK_W, h: PACK_H, draw: drawPackFrontPrint },
+  "pack-back-print": { w: PACK_W, h: PACK_H, draw: drawPackBackPrint },
   "card-back": { w: CARD_BACK_W, h: CARD_BACK_H, draw: drawCardBack },
 };
 

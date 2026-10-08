@@ -22,6 +22,9 @@ export const DEFAULT_CONFIG = {
   wrinkleSeed: 7,
   artFront: "assets/pack-hi.webp",
   artBack: "assets/pack-back-hi.webp",
+  // where the brand + pack name are printed (tools/render_art.mjs): their own finish
+  printFront: "assets/pack-print-front.png",
+  printBack: "assets/pack-print-back.png",
   cardBack: "assets/card-back.jpg",
   /** @type {Quality} */
   quality: "standard",

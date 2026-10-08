@@ -10,7 +10,9 @@
 //                   one material group → one draw call per pack on the wheel
 //   buildTear()   — the full-density deformable envelope with its seam table,
 //                   in metres, for the tear stage
-//   map / normalMap / ormMap — shared textures (each renderer uploads its own copy)
+//   map / normalMap / ormMap — shared textures (each renderer uploads its own copy);
+//                  the brand + pack name get their own finish in the surface maps
+//                  from the print masks (textures.js)
 //
 // So the pack you spin on the wheel, the hero that flies to the lens and the
 // pouch you tear are the same shape, same print, same finish.
@@ -19,7 +21,7 @@ import * as THREE from "three";
 import { makeConfig, pickQuality } from "./config.js";
 import { buildPack } from "./geometry.js";
 import { atlasLayout } from "./atlas.js";
-import { loadImage, paintAtlas, buildSurfaceMaps } from "./textures.js";
+import { loadImage, paintAtlas, paintPrintMask, buildSurfaceMaps } from "./textures.js";
 
 const COARSE = window.matchMedia?.("(pointer: coarse)").matches ?? false;
 
@@ -33,16 +35,19 @@ export function getPackAsset(overrides = {}) {
     // low tier's 1024 atlas can't use more anyway (mirrors the index.html preloads)
     if (COARSE && !overrides.artFront) cfg.artFront = cfg.artFront.replace("pack-hi.webp", "pack-hi-720.webp");
     if (COARSE && !overrides.artBack) cfg.artBack = cfg.artBack.replace("pack-back-hi.webp", "pack-back-hi-720.webp");
-    const [front, back, cardBack] = await Promise.all([
+    const [front, back, cardBack, printFront, printBack] = await Promise.all([
       loadImage(cfg.artFront).catch(() => null),
       loadImage(cfg.artBack).catch(() => null),
       loadImage(cfg.cardBack).catch(() => null),
+      loadImage(cfg.printFront).catch(() => null),
+      loadImage(cfg.printBack).catch(() => null),
     ]);
     const aspect = front ? front.naturalHeight / front.naturalWidth : 1.657;
     cfg.heightM = cfg.widthM * aspect;
     const layout = atlasLayout(aspect);
     const { texture: map } = paintAtlas(cfg, layout, { front, back });
-    const surface = buildSurfaceMaps(cfg, layout, map.image, { W: cfg.widthM, H: cfg.heightM, seal: cfg.sealHeightM, shoulder: cfg.shoulderM });
+    const print = paintPrintMask(cfg, layout, { front: printFront, back: printBack }, cfg.tier.normal);
+    const surface = buildSurfaceMaps(cfg, layout, map.image, { W: cfg.widthM, H: cfg.heightM, seal: cfg.sealHeightM, shoulder: cfg.shoulderM }, print);
 
     // the showroom envelope: the same loft at a lighter density, at rest, 1 unit wide
     const showTier = { ...cfg.tier, frontCols: 30, arcCols: 5, backHalfCols: 15, rowSpacing: 0.0042, tearRowSpacing: 0.003, shoulderRowSpacing: 0.0026 };

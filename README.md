@@ -226,16 +226,26 @@ finaliser) keeps every card stable.
 
 The pack's front and back and the card back are composed on canvas in
 [`tools/art/packart.js`](tools/art/packart.js), using the same modules as the
-cards: a gold satin foil pouch — the brand lockup in black at the top (`BRAND`
-in packart.js is the one place to re-brand it), an embossed hammered golden ball
-at the centre, GOLD PACK · FOOTBALL COLLECTION at the foot, between ribbed
-crimped seals; the back carries the contents, odds, fin seal and barcode on the
-same foil. The art is a flat base-colour map: the 3D pack adds the folds and
-reflections, and derives its roughness/metalness masks from it (gold = metal,
-black print = ink). Render them into the shipped files with:
+cards. The **front** is the supplied cover design
+([`tools/art/ref/pack-cover-reference.webp`](tools/art/ref/pack-cover-reference.webp)):
+faceted gold foil with the Betfair lockup across the middle. `cover_plate.py`
+unwarps that render into the art box and inpaints its bitmap logo away, and
+packart.js draws the lockup back as vectors traced from the supplied logo
+(`trace_logo.py` → `betfair-logo.js`). The **back** carries the brand, GOLD PACK ·
+FOOTBALL COLLECTION, the contents, odds, fin seal and barcode on a satin gold foil.
+`BRAND` in packart.js is the one place to re-brand.
+
+The art is a base-colour map: the 3D pack adds the folds and reflections, and
+derives its roughness/metalness masks from it (gold = metal, dark neutral print =
+ink). The brand and the pack name are a finish of their own — raised gloss-black
+ink with its own normal map (smooth, bevelled at every edge), from the print masks
+rendered alongside the art (`assets/pack-print-*.png`). Render everything into the
+shipped files with:
 
 ```sh
-node tools/render_art.mjs     # needs Chrome/Edge + Python with Pillow
+python tools/art/trace_logo.py    # only when the logo changes (OpenCV)
+python tools/art/cover_plate.py   # only when the cover reference changes (OpenCV)
+node tools/render_art.mjs         # needs Chrome/Edge + Python with Pillow
 ```
 
 That writes `assets/pack.png` (source), `pack-hi.webp`, `pack-hi-720.webp`,
