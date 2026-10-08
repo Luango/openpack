@@ -44,7 +44,7 @@
       if (!q.has("packdebug")) { q.set("packdebug", "1"); history.replaceState(null, "", "?" + q); }
       const pack = await createPackAuto({
         mountEl: document.getElementById("pack-stage"),
-        config: { artFront: "../assets/pack-hi.webp", artBack: "../assets/pack-back-hi.webp", cardBack: "../assets/card-back.jpg" },
+        config: { artFront: "../assets/pack-hi.webp", artBack: "../assets/pack-back-hi.webp", cardBack: "../assets/card-back.jpg", printFront: "../assets/pack-print-front.png", printBack: "../assets/pack-print-back.png" },
         onGrab: () => console.log("[lab] grab"),
         onOpen: () => { console.log("[lab] open → reveal"); document.body.classList.add("revealing"); },
       });

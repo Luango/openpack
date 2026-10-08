@@ -9,7 +9,11 @@
 //                  Finite-difference gradients scaled by the real texel size.
 //   packed ORM   — G = roughness, B = metalness (R reserved for occlusion, off).
 //                  Near-binary ink/foil masks derived from the art itself: gold
-//                  print is metal, dark print is ink, seals and sides are foil.
+//                  print is metal, dark neutral print is ink, seals and sides are foil.
+// The BRAND and the PACK NAME are a different finish again: their print masks
+// (assets/pack-print-*.png, rendered with the art) mark raised gloss-black ink —
+// smooth, no foil crinkle, a bevel at every edge in the normal map, and a
+// dielectric gloss in the ORM — so they catch the light unlike the foil around them.
 // The art maps are painted synchronously (they gate the first frame); the
 // surface maps are generated in row slices on idle ticks and swapped into the
 // materials when ready — the pack renders with flat shading until then.
@@ -29,13 +33,40 @@ export function loadImage(src) {
 
 const rectPx = (r, S) => ({ x: r.u0 * S, y: (1 - r.v1) * S, w: (r.u1 - r.u0) * S, h: (r.v1 - r.v0) * S });
 
+// the bleed every printed sheet is drawn with, as a fraction of the atlas
+const bleedFrac = (cfg) => Math.max(8, Math.round(cfg.tier.atlas / 170)) / cfg.tier.atlas; // ≥ 12 px at 2048: survives mip filtering
+
+// a printed sheet (the art, or its print mask) into its island on a `size` canvas —
+// over-drawn by the bleed, with the serration teeth (~0.6 % at each end) cropped:
+// the geometry carries them
+function drawSheet(ctx, cfg, rect, img, size) {
+  const r = rectPx(rect, size);
+  const bleed = bleedFrac(cfg) * size;
+  const cut = Math.round(img.naturalHeight * 0.006);
+  ctx.drawImage(img, 0, cut, img.naturalWidth, img.naturalHeight - 2 * cut, r.x - bleed, r.y - bleed, r.w + 2 * bleed, r.h + 2 * bleed);
+}
+
+// The print masks (white = the brand / pack name) laid out on the atlas exactly as
+// the art is, at `size` — black everywhere else. Null when neither mask loaded.
+export function paintPrintMask(cfg, layout, { front, back }, size) {
+  if (!front && !back) return null;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, size, size);
+  if (front) drawSheet(ctx, cfg, layout.front, front, size);
+  if (back) drawSheet(ctx, cfg, layout.back, back, size);
+  return c;
+}
+
 // ---- base colour atlas --------------------------------------------------------
 export function paintAtlas(cfg, layout, { front, back }) {
   const S = cfg.tier.atlas;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d");
-  const bleed = Math.max(8, Math.round(S / 170)); // ≥ 12 px at 2048: survives mip filtering
+  const bleed = bleedFrac(cfg) * S;
   const CRIMP = "#c8a64e";
 
   ctx.fillStyle = "#8f9299"; // neutral foil in the gutters
@@ -47,11 +78,7 @@ export function paintAtlas(cfg, layout, { front, back }) {
     const r = rectPx(rect, S);
     ctx.fillStyle = CRIMP;
     ctx.fillRect(r.x - bleed, r.y - bleed, r.w + 2 * bleed, r.h + 2 * bleed);
-    if (img) {
-      // crop the serration teeth (~0.6 % at each end): the geometry carries them
-      const cut = Math.round(img.naturalHeight * 0.006);
-      ctx.drawImage(img, 0, cut, img.naturalWidth, img.naturalHeight - 2 * cut, r.x - bleed, r.y - bleed, r.w + 2 * bleed, r.h + 2 * bleed);
-    }
+    if (img) drawSheet(ctx, cfg, rect, img, S);
   }
 
   // the sides: the print wraps around the fold. Painted in a temp canvas in its
@@ -121,10 +148,63 @@ export function paintAtlas(cfg, layout, { front, back }) {
   return { canvas, texture };
 }
 
+// The print's finish: raised gloss-black ink. Height in metres (the bevel rises
+// over PRINT_BEVEL_M at each edge, a hair proud of the foil's crinkles), and its
+// ORM — a dielectric gloss, where the foil is metal.
+const PRINT_HEIGHT_M = 0.0002;
+const PRINT_BEVEL_M = 0.0005;
+const PRINT_ROUGH = 0.08;
+const PRINT_METAL = 0;
+
+// the print mask at `size` as floats 0..1, rows bottom-up (v up, like the maps)
+function maskFloats(printCanvas, size) {
+  const t = document.createElement("canvas");
+  t.width = t.height = size;
+  const tc = t.getContext("2d", { willReadFrequently: true });
+  tc.drawImage(printCanvas, 0, 0, size, size);
+  const px = tc.getImageData(0, 0, size, size).data;
+  const m = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    const row = (size - 1 - j) * size;
+    for (let i = 0; i < size; i++) m[j * size + i] = px[(row + i) * 4] / 255;
+  }
+  return m;
+}
+
+// separable box blur, `passes` times (≈ gaussian) — the bevel's soft ramp.
+// Awaits `tick` between sweeps so it slices like the rest of the surface build.
+async function boxBlur(src, size, radius, tick, passes = 2) {
+  const a = new Float32Array(src), b = new Float32Array(src.length);
+  const span = 2 * radius + 1;
+  for (let p = 0; p < passes; p++) {
+    for (let j = 0; j < size; j++) {           // rows
+      const o = j * size;
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += a[o + Math.min(size - 1, Math.max(0, k))];
+      for (let i = 0; i < size; i++) {
+        b[o + i] = acc / span;
+        acc += a[o + Math.min(size - 1, i + radius + 1)] - a[o + Math.max(0, i - radius)];
+      }
+    }
+    await tick();
+    for (let i = 0; i < size; i++) {           // columns
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += b[Math.min(size - 1, Math.max(0, k)) * size + i];
+      for (let j = 0; j < size; j++) {
+        a[j * size + i] = acc / span;
+        acc += b[Math.min(size - 1, j + radius + 1) * size + i] - b[Math.max(0, j - radius) * size + i];
+      }
+    }
+    await tick();
+  }
+  return a;
+}
+
 // ---- surface maps (async, sliced) ---------------------------------------------
 // Returns textures immediately (flat normal + a plausible constant ORM) and
-// fills them in slices; `whenReady` resolves once both are complete.
-export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims) {
+// fills them in slices; `whenReady` resolves once both are complete. `printCanvas`
+// (paintPrintMask) is optional: without it the brand prints like any other ink.
+export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims, printCanvas = null) {
   const N = cfg.tier.normal;
   const R = cfg.tier.orm;
   const normalData = new Uint8Array(N * N * 4);
@@ -166,6 +246,7 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims) {
     const tc = t.getContext("2d", { willReadFrequently: true });
     tc.drawImage(atlasCanvas, 0, 0, R, R);
     const px = tc.getImageData(0, 0, R, R).data;
+    const print = printCanvas ? maskFloats(printCanvas, R) : null;
     const sealFrac = (dims.seal + dims.shoulder * 0.45) / dims.H; // the crimp band, as a fraction of the sheet
     for (let j = 0; j < R; j++) {
       const v = (j + 0.5) / R;
@@ -182,15 +263,22 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims) {
         } else {
           const t = (v - it.r.v0) / (it.r.v1 - it.r.v0);
           const inSeal = t < sealFrac || t > 1 - sealFrac;
-          // goldness: warm, bright, low blue → decorative foil print; dark/cool → ink
-          const warm = Math.min(1, Math.max(0, (r - b) / 110));
-          const bright = Math.min(1, Math.max(0, (lum - 70) / 110));
-          const score = warm * bright;
-          const sm = score < 0.22 ? 0 : score > 0.6 ? 1 : (score - 0.22) / 0.38;
-          metal = inSeal ? 1 : 0.14 + 0.86 * sm;
-          rough = inSeal ? 0.42 : 0.5 - 0.2 * sm;
+          // ink: DARK and NEUTRAL. Gold in shadow stays warm (r − b well over 45), so
+          // the shaded facets of a photographic foil stay metal; black and the deep
+          // bronze-black secondary print go to ink
+          const dark = Math.min(1, Math.max(0, (120 - lum) / 70));
+          const neutral = Math.min(1, Math.max(0, (70 - (r - b)) / 35));
+          const ink = dark * neutral;
+          metal = inSeal ? 1 : 1 - 0.86 * ink;
+          rough = inSeal ? 0.42 : 0.3 + 0.2 * ink;
           // bright white print (stars, floodlights) reads as glossy varnish, not metal
           if (!inSeal && lum > 215 && Math.abs(r - b) < 40) { metal = 0.3; rough = 0.3; }
+          // the brand + pack name: raised gloss-black ink
+          if (print && !inSeal) {
+            const m = print[j * R + i];
+            metal += (PRINT_METAL - metal) * m;
+            rough += (PRINT_ROUGH - rough) * m;
+          }
         }
         const d = (j * R + i) * 4;
         ormData[d] = 255;
@@ -208,6 +296,13 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims) {
     const rand = rng(cfg.wrinkleSeed * 7919 + 3);
     const W = dims.W, H = dims.H;
     const h = new Float32Array(N * N);
+    // texel size (metres) — the front island's scale; sides are stretched, fine for detail
+    const texM = W / ((layout.front.u1 - layout.front.u0) * N);
+    // the print: `ps` sharp (where the foil's crinkle gives way to smooth ink),
+    // `pb` blurred over the bevel width (the ink's own relief)
+    const ps = printCanvas ? maskFloats(printCanvas, N) : null;
+    if (ps) await yield_();
+    const pb = ps ? await boxBlur(ps, N, Math.max(1, Math.round(PRINT_BEVEL_M / texM / 2)), yield_) : null;
     // per-face crinkle curves (fine, curved, short)
     const curves = {};
     for (const it of islands) {
@@ -291,12 +386,15 @@ export function buildSurfaceMaps(cfg, layout, atlasCanvas, dims) {
         }
         // fine directional scratches (streaky along x)
         z += 0.000006 * (hash(i, j >> 2) - 0.5) + 0.000004 * (hash(i >> 1, j) - 0.5);
+        // the print sits ON the foil: its own smooth, raised surface
+        if (ps && it.face) {
+          const m = ps[j * N + i];
+          z = z * (1 - m) + PRINT_HEIGHT_M * pb[j * N + i];
+        }
         h[j * N + i] = z;
       }
       if ((j & 31) === 31) await yield_();
     }
-    // texel size (metres) — the front island's scale; sides are stretched, fine for detail
-    const texM = W / ((layout.front.u1 - layout.front.u0) * N);
     for (let j = 0; j < N; j++) {
       const jm = Math.max(0, j - 1), jp = Math.min(N - 1, j + 1);
       for (let i = 0; i < N; i++) {
