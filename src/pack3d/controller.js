@@ -26,8 +26,8 @@ const BREAK_DIST = 0.0035; // metres of initial pull before the first break / be
 const COMPLETE_AT = 0.985;
 
 export function createController({ dims, reduced = false, emit = () => {} }) {
-  const { W, ySeal, yT0 } = dims;
-  const routeLen = { front: W, back: 2 * ySeal };
+  const { aT, ySeal, yT0 } = dims;
+  const routeLen = { front: 2 * aT, back: 2 * ySeal };
 
   const state = {
     mode: "front",
@@ -207,7 +207,7 @@ export function createController({ dims, reduced = false, emit = () => {} }) {
     // a hand path: front = across the top with a lift; back = a hard pull down
     // the seam, past the limit, wandering a little as it strains
     if (state.mode === "front") {
-      const x = -W / 2 + 0.002 + u * (W - 0.004);
+      const x = -aT + 0.002 + u * (2 * aT - 0.004);
       const y = yT0 + 0.004 + 0.014 * Math.sin(u * Math.PI);
       return { x, y };
     }

@@ -35,7 +35,8 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
   const posAttr = geometry.attributes.position;
   const P = posAttr.array;
   const chain = createChain(cfg.tier.stations);
-  const { W, a0, b0, yT0, ySeal } = dims;
+  const { a0, aT, b0, yT0, ySeal } = dims;
+  const WT = 2 * aT; // the header's width at the tear line (the crimp flares past the body)
   const R_HINGE = a0 - 0.0011;
 
   // wrinkle offsets (rest − raw), carried into the swept frame
@@ -190,12 +191,12 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
 
   function evalFront(state, dt) {
     const p = state.p;
-    const xTip = -a0 + p * W;
-    const L = Math.max(0.0008, p * W);
+    const xTip = -aT + p * WT;
+    const L = Math.max(0.0008, p * WT);
     const detached = state.phase === "detached" || state.phase === "revealed";
     for (let c = 0; c < cols; c++) {
       const x = pack.colX0[c];
-      wCol[c] = detached ? 1 : smoothstep(0, TW_FRONT, (xTip - x) / W);
+      wCol[c] = detached ? 1 : smoothstep(0, TW_FRONT, (xTip - x) / WT);
     }
 
     if (detached && capPos) {
@@ -231,7 +232,7 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
           const i = pt.base + k;
           const d = xTip - mx[i];
           if (d <= 0) continue;
-          const w = smoothstep(0, TW_FRONT, d / W);
+          const w = smoothstep(0, TW_FRONT, d / WT);
           if (w <= 0) continue;
           chain.sample(d, frame);
           const h = my[i] - yT0;
@@ -381,7 +382,7 @@ export function createDeformer(pack, cfg, { reduced = false } = {}) {
     wCol,
     wRowB,
     tipLocal: (state) => (state.mode === "front"
-      ? { x: -a0 + state.p * W, y: yT0, z: b0 }
+      ? { x: -aT + state.p * WT, y: yT0, z: b0 }
       : { x: 0.0015 + state.pullX * 0.2, y: ySeal - 0.004 + state.pullY * 0.2, z: -b0 }),
   };
 }

@@ -279,14 +279,14 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   }
   // which grip (if any) a press lands on, given which face is toward the lens
   function gripAt(e) {
-    const { a0, b0, yT0, ySeal } = pack.dims;
+    const { aT, b0, yT0, ySeal } = pack.dims;
     const big = Math.max(26, packPx.w * 0.1); // ≥ a 44 px target
     const face = facing();
     if (face === "front") {
-      const notch = screenOf({ x: -a0 + 0.003, y: yT0 + 0.003, z: b0 });
+      const notch = screenOf({ x: -aT + 0.003, y: yT0 + 0.003, z: b0 });
       const l = localOn(e, b0);
       if (Math.hypot(e.clientX - notch.x, e.clientY - notch.y) <= big) return "front";
-      if (l && l.y > yT0 - 0.006 && l.y < pack.dims.yTop + 0.004 && l.x < -a0 + 0.03) return "front";
+      if (l && l.y > yT0 - 0.006 && l.y < pack.dims.yTop + 0.004 && l.x < -aT + 0.03) return "front";
     } else {
       const top = screenOf({ x: 0.002, y: ySeal - 0.004, z: -b0 });
       const l = localOn(e, -b0);
@@ -616,10 +616,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (!built) return;
 
     const st = ctl.state;
-    const { b0, yT0, a0, W, ySeal } = pack.dims;
+    const { b0, yT0, aT, ySeal } = pack.dims;
     const detached = st.phase === "detached" || st.phase === "revealed";
     const front = st.mode === "front";
-    const tipX = detached ? 0 : -a0 + st.p * W;
+    const tipX = detached ? 0 : -aT + st.p * 2 * aT;
     const tipY = detached ? 0 : ySeal - 0.0176; // the back: the sliver below the top crimp, where the seal gives
     const inner = light.inner * light.flicker, imp = light.impulse;
 
@@ -745,10 +745,10 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     mountEl.animate(frames, { duration: 240 + power * 60, easing: "ease-out", fill: "none" });
   }
   function burstAlongRoute(mode) {
-    const { a0, b0, yT0, ySeal } = pack.dims;
+    const { aT, b0, yT0, ySeal } = pack.dims;
     for (let k = 0; k <= 10; k++) {
       const u = k / 10;
-      const l = mode === "front" ? { x: -a0 + u * 2 * a0, y: yT0, z: b0 } : { x: 0, y: ySeal - u * 2 * ySeal, z: -b0 };
+      const l = mode === "front" ? { x: -aT + u * 2 * aT, y: yT0, z: b0 } : { x: 0, y: ySeal - u * 2 * ySeal, z: -b0 };
       const s = screenOf(l);
       particles.emit(s.x, s.y, { count: 2, speed: 4.5, colors: FOIL, life: 50, size: 2.6, shape: "chip" });
       if (k % 2 === 0) particles.emit(s.x, s.y, { count: 1, speed: 5.5, colors: ["#fff", "#ffe7b0"], life: 30, size: 1.6 });
@@ -797,9 +797,9 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   // the grip marker rides the projected notch (front) or seam top (back)
   function placeNotch() {
     if (!built || opened) return;
-    const { a0, b0, yT0, ySeal } = pack.dims;
+    const { aT, b0, yT0, ySeal } = pack.dims;
     const s = facing() === "front"
-      ? screenOf({ x: -a0 + 0.003, y: yT0 + 0.0035, z: b0 })
+      ? screenOf({ x: -aT + 0.003, y: yT0 + 0.0035, z: b0 })
       : screenOf({ x: 0.0015, y: ySeal - 0.004, z: -b0 });
     const r = canvas.getBoundingClientRect(); // the notch shares the canvas's (floating) box
     notchEl.style.left = `${(s.x - r.left).toFixed(1)}px`;
@@ -926,7 +926,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     q("p").addEventListener("input", () => {
       const p = Number(q("p").value);
       out.value = `${Math.round(p * 100)}%`;
-      ctl.scrub(p, p > P_NOTCH ? (ctl.state.mode === "front" ? { x: -pack.dims.a0 + p * pack.dims.W, y: pack.dims.yT0 + 0.012 } : { x: 0.004, y: pack.dims.ySeal - 0.004 - p * PULL_LIMIT }) : null);
+      ctl.scrub(p, p > P_NOTCH ? (ctl.state.mode === "front" ? { x: -pack.dims.aT + p * 2 * pack.dims.aT, y: pack.dims.yT0 + 0.012 } : { x: 0.004, y: pack.dims.ySeal - 0.004 - p * PULL_LIMIT }) : null);
       // scrubbing shows the trapped light at that point of the tear (front) / the pull (back)
       const back = ctl.state.mode === "back";
       light.phase = p > P_NOTCH ? (back ? "antic" : "tear") : "idle";

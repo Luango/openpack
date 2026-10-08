@@ -52,6 +52,7 @@ export function buildPack(cfg, artAspect = 1.657) {
   const yT0 = yTop - cfg.tearBelowTopM; // the tear line (nominal)
   const yBodyEnd = yTop - seal - sh; // |y| beyond this is shoulder
   const ySeal = yTop - seal; // |y| beyond this is the sealed band
+  const flare = cfg.sealFlareM; // how far each crimp corner stands proud of the body
   const R_MAX = 0.0022; // side fold radius
   const B_SEAL = 0.00022; // half-depth of the flattened seal (non-zero: no degenerate tris)
   const rand = rng(cfg.wrinkleSeed * 1000 + 17);
@@ -68,11 +69,15 @@ export function buildPack(cfg, artAspect = 1.657) {
     return b0 + (B_SEAL - b0) * smoothstep(0, 1, (ay - yBodyEnd) / sh);
   }
   function halfWidth(y) {
-    // the crimp pulls the ends in a touch (pinched ends)
+    // The crimp FLARES: the sealed band is the tube pressed flat, so it is wider
+    // than the inflated body (half the perimeter, give or take) — the squared-off
+    // "ears" a booster pack shows at each end, which is also where the eye looks
+    // for the rip. The width grows through the shoulder as the depth collapses and
+    // then holds, so the band reads as a clean tab with straight sides, not a pinch.
     const ay = Math.abs(y);
-    const start = yBodyEnd + sh * 0.5;
-    if (ay <= start) return a0;
-    return a0 - 0.0013 * smoothstep(0, 1, (ay - start) / (seal + sh * 0.5));
+    if (ay <= yBodyEnd) return a0;
+    const t = smoothstep(0, 1, Math.min(1, (ay - yBodyEnd) / (sh * 0.85)));
+    return a0 + flare * t;
   }
   function xShift(y) {
     // slightly asymmetric outline: the seals sit a hair to one side, plus a faint skew
@@ -159,6 +164,7 @@ export function buildPack(cfg, artAspect = 1.657) {
   }
 
   // nominal x of each column at the tear line — the route coordinate + jag/tooth key
+  const aT = halfWidth(yT0); // half width at the tear line (inside the flare)
   const colX0 = new Float32Array(cols);
   for (let c = 0; c < cols; c++) colX0[c] = loopPoint(c, yT0).x;
 
@@ -316,7 +322,7 @@ export function buildPack(cfg, artAspect = 1.657) {
     sheet[i] = sh_;
     owner[i] = own;
     col[i] = c;
-    sRoute[i] = clamp01((x + a0) / W);
+    sRoute[i] = clamp01((x + aT) / (2 * aT));
     hTear[i] = y - (yT0 + jag(x, sh_));
     flap[i] = flapOf(c);
     // back rip: the flaps hinge most at the middle of the back and ease out toward
@@ -433,7 +439,7 @@ export function buildPack(cfg, artAspect = 1.657) {
     colSheet,
     idx,
     layout,
-    dims: { W, H, D, a0, b0, yT0, yTop, yBot, yBodyEnd, ySeal, seal, shoulder: sh, cw, ch },
+    dims: { W, H, D, a0, aT, b0, yT0, yTop, yBot, yBodyEnd, ySeal, seal, shoulder: sh, cw, ch, flare },
     fn: { halfDepth, halfWidth, jag, backZ, xShift },
     stats: { triangles: index.length / 3, vertices: nVerts },
   };
