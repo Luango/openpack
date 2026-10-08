@@ -176,10 +176,15 @@
       /* the idle float, only once the pack has settled into your hand (not during the
          carousel hand-off, whose landed hero must match a still pack). It rides
          .pack3d-body — the canvas + grip dot — NOT the wrap, so the Flip / Open buttons
-         and the cue text underneath hold still while the pack bobs. */
+         and the cue text underneath hold still while the pack bobs. The `float`
+         keyframes start 6px up / 0.4° over, so view.js never just toggles .settled: its
+         child .pack3d-glide carries a counter-transform that eases the bob's amplitude
+         IN from the landed still and back OUT to the exact rest pose on a grip / open
+         (startFloat / stopFloat) — switching the animation on or off cold is a snap.
+         view.js pauses it inline while it eases out, then removes .settled. */
       .pack3d-body { position: absolute; inset: 0; }
+      .pack3d-glide { position: absolute; inset: 0; }
       .pack3d-wrap.settled .pack3d-body { animation: float 5s ease-in-out infinite; }
-      .pack3d-wrap.tearing .pack3d-body, .pack3d-wrap.opening .pack3d-body { animation: none; }
       .pack3d-canvas {
         display: block;
         width: 100%;
@@ -1764,6 +1769,10 @@
         // and the canvas → SVG cross-dissolve has no seam. (.pack keeps its layout box
         // even while hidden behind the picker, so this measures true.)
         getHandoffRect: () => pack?.getHandoffRect?.() || stageEl.querySelector(".pack")?.getBoundingClientRect() || null,
+        // …and the pose it idles in (the 3D pouch's slight three-quarter turn), so the
+        // hero's pirouette ENDS in that view: the dissolve joins two identical stills and
+        // nothing turns afterwards. The flat SVG fallback has no pose → face-on landing.
+        getHandoffPose: () => pack?.getHandoffPose?.() || null,
         onSelect: (p) => {
           chosenPack = p;
           // hue-match the SVG tear-pack to the chosen variant (0 = the real art).
@@ -1780,8 +1789,9 @@
           await ready;                                // pre-armed → resolves instantly
           document.body.classList.remove("picking");  // real pack appears at the matched rect
           startDissolve();                            // cross-dissolve the canvas into it, then park
-          // once the flat hero has dissolved into the (face-on) 3D pack, let the pack
-          // settle into your hand: it turns to its three-quarter view and starts to float
+          // once the hero has dissolved into the identical 3D pack (same three-quarter
+          // pose — see getHandoffPose), let it start to breathe: the idle float eases in
+          // from zero amplitude, so the landed still simply begins to drift (no snap)
           setTimeout(() => pack?.present?.(), 440);
           sfx.startOpenTheme?.();                      // pack SELECTED — swell the open theme up and play its INTRO, then HOLD at the intro's end until the pack fully opens
         },

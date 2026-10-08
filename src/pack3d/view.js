@@ -2,7 +2,7 @@
 //
 // The procedural foil pack (three.js) that replaces the flat SVG tear-pack in the
 // open flow. Same host contract as pack.js — createPack3D({ mountEl, onOpen,
-// onGrab }) → { reset, setArmed, setTell, setCards, getHandoffRect, present } —
+// onGrab }) → { reset, setArmed, setTell, setCards, getHandoffRect, getHandoffPose, present } —
 // so the carousel hands off to it and the DOM card reveal takes over after it.
 //
 // Two rip methods, one state machine (controller.js):
@@ -59,10 +59,15 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     <div class="pack3d-wrap">
       <div class="pack-glow" aria-hidden="true"></div>
       <!-- .pack3d-body is what idle-floats (host CSS): the pack + its grip marker only.
-           The buttons and cue below are siblings so they stay put while the pack bobs. -->
+           The buttons and cue below are siblings so they stay put while the pack bobs.
+           .pack3d-glide inside it carries the float's counter-transform (see startFloat /
+           stopFloat): the bob's amplitude eases IN from the landed still and back OUT to
+           the exact rest pose, instead of the animation snapping on and off. -->
       <div class="pack3d-body">
-        <canvas class="pack3d-canvas" aria-label="Sealed pack — grab the corner and tear it open"></canvas>
-        <span class="pack3d-notch" aria-hidden="true"></span>
+        <div class="pack3d-glide">
+          <canvas class="pack3d-canvas" aria-label="Sealed pack — grab the corner and tear it open"></canvas>
+          <span class="pack3d-notch" aria-hidden="true"></span>
+        </div>
       </div>
       <div class="pack3d-ui">
         <button type="button" class="pack3d-btn pack3d-flip" aria-label="Flip the pack over">Flip</button>
@@ -72,6 +77,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     </div>
     <canvas class="pack-fx"></canvas>`;
   const wrap = mountEl.querySelector(".pack3d-wrap");
+  const bodyEl = mountEl.querySelector(".pack3d-body");
+  const glideEl = mountEl.querySelector(".pack3d-glide");
   const canvas = mountEl.querySelector(".pack3d-canvas");
   const glowEl = mountEl.querySelector(".pack-glow");
   const cueEl = mountEl.querySelector(".pack3d-cue");
@@ -109,11 +116,14 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   let armed = false, opened = false, built = false, disposed = false;
   let tellTier = 0;
   let packPx = { w: 0, h: 0 };
-  const pose = { yaw: 0, pitch: 0, yawT: 0, pitchT: 0, yawV: 0, pitchV: 0 };
+  // The pack IDLES in its rest pose (the slight three-quarter turn) — including at the
+  // carousel hand-off: the flown hero lands in this same pose (getHandoffPose), so the
+  // cross-dissolve joins two identical stills and nothing has to turn afterwards.
+  const pose = { yaw: REST_YAW, pitch: REST_PITCH, yawT: REST_YAW, pitchT: REST_PITCH, yawV: 0, pitchV: 0 };
   let frozen = false; // pose locked during a tear
   let fly = null; // the detached cap's flight (front)
   let stackAnim = null; // the stack emerging + turning face-up (back)
-  let handoffTimer = 0, settleTimer = 0;
+  let handoffTimer = 0;
   const beatTimers = []; // the open's scheduled beats (beams, shimmer, floor)
   const openSpring = { v: 0, t: 0, k: 60, c: 10 }; // the mouth
   const flapSpring = { v: 0, t: 0, k: 190, c: 16 }; // the back blown open: fast, a little past flat and back — the pop
@@ -393,7 +403,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
       case "resume":
         frozen = true;
         wrap.classList.add("tearing", "lit");
-        wrap.classList.remove("guide", "settled");
+        wrap.classList.remove("guide");
+        stopFloat(); // the bob drifts back to the exact rest pose under your fingers (no snap)
         sceneFx?.classList.add("paused");
         sfx.grab();
         strainTick = 0;
@@ -503,7 +514,8 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     markTored();
     frozen = true;
     wrap.classList.add("opening");
-    wrap.classList.remove("tearing", "settled");
+    wrap.classList.remove("tearing");
+    stopFloat(); // back to the exact rest pose, where the DOM card hand-off expects the canvas
     cueEl.textContent = "";
     sfx.foilStretch(false);
     if (mode === "front") sfx.tearEnd(true, power); // the sharp rip
@@ -849,7 +861,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     if (!built) return;
     opened = false; handedOff = false; frozen = false;
     fly = null; stackAnim = null;
-    clearTimeout(handoffTimer); clearTimeout(settleTimer);
+    clearTimeout(handoffTimer); clearTimeout(floatTimer);
     for (const t of beatTimers) clearTimeout(t);
     beatTimers.length = 0;
     light.phase = "idle";
@@ -870,28 +882,85 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
     stack.position.set(0, 0, 0); stack.quaternion.identity(); stack.visible = true;
     core.visible = false;
     seam.reset();
-    pose.yaw = pose.yawT = 0; pose.pitch = pose.pitchT = 0; pose.yawV = pose.pitchV = 0;
-    packGroup.rotation.set(0, 0, 0);
+    pose.yaw = pose.yawT = REST_YAW; pose.pitch = pose.pitchT = REST_PITCH; pose.yawV = pose.pitchV = 0;
+    packGroup.rotation.set(REST_PITCH, REST_YAW, 0);
     ctl.reset();
     deformer.reset();
     stepLight(0);
     deformer.evaluate(ctl.state, 0);
-    wrap.classList.remove("opening", "tearing", "settled", "back", "lit");
+    clearFloat();
+    wrap.classList.remove("opening", "tearing", "back", "lit");
     mountEl.classList.remove("cards-over");
     updateCue();
     requestRender();
   }
-  // the pack has just been revealed under the landed carousel hero: let it settle
-  // from the face-on handoff pose into the three-quarter view, then float
+  // ---- the idle float ---------------------------------------------------------------
+  // The bob is a CSS animation on .pack3d-body (host CSS `float`: compositor-only, so the
+  // on-demand renderer can sleep through it). Its 0% keyframe sits FLOAT_POSE0 away from
+  // rest, so switching it on cold snapped the just-landed pack 6 px — the "jump" at the
+  // end of the pick → open transition. Instead the body's child .pack3d-glide starts at
+  // the exact inverse of that pose and eases to none: the pack leaves its landing still
+  // at rest, velocity-continuous (both halves start at zero speed), and the bob's
+  // amplitude grows in over FLOAT_IN. Stopping (a grip, the open) is the reverse: the
+  // bob pauses where it is and the glide eases to ITS inverse, so the pack drifts back
+  // to the exact rest pose over FLOAT_OUT — where the opened wrapper and the DOM card
+  // hand-off need the canvas — rather than snapping; only once there is the animation
+  // removed, with both transforms cleared in the same style update (nothing visible
+  // changes: paused ∘ inverse was already identity).
+  const FLOAT_POSE0 = "translateY(-6px) rotate(-0.4deg)"; // = the host's `float` keyframe at 0%
+  const FLOAT_IN = 2.4, FLOAT_OUT = 0.32; // seconds
+  let floatTimer = 0, floating = false;
+  const inverseOf = (tf) => { try { return new DOMMatrix(tf).inverse().toString(); } catch { return "none"; } };
+  function startFloat() {
+    if (floating || opened || frozen || REDUCED) return;
+    floating = true;
+    clearTimeout(floatTimer);
+    bodyEl.style.animationPlayState = "";
+    glideEl.style.transition = "none";
+    glideEl.style.transform = inverseOf(FLOAT_POSE0); // counter the bob's first frame exactly
+    wrap.classList.add("settled");                   // the bob starts, from FLOAT_POSE0
+    void glideEl.offsetWidth;                        // commit the counter-pose before the ease
+    glideEl.style.transition = `transform ${FLOAT_IN}s ease-in-out`;
+    glideEl.style.transform = "none";                // …and let the amplitude grow in
+  }
+  function stopFloat() {
+    if (!floating) return;
+    floating = false;
+    clearTimeout(floatTimer);
+    bodyEl.style.animationPlayState = "paused";      // hold the bob where it is
+    // A CSS pause resolves at the NEXT frame (a pending pause task), so the matrix read
+    // right now would be one frame of bob ahead of where it actually freezes — a ~0.15px
+    // residual that would then snap at the clear. Read it once the hold is in effect.
+    requestAnimationFrame(() => {
+      if (floating) return; // restarted meanwhile
+      const cur = getComputedStyle(bodyEl).transform; // the frozen bob
+      glideEl.style.transition = `transform ${FLOAT_OUT}s ease-out`;
+      glideEl.style.transform = cur && cur !== "none" ? inverseOf(cur) : "none"; // net → rest
+      floatTimer = setTimeout(clearFloat, FLOAT_OUT * 1000 + 40);
+    });
+  }
+  function clearFloat() { // everything off, in one update: the pack sits exactly at rest
+    clearTimeout(floatTimer);
+    floating = false;
+    wrap.classList.remove("settled");
+    bodyEl.style.animationPlayState = "";
+    glideEl.style.transition = "none";
+    glideEl.style.transform = "";
+  }
+
+  // The pack has just been revealed under the landed carousel hero — which landed IN
+  // this pack's rest pose (getHandoffPose), so nothing turns here: the still simply
+  // starts to breathe, the float easing in from zero amplitude.
   function present() {
     if (!built || opened) return;
     pose.yawT = REST_YAW;
     pose.pitchT = REST_PITCH;
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => { if (!opened && !frozen) wrap.classList.add("settled"); }, 900);
+    startFloat();
     updateCue();
     requestRender();
   }
+  // The pose the carousel's hero must land in so the dissolve joins two identical packs.
+  function getHandoffPose() { return { yaw: pose.yawT, pitch: pose.pitchT }; }
   function setArmed(v) {
     armed = v;
     wrap.classList.toggle("ready", v);
@@ -914,7 +983,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   function dispose() {
     disposed = true;
     cancelAnimationFrame(raf);
-    clearTimeout(handoffTimer); clearTimeout(settleTimer);
+    clearTimeout(handoffTimer); clearTimeout(floatTimer);
     for (const t of beatTimers) clearTimeout(t);
     pack?.geometry.dispose();
     deformer?.ribbonGeo.dispose();
@@ -971,7 +1040,7 @@ export function createPack3D({ mountEl, onOpen, onGrab, config = {}, debug = fal
   }
 
   const api = {
-    reset, setArmed, setTell, setCards, getHandoffRect, present, dispose, ready,
+    reset, setArmed, setTell, setCards, getHandoffRect, getHandoffPose, present, dispose, ready,
     // for tests + tooling
     get state() { return ctl?.state; },
     get controller() { return ctl; },

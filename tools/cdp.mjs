@@ -89,6 +89,11 @@ export async function launch({ width = 1280, height = 800, dpr = 1, mobile = fal
   const api = {
     send,
     logs,
+    // subscribe to a CDP event (e.g. "Tracing.dataCollected"); returns an unsubscribe fn
+    on(method, fn) {
+      listeners.set(method, [...(listeners.get(method) || []), fn]);
+      return () => listeners.set(method, (listeners.get(method) || []).filter((f) => f !== fn));
+    },
     async goto(url, settle = 300) {
       const loaded = once("Page.loadEventFired");
       await send("Page.navigate", { url });

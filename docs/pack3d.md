@@ -127,9 +127,14 @@ mapping, exposure 1.12; no bloom, no DoF, no shadow map (the pack floats).
 
 The camera is fitted so the **card inside the pack projects to exactly `--card-detail-w`**,
 the width of the DOM reveal card behind the canvas — that is what makes the hand-off to the
-reveal seamless. `getHandoffRect()` reports the pack's face-on rect to the carousel, whose
-flat hero lands on it and cross-dissolves; `present()` then lets the pack settle into its
-three-quarter view (yaw 19.5°, a slight downward pitch) and float.
+reveal seamless. `getHandoffRect()` reports the pack's face-on rect to the carousel and
+`getHandoffPose()` the pose it idles in (its three-quarter view: yaw 19.5°, a slight downward
+pitch — the pack rests there from the start, `reset()` included); the carousel's hero lands
+in that exact rect and pose and cross-dissolves into it, so nothing turns after the landing.
+`present()` then only starts the idle float, whose amplitude eases in from zero (the CSS
+`float` keyframes start 6 px off rest, so a child `.pack3d-glide` carries a counter-transform
+that eases out — `startFloat`); a grip or the open eases the bob back to the exact rest pose
+the same way (`stopFloat`) instead of snapping the animation off.
 
 ## Deformation ([`deformer.js`](../src/pack3d/deformer.js), [`chain.js`](../src/pack3d/chain.js))
 
