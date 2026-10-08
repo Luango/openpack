@@ -318,6 +318,8 @@ export function audioStatus() {
     vol: +userVol.toFixed(2), scene: currentScene, musicStarted, lastPlay: _lastPlay,
     watching: !!bedWatchTimer,
     rip: ripStatus(),
+    ladderRungs, // recorded crystal rungs struck so far (0 = the synth bells are still in use)
+    samples: [...samples.keys()],
     beds: [...beds].map(([k, b]) => ({
       k, paused: b.el ? b.el.paused : null,
       t: b.el ? +b.el.currentTime.toFixed(2) : null,
@@ -890,12 +892,35 @@ function tearChimeUp(progress) {
 function chimeUp(h, progress) {
   if (!h || !h.c) return;
   if (h.step == null) h.step = -1;
-  const steps = TEAR_SCALE.length;
+  // RECORDED ladder: assets/sfx/manifest.json lists `ladder` as an ORDERED run of struck
+  // crystals (low → high); step k plays the k-th file, so the rung order is the file order,
+  // not a round-robin. Without one, the synth bells climb the pentatonic above.
+  const ladder = samples.get("ladder");
+  const steps = ladder?.length || TEAR_SCALE.length;
   const target = Math.min(steps - 1, Math.floor(Math.max(0, Math.min(1, progress)) * steps));
   while (h.step < target) {
     h.step++;
-    tearBell(h.c, TEAR_SCALE[h.step], 0.75 + (h.step / steps) * 0.5); // climbs louder
+    const vel = 0.75 + (h.step / steps) * 0.5; // climbs louder
+    if (ladder?.length) ladderRung(h.c, ladder[Math.min(h.step, ladder.length - 1)], vel);
+    else tearBell(h.c, TEAR_SCALE[h.step], vel);
   }
+}
+
+// one rung of the recorded ladder: the struck crystal at its own pitch, a hair of
+// level jitter so a fast haul doesn't machine-gun ten identical strikes
+let ladderRungs = 0; // (diagnostics) rungs struck this session
+function ladderRung(c, buf, vel) {
+  ladderRungs++;
+  const t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.012;
+  const g = c.createGain();
+  g.gain.value = 0.55 * vel * (0.92 + Math.random() * 0.16);
+  src.connect(g).connect(master);
+  send(g, 0.22);
+  src.start(t);
+  src.stop(t + buf.duration + 0.05);
 }
 
 // ONE shared, read-only white-noise buffer. Every noise-based cue (the tear loop,

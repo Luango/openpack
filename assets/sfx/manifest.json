@@ -14,21 +14,54 @@
     "tear-snap-2.wav",
     "tear-snap-3.wav"
   ],
+  "strain_loop": [
+    "strain-loop.wav"
+  ],
+  "pop": [
+    "pop.wav"
+  ],
   "scratch": [
     "scratch-1.wav",
     "scratch-2.wav",
     "scratch-3.wav",
     "scratch-4.wav"
   ],
+  "ladder": [
+    "ladder-00.wav",
+    "ladder-01.wav",
+    "ladder-02.wav",
+    "ladder-03.wav",
+    "ladder-04.wav",
+    "ladder-05.wav",
+    "ladder-06.wav",
+    "ladder-07.wav",
+    "ladder-08.wav",
+    "ladder-09.wav"
+  ],
   "open_burst": [
     "open-burst-1.wav",
     "open-burst-2.wav"
+  ],
+  "open_release": [
+    "open-release.wav"
   ],
   "reveal_impact": [
     "reveal-impact.wav"
   ],
   "riser": [
     "riser.wav"
+  ],
+  "chime": [
+    "chime.wav"
+  ],
+  "sparkle": [
+    "sparkle-1.wav",
+    "sparkle-2.wav",
+    "sparkle-3.wav",
+    "sparkle-4.wav"
+  ],
+  "spark": [
+    "spark.wav"
   ],
   "flick": [
     "flick-1.wav",
@@ -50,34 +83,16 @@
   "reseal": [
     "reseal.wav"
   ],
-  "chime": [
-    "chime.wav"
-  ],
-  "sparkle": [
-    "sparkle.wav"
-  ],
-  "spark": [
-    "spark.wav"
-  ],
-  "open_release": [
-    "open-release.wav"
-  ],
   "conclude": [
     "conclude.wav"
   ],
   "pip": [
     "pip.wav"
   ],
-  "gulp": [
-    "gulp-1.wav",
-    "gulp-2.wav"
-  ],
   "reject": [
     "reject.wav"
   ],
   "hover": [
     "hover.wav"
-  ],
-  "strain_loop": [],
-  "pop": []
+  ]
 }
